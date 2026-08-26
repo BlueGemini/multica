@@ -183,11 +183,15 @@ func (h *Handler) BootstrapOnboardingRuntime(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
-	runtime, err := qtx.GetAgentRuntimeForWorkspace(r.Context(), db.GetAgentRuntimeForWorkspaceParams{
-		ID:          runtimeUUID,
-		WorkspaceID: wsUUID,
-	})
-	if err != nil {
+	// Keep workspace-before-runtime lock order for the agent and issue writes.
+	if _, err := qtx.LockWorkspaceForChatSessionCreate(r.Context(), wsUUID); err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to start onboarding")
+		return
+	}
+	// Older clients can still create bindings here. Serialize authorization
+	// with runtime privacy changes and hold the access lock through creation.
+	runtime, err := qtx.LockAgentRuntimeForAccessChange(r.Context(), runtimeUUID)
+	if err != nil || runtime.WorkspaceID != wsUUID {
 		writeError(w, http.StatusBadRequest, "invalid runtime_id")
 		return
 	}
