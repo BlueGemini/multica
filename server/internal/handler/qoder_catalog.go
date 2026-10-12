@@ -31,7 +31,7 @@ func fetchQoderCatalog(ctx context.Context, baseURL, token, kind string) ([]qode
 	seen := map[string]bool{}
 	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
-	for page := 0; page < 100; page++ {
+	for page := 0; page < 10; page++ {
 		query := url.Values{"limit": {"100"}}
 		if cursor != "" {
 			query.Set("after_id", cursor)
@@ -97,6 +97,12 @@ func (h *Handler) ListQoderAgents(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
+	if h.QoderRateLimiter != nil && !h.QoderRateLimiter.Allow(r.Context(), "qoder-catalog:"+uuidToString(ws)) {
+		w.Header().Set("Retry-After", "60")
+		writeError(w, http.StatusTooManyRequests, "QCA catalog request limit reached")
+		return
+	}
+
 	cfg, _, _, _, err := h.readQoderSettings(r.Context(), uuidToString(ws))
 	if errors.Is(err, pgx.ErrNoRows) {
 		writeError(w, 409, "configure a QCA connection first")
@@ -119,6 +125,12 @@ func (h *Handler) ListQoderEnvironments(w http.ResponseWriter, r *http.Request) 
 	if !ok {
 		return
 	}
+	if h.QoderRateLimiter != nil && !h.QoderRateLimiter.Allow(r.Context(), "qoder-catalog:"+uuidToString(ws)) {
+		w.Header().Set("Retry-After", "60")
+		writeError(w, http.StatusTooManyRequests, "QCA catalog request limit reached")
+		return
+	}
+
 	var input struct {
 		Token string `json:"qoder_token"`
 	}

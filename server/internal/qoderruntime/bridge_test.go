@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/multica-ai/multica/server/internal/daemon"
 )
@@ -448,5 +449,123 @@ func TestMissingAgentBindingFailsBeforeSession(t *testing.T) {
 		if h.creates != 0 || h.status != "failed" {
 			t.Fatal("unbound task created a QCA session")
 		}
+	}
+}
+
+func TestRunDeadlineReleasesQueue(t *testing.T) {
+	h := setup(t)
+	if err := h.b.step(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	h.b.state.Run.Deadline = time.Now().Add(-time.Second)
+	if err := h.b.step(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if h.failure == nil || h.b.state.Run != nil || h.cancels != 1 {
+		t.Fatal("expired run did not cancel and finish")
+	}
+}
+
+func TestAmbiguousCreationIsNotRepeated(t *testing.T) {
+	h := setup(t)
+	h.b.state.Run = &run{TaskID: "task-1", Phase: "creating", Deadline: time.Now().Add(time.Hour)}
+	if err := h.b.step(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if h.creates != 0 || h.failure == nil {
+		t.Fatal("ambiguous creation was repeated")
+	}
+}
+
+func TestTimeoutKeepsFailedCancellationForRecovery(t *testing.T) {
+	h := setup(t)
+	if err := h.b.step(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	remote := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(503) }))
+	defer remote.Close()
+	h.b.qoder.base = remote.URL
+	h.b.state.Run.Deadline = time.Now().Add(-time.Second)
+	if err := h.b.step(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if h.b.state.Run != nil || len(h.b.state.Cleanup) != 1 || h.failure == nil {
+		t.Fatal("failed cancellation blocked queue or lost session")
+	}
+	j, err := readJournal(h.b.path, "test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(j.Cleanup) != 1 || j.Cleanup[0] != "sess_1" {
+		t.Fatal("cleanup not durable")
+	}
+}
+
+func TestDeletedRemoteSessionFailsRun(t *testing.T) {
+	h := setup(t)
+	if err := h.b.step(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	remote := httptest.NewServer(http.NotFoundHandler())
+	defer remote.Close()
+	h.b.qoder.base = remote.URL
+	if err := h.b.step(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if h.failure == nil || h.b.state.Run != nil {
+		t.Fatal("deleted session not terminal")
+	}
+}
+
+func TestRateLimitedCreationRetriesAfterDelay(t *testing.T) {
+	h := setup(t)
+	attempts := 0
+	remote := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { attempts++; w.WriteHeader(http.StatusTooManyRequests) }))
+	defer remote.Close()
+	h.b.qoder.base = remote.URL
+	if err := h.b.step(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if h.b.state.Run == nil || h.b.state.Run.Phase != "prepared" || h.failure != nil {
+		t.Fatal("rate limit became permanent failure")
+	}
+	if err := h.b.step(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if attempts != 1 {
+		t.Fatal("rate limit retry ignored backoff")
+	}
+}
+
+func TestSubmissionDeadlineReleasesUnconfirmedRun(t *testing.T) {
+	h := setup(t)
+	h.lostSend = true
+	if err := h.b.step(context.Background()); err == nil {
+		t.Fatal("expected lost response")
+	}
+	h.events = nil
+	h.b.state.Run.SubmissionDeadline = time.Now().Add(-time.Second)
+	if err := h.b.step(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if h.failure == nil || h.b.state.Run != nil || h.sends != 1 {
+		t.Fatal("unconfirmed submission blocked queue or resent")
+	}
+}
+
+func TestManagedJournalPersistsWithoutLocalFiles(t *testing.T) {
+	h := setup(t)
+	var saved []byte
+	h.b.cfg.SaveState = func(_ context.Context, raw []byte) error { saved = append([]byte(nil), raw...); return nil }
+	h.b.path = "/not/a/writable/path"
+	if err := h.b.step(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	restored, err := decodeJournal(saved, "test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if restored.Run == nil || restored.Run.SessionID != "sess_1" || restored.Run.Deadline.IsZero() {
+		t.Fatal("managed recovery lost session or deadline")
 	}
 }

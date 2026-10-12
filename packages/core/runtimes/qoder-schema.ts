@@ -3,16 +3,16 @@ import { parseWithFallback } from "../api/schema";
 
 const schema = z
   .object({
-    configured: z.boolean(),
-    available: z.boolean(),
-    name: z.string(),
-    base_url: z.string(),
-    environment_id: z.string(),
-    has_token: z.boolean(),
-    repositories: z.array(z.string()),
-    enabled: z.boolean(),
-    status: z.string(),
-    last_error: z.string(),
+    configured: z.boolean().catch(false),
+    available: z.boolean().catch(false),
+    name: z.string().catch(""),
+    base_url: z.string().catch(""),
+    environment_id: z.string().catch(""),
+    has_token: z.boolean().catch(false),
+    repositories: z.array(z.string()).catch([]),
+    enabled: z.boolean().catch(false),
+    status: z.string().catch(""),
+    last_error: z.string().catch(""),
   })
   .transform((v) => ({
     configured: v.configured,

@@ -21,7 +21,7 @@ store. Do not commit tokens to source control.
 | Variable | Value |
 | --- | --- |
 | `MULTICA_SERVER_URL` | Multica server origin, without `/api` |
-| `MULTICA_TOKEN` | Multica runtime owner's PAT with access to the workspace |
+| `MULTICA_TOKEN` | Multica workspace administrator PAT (standalone mode only) |
 | `MULTICA_WORKSPACE_ID` | Workspace UUID |
 | `QODER_CLOUD_BASE_URL` | Qoder managed API base, including its gateway prefix (for example `https://api.qoder.com/api/v1/cloud`) |
 | `QODER_CLOUD_TOKEN` | Qoder PAT with access to the configured agent/environment |
@@ -94,11 +94,14 @@ Workspace repository listings are context only, not implicit mounts.
 - Submission intent is persisted before sending the user message. If the HTTP
   result is ambiguous, the bridge searches event history for that exact message
   and never automatically sends it twice. If no matching event appears, inspect
-  the remote session and cancel the Multica run before deliberately retrying.
-  Do not clear the journal or manually resend while reconciliation is pending.
+  the remote session before deliberately retrying. Unconfirmed submissions expire
+  after two minutes; all runs have a one-hour deadline. Cancellation is attempted
+  before failure is reported. Failed cancellation remains in a durable cleanup
+  queue, independently of the next task. Do not manually resend pending work.
 - A lost **session creation** response can leave an unused idle session; retry
-  can create another idle session, but work is submitted only to the session
-  whose ID was durably recorded. These unused sessions need manual cleanup.
+  does not automatically create a second session. The run fails with an explicit
+  unconfirmed-creation error. An unused session whose ID was never received needs
+  manual provider-side inspection; no task message is sent to it.
 - Final callbacks retry through reconciliation. Transcript messages carry a
   task-scoped `idempotency_key` derived from the Qoder event ID. The server derives
   a stable message UUID and inserts once; accepted replays do not create another
@@ -169,15 +172,20 @@ key) and `MULTICA_QODER_STATE_DIR` (a persistent writable directory). Keep the k
 stable across restarts. Credentials are encrypted in `qoder_connection`, and API
 responses return only presence flags and repository names. Empty password fields
 keep saved credentials; removing a repository removes its credential. Saving
-creates an encrypted internal Multica service credential under the administrator
-who saves the connection; superseded service credentials are revoked. Removing
-that member stops the supervisor from running their connection.
+creates an encrypted workspace/daemon-scoped credential with a one-hour lifetime.
+The supervisor renews it only while the connection is enabled and its owner is an
+administrator. Save and Stop revoke the old credential and invalidate its cache.
+Membership/role checks also gate managed daemon requests. Removing or demoting
+that administrator retires the bridge and schedules remote cancellation.
 
 The API process supervises execution, restarts failed bridges, and resumes their
-journals. One PostgreSQL advisory lock elects the active supervisor; deployments
-with multiple API instances must share the same persistent state directory.
+journals. One PostgreSQL advisory lock elects the active supervisor. Managed
+journals are encrypted in PostgreSQL, including pending cancellations; API
+instances do not need shared local disks. Standalone journals remain local.
+Remote calls run outside database transactions under a bounded step lease;
+Save/Stop may return a retryable conflict while a step is synchronizing.
 Stop and configuration changes refuse active tasks; finish or cancel the tasks
-first. Stopping keeps credentials for a later Save and start. Do not run a
+first. Stopping keeps QCA/repository credentials for a later Save and start, but revokes the internal daemon token. Do not run a
 standalone bridge for the same connection alongside the managed service. When
 migrating, stop the standalone bridge at idle before saving the managed config.
 
@@ -225,3 +233,19 @@ unique index already exist, then rename only those two exact entries in
 existing table, encrypted credentials, and journal. Do not mark upstream's
 `451_agent_task_comment_thread` or `452_agent_task_pending_thread_unique` as
 applied; the normal migration runner must still execute them.
+
+Migration 566 revokes the early PoC's user-wide internal PATs and pauses existing
+connections. Before upgrading, let old executions finish or cancel them while the
+old bridge is still running. After migration, save the connection once to issue a
+scoped daemon credential; QCA and repository secrets are preserved. The managed
+daemon identity changes once during this upgrade; select the new managed runtime
+for agents previously bound to the old PoC runtime. Old local
+managed journals are not imported: archive/remove their private directories only
+after confirming no old remote work remains. Keep the encryption key stable.
+
+Workspace deletion first pauses its connection and cancels remote work. If a
+step or provider cancellation is still pending, deletion returns a conflict and
+must be retried; the encrypted recovery record is retained. Retired connections
+are retried by the supervisor, and task prompts are removed after cleanup.
+Catalog requests are limited to six per workspace per minute and ten pages per
+request. A failed bridge restarts with bounded exponential backoff.

@@ -66,6 +66,17 @@ func (h *Handler) requireDaemonWorkspaceAccess(w http.ResponseWriter, r *http.Re
 			writeError(w, http.StatusNotFound, "not found")
 			return false
 		}
+		if strings.HasPrefix(middleware.DaemonIDFromContext(r.Context()), "qoder-managed-") {
+			allowed, err := h.qoderCredentialAllowed(r, workspaceID, middleware.DaemonIDFromContext(r.Context()))
+			if err != nil {
+				writeError(w, http.StatusServiceUnavailable, "runtime authorization unavailable")
+				return false
+			}
+			if !allowed {
+				writeError(w, http.StatusForbidden, "runtime access revoked")
+				return false
+			}
+		}
 		return true
 	}
 
@@ -444,6 +455,31 @@ func (h *Handler) DaemonRegister(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	req.WorkspaceID = uuidToString(wsUUID)
+	if id := middleware.DaemonIDFromContext(r.Context()); id != "" && id != req.DaemonID {
+		writeError(w, http.StatusForbidden, "daemon identity mismatch")
+		return
+	}
+	for _, rt := range req.Runtimes {
+		if normalizeProvider(rt.Type) != "qoder_cloud" {
+			continue
+		}
+		if middleware.DaemonIDFromContext(r.Context()) != "" {
+			allowed, err := h.qoderCredentialAllowed(r, req.WorkspaceID, req.DaemonID)
+			if err != nil || !allowed {
+				writeError(w, http.StatusForbidden, "managed runtime credential required")
+				return
+			}
+		} else {
+			member, ok := h.requireWorkspaceMember(w, r, req.WorkspaceID, "workspace not found")
+			if !ok {
+				return
+			}
+			if !roleAllowed(member.Role, "owner", "admin") {
+				writeError(w, http.StatusForbidden, "workspace administrator required")
+				return
+			}
+		}
+	}
 
 	// Verify workspace access and resolve owner.
 	// Daemon tokens (mdt_) prove workspace access directly; OwnerID will be zero

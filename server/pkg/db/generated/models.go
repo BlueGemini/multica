@@ -1348,15 +1348,17 @@ type ProjectResource struct {
 }
 
 type QoderConnection struct {
-	WorkspaceID     pgtype.UUID        `json:"workspace_id"`
-	OwnerID         pgtype.UUID        `json:"owner_id"`
-	TokenID         pgtype.UUID        `json:"token_id"`
-	ConfigEncrypted string             `json:"config_encrypted"`
-	Enabled         bool               `json:"enabled"`
-	Revision        int64              `json:"revision"`
-	Status          string             `json:"status"`
-	LastError       string             `json:"last_error"`
-	UpdatedAt       pgtype.Timestamptz `json:"updated_at"`
+	WorkspaceID      pgtype.UUID        `json:"workspace_id"`
+	OwnerID          pgtype.UUID        `json:"owner_id"`
+	TokenID          pgtype.UUID        `json:"token_id"`
+	ConfigEncrypted  string             `json:"config_encrypted"`
+	Enabled          bool               `json:"enabled"`
+	Revision         int64              `json:"revision"`
+	Status           string             `json:"status"`
+	LastError        string             `json:"last_error"`
+	UpdatedAt        pgtype.Timestamptz `json:"updated_at"`
+	BusyUntil        pgtype.Timestamptz `json:"busy_until"`
+	JournalEncrypted string             `json:"journal_encrypted"`
 }
 
 type QuickAction struct {

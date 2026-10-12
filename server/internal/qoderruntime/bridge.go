@@ -11,6 +11,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -19,19 +20,24 @@ import (
 const Provider = "qoder_cloud"
 
 type Config struct {
-	BeforeStep       func(context.Context) (func(), error) `json:"-"`
-	OnReady          func(context.Context, string) error   `json:"-"`
-	GitHubTokens     map[string]string                     `json:"-"`
-	GitHubTokenFiles map[string]string                     `json:"github_token_files,omitempty"`
-	MulticaURL       string                                `json:"multica_url"`
-	MulticaToken     string                                `json:"multica_token"`
-	WorkspaceID      string                                `json:"workspace_id"`
-	QoderURL         string                                `json:"qoder_url"`
-	QoderToken       string                                `json:"qoder_token"`
-	EnvironmentID    string                                `json:"environment_id"`
-	StateDir         string                                `json:"state_dir"`
-	Name             string                                `json:"name,omitempty"`
-	PollInterval     time.Duration                         `json:"-"`
+	DaemonID          string                                `json:"daemon_id,omitempty"`
+	LoadState         func(context.Context) ([]byte, error) `json:"-"`
+	SaveState         func(context.Context, []byte) error   `json:"-"`
+	BeforeStep        func(context.Context) (func(), error) `json:"-"`
+	OnReady           func(context.Context, string) error   `json:"-"`
+	GitHubTokens      map[string]string                     `json:"-"`
+	GitHubTokenFiles  map[string]string                     `json:"github_token_files,omitempty"`
+	MulticaURL        string                                `json:"multica_url"`
+	MulticaToken      string                                `json:"multica_token"`
+	WorkspaceID       string                                `json:"workspace_id"`
+	QoderURL          string                                `json:"qoder_url"`
+	QoderToken        string                                `json:"qoder_token"`
+	EnvironmentID     string                                `json:"environment_id"`
+	StateDir          string                                `json:"state_dir"`
+	Name              string                                `json:"name,omitempty"`
+	RunTimeout        time.Duration                         `json:"-"`
+	SubmissionTimeout time.Duration                         `json:"-"`
+	PollInterval      time.Duration                         `json:"-"`
 }
 
 type Bridge struct {
@@ -56,6 +62,15 @@ func New(cfg Config, log *slog.Logger) (*Bridge, error) {
 	}
 	if cfg.PollInterval < time.Millisecond {
 		return nil, fmt.Errorf("poll interval must be positive")
+	}
+	if cfg.RunTimeout == 0 {
+		cfg.RunTimeout = time.Hour
+	}
+	if cfg.SubmissionTimeout == 0 {
+		cfg.SubmissionTimeout = 2 * time.Minute
+	}
+	if cfg.RunTimeout < time.Second || cfg.SubmissionTimeout < time.Second {
+		return nil, fmt.Errorf("timeouts must be positive")
 	}
 	if cfg.Name == "" {
 		cfg.Name = "Qoder Cloud Agent"
@@ -85,9 +100,19 @@ func (b *Bridge) Run(ctx context.Context) error {
 		return err
 	}
 	defer lock.Close()
-	sum := sha256.Sum256([]byte(b.multica.base + "\n" + b.cfg.WorkspaceID + "\n" + b.qoder.base + "\n" + b.cfg.EnvironmentID))
-	binding := hex.EncodeToString(sum[:])
-	b.state, err = readJournal(b.path, binding)
+	binding := Binding(b.multica.base, b.cfg.WorkspaceID, b.qoder.base, b.cfg.EnvironmentID)
+	if b.cfg.SaveState != nil {
+		binding = Binding("", b.cfg.WorkspaceID, b.qoder.base, b.cfg.EnvironmentID)
+	}
+	if b.cfg.LoadState != nil {
+		var raw []byte
+		raw, err = b.cfg.LoadState(ctx)
+		if err == nil {
+			b.state, err = decodeJournal(raw, binding)
+		}
+	} else {
+		b.state, err = readJournal(b.path, binding)
+	}
 	if err != nil {
 		return err
 	}
@@ -118,6 +143,7 @@ func (b *Bridge) Run(ctx context.Context) error {
 		if err := ctx.Err(); err != nil {
 			return nil
 		}
+		b.cleanup(ctx)
 		// Heartbeats run even while event delivery or submission reconciliation is failing.
 		if err := b.multica.call(ctx, http.MethodPost, "/api/daemon/heartbeat", map[string]any{"runtime_id": b.state.RuntimeID}, nil); err != nil {
 			b.log.WarnContext(ctx, "runtime heartbeat failed", "error", err)
@@ -154,6 +180,10 @@ func (b *Bridge) Run(ctx context.Context) error {
 	}
 }
 func (b *Bridge) register(ctx context.Context, binding string) error {
+	daemonID := b.cfg.DaemonID
+	if daemonID == "" {
+		daemonID = "qoder-cloud-" + binding[:24]
+	}
 	var response struct {
 		Runtimes []struct {
 			ID       string `json:"id"`
@@ -161,7 +191,7 @@ func (b *Bridge) register(ctx context.Context, binding string) error {
 		} `json:"runtimes"`
 	}
 	err := b.multica.call(ctx, http.MethodPost, "/api/daemon/register", map[string]any{
-		"workspace_id": b.cfg.WorkspaceID, "daemon_id": "qoder-cloud-" + binding[:24], "device_name": b.cfg.Name,
+		"workspace_id": b.cfg.WorkspaceID, "daemon_id": daemonID, "device_name": b.cfg.Name,
 		"runtimes": []map[string]string{{"name": b.cfg.Name, "type": Provider, "status": "online", "runtime_mode": "cloud"}},
 	}, &response)
 	if err != nil {
@@ -194,12 +224,33 @@ func (b *Bridge) step(ctx context.Context) error {
 		if err != nil {
 			r = &run{TaskID: response.Task.ID, Phase: "final", Outcome: "failed", Failure: err.Error()}
 		}
+		r.Deadline = time.Now().Add(b.cfg.RunTimeout)
 		b.state.Run = r
 		if err := b.persist(); err != nil {
 			return err
 		}
 	}
 	r := b.state.Run
+	if r.Phase != "final" {
+		if r.Deadline.IsZero() {
+			r.Deadline = time.Now().Add(b.cfg.RunTimeout)
+			if err := b.persist(); err != nil {
+				return err
+			}
+		}
+		if time.Now().After(r.Deadline) || (!r.SubmissionDeadline.IsZero() && !r.Started && time.Now().After(r.SubmissionDeadline)) {
+			// Persist compensating cancellation separately; a provider outage must
+			// not block the next task or discard the remote session identity.
+			if r.SessionID != "" {
+				b.queueCleanup(r.SessionID)
+				if err := b.persist(); err != nil {
+					return err
+				}
+				b.cleanup(ctx)
+			}
+			return b.reject(ctx, "Qoder execution deadline exceeded")
+		}
+	}
 	var status struct {
 		Status string `json:"status"`
 	}
@@ -211,9 +262,11 @@ func (b *Bridge) step(ctx context.Context) error {
 	if err != nil || status.Status == "cancelled" || status.Status == "failed" || status.Status == "completed" {
 		// Do not leave remote work running after deletion, cancellation or server-side timeout.
 		if r.SessionID != "" && r.Phase != "final" {
-			if err := b.cancel(ctx); err != nil {
+			b.queueCleanup(r.SessionID)
+			if err := b.persist(); err != nil {
 				return err
 			}
+			b.cleanup(ctx)
 		}
 		if status.Status == "cancelled" {
 			if err := b.taskCall(ctx, "/cancel-ack", map[string]any{}, nil); err != nil {
@@ -225,6 +278,14 @@ func (b *Bridge) step(ctx context.Context) error {
 	}
 	if r.Phase == "final" {
 		return b.deliver(ctx)
+	}
+	if time.Now().Before(r.RetryAt) {
+		return nil
+	}
+	if r.Phase == "creating" {
+		// The provider may have created a session before the response was lost.
+		// Never create a second session automatically for the same run.
+		return b.reject(ctx, "Qoder session creation was not confirmed; inspect remote sessions before retrying")
 	}
 	if status.Status == "dispatched" {
 		if err := b.taskCall(ctx, "/start", map[string]any{}, nil); err != nil {
@@ -241,7 +302,16 @@ func (b *Bridge) step(ctx context.Context) error {
 		var session struct {
 			ID string `json:"id"`
 		}
+		r.Phase = "creating"
+		if err := b.persist(); err != nil {
+			return err
+		}
 		if err := b.qoder.call(ctx, http.MethodPost, "/sessions", map[string]any{"agent": r.AgentID, "environment_id": b.cfg.EnvironmentID, "title": "Multica run " + r.TaskID, "metadata": map[string]string{"multica_task_id": r.TaskID, "multica_workspace_id": b.cfg.WorkspaceID}, "resources": resources}, &session); err != nil {
+			if rateLimited(err) {
+				r.Phase = "prepared"
+				r.RetryAt = time.Now().Add(30 * time.Second)
+				return b.persist()
+			}
 			if definitelyRejected(err) {
 				return b.reject(ctx, "Qoder rejected session creation: "+err.Error())
 			}
@@ -262,10 +332,17 @@ func (b *Bridge) step(ctx context.Context) error {
 	if r.Phase == "created" {
 		// Save intent before POST. After an ambiguous response/restart, never resend automatically.
 		r.Phase = "sending"
+		r.SubmissionDeadline = time.Now().Add(b.cfg.SubmissionTimeout)
 		if err := b.persist(); err != nil {
 			return err
 		}
 		if err := b.qoder.call(ctx, http.MethodPost, "/sessions/"+url.PathEscape(r.SessionID)+"/events", map[string]any{"events": []map[string]any{{"type": "user.message", "content": []map[string]string{{"type": "text", "text": r.Prompt}}}}}, nil); err != nil {
+			if rateLimited(err) {
+				r.Phase = "created"
+				r.SubmissionDeadline = time.Time{}
+				r.RetryAt = time.Now().Add(30 * time.Second)
+				return b.persist()
+			}
 			if definitelyRejected(err) {
 				return b.reject(ctx, "Qoder rejected the task message: "+err.Error())
 			}
@@ -279,8 +356,10 @@ func (b *Bridge) step(ctx context.Context) error {
 	return b.events(ctx)
 }
 func (b *Bridge) cancel(ctx context.Context) error {
-	r := b.state.Run
-	if err := b.qoder.call(ctx, http.MethodPost, "/sessions/"+url.PathEscape(r.SessionID)+"/cancel", map[string]any{}, nil); err != nil {
+	return b.cancelSession(ctx, b.state.Run.SessionID)
+}
+func (b *Bridge) cancelSession(ctx context.Context, sessionID string) error {
+	if err := b.qoder.call(ctx, http.MethodPost, "/sessions/"+url.PathEscape(sessionID)+"/cancel", map[string]any{}, nil); err != nil {
 		var ae *apiError
 		if errors.As(err, &ae) && ae.Status == 404 {
 			return nil
@@ -290,7 +369,11 @@ func (b *Bridge) cancel(ctx context.Context) error {
 	var s struct {
 		Status string `json:"status"`
 	}
-	if err := b.qoder.call(ctx, http.MethodGet, "/sessions/"+url.PathEscape(r.SessionID), nil, &s); err != nil {
+	if err := b.qoder.call(ctx, http.MethodGet, "/sessions/"+url.PathEscape(sessionID), nil, &s); err != nil {
+		var ae *apiError
+		if errors.As(err, &ae) && ae.Status == 404 {
+			return nil
+		}
 		return err
 	}
 	if s.Status != "idle" && s.Status != "terminated" {
@@ -318,7 +401,7 @@ func (b *Bridge) deliver(ctx context.Context) error {
 
 func definitelyRejected(err error) bool {
 	var rejected *apiError
-	return errors.As(err, &rejected) && rejected.Status >= 400 && rejected.Status < 500 && rejected.Status != 408
+	return errors.As(err, &rejected) && rejected.Status >= 400 && rejected.Status < 500 && rejected.Status != 408 && rejected.Status != 429
 }
 func (b *Bridge) reject(ctx context.Context, reason string) error {
 	r := b.state.Run
@@ -341,6 +424,9 @@ func (b *Bridge) Check(ctx context.Context) error {
 		{b.qoder, "/environments/" + url.PathEscape(b.cfg.EnvironmentID), b.cfg.EnvironmentID, "Qoder environment"},
 	}
 	for _, resource := range resources {
+		if resource.api == b.multica && strings.HasPrefix(b.cfg.MulticaToken, "mdt_") {
+			continue
+		}
 		var response struct {
 			ID string `json:"id"`
 		}
@@ -355,6 +441,8 @@ func (b *Bridge) Check(ctx context.Context) error {
 }
 
 func (b *Bridge) guardedStep(ctx context.Context) error {
+	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	defer cancel()
 	if b.cfg.BeforeStep != nil {
 		release, err := b.cfg.BeforeStep(ctx)
 		if err != nil {
@@ -363,4 +451,49 @@ func (b *Bridge) guardedStep(ctx context.Context) error {
 		defer release()
 	}
 	return b.step(ctx)
+}
+
+func rateLimited(err error) bool {
+	var ae *apiError
+	return errors.As(err, &ae) && ae.Status == http.StatusTooManyRequests
+}
+
+func (b *Bridge) queueCleanup(id string) {
+	for _, existing := range b.state.Cleanup {
+		if existing == id {
+			return
+		}
+	}
+	b.state.Cleanup = append(b.state.Cleanup, id)
+}
+func (b *Bridge) cleanup(ctx context.Context) {
+	if len(b.state.Cleanup) == 0 {
+		return
+	}
+	cleanupCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+	if err := b.cancelSession(cleanupCtx, b.state.Cleanup[0]); err != nil {
+		return
+	}
+	b.state.Cleanup = b.state.Cleanup[1:]
+	if err := b.persist(); err != nil {
+		b.log.ErrorContext(ctx, "cannot persist remote cleanup", "error", err)
+	}
+}
+
+// Binding identifies one workspace/environment independently of process lifetime.
+func Binding(multicaURL, workspaceID, qoderURL, environmentID string) string {
+	sum := sha256.Sum256([]byte(strings.TrimRight(multicaURL, "/") + "\n" + workspaceID + "\n" + strings.TrimRight(qoderURL, "/") + "\n" + environmentID))
+	return hex.EncodeToString(sum[:])
+}
+
+// CancelRemoteSession is used by the managed supervisor after user access is
+// revoked. It needs only Qoder credentials, never a former owner's Multica PAT.
+func CancelRemoteSession(ctx context.Context, baseURL, token, sessionID string) error {
+	api, err := newAPI(baseURL, token, "")
+	if err != nil {
+		return err
+	}
+	b := &Bridge{qoder: api}
+	return b.cancelSession(ctx, sessionID)
 }

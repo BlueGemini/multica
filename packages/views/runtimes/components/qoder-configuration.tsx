@@ -466,6 +466,7 @@ function QoderForm({
             type="button"
             variant="ghost"
             disabled={busy}
+            aria-busy={stop.isPending}
             onClick={() => stop.mutate()}
           >
             {t(($) => $.qoder.stop)}
@@ -475,6 +476,7 @@ function QoderForm({
           type="button"
           variant="outline"
           disabled={busy || !environmentValid}
+          aria-busy={check.isPending}
           onClick={(e) => {
             if (!e.currentTarget.form?.reportValidity()) return;
             check.mutate(payload(), {
@@ -490,7 +492,7 @@ function QoderForm({
             ? t(($) => $.qoder.checking)
             : t(($) => $.qoder.check)}
         </Button>
-        <Button type="submit" disabled={busy || !environmentValid}>
+        <Button type="submit" aria-busy={save.isPending} disabled={busy || !environmentValid}>
           {save.isPending ? t(($) => $.qoder.working) : t(($) => $.qoder.save)}
         </Button>
       </div>

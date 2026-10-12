@@ -6,11 +6,14 @@ describe("QCA response boundary", () => {
     for (const input of [
       null,
       {},
-      { available: true },
+      { available: "true" },
       { repositories: "bad" },
     ]) {
       expect(parseQoderConnection(input).available).toBe(false);
     }
+  });
+  it("preserves capability and valid fields when optional fields are missing", () => {
+    expect(parseQoderConnection({ available: true, configured: true, name: "QCA", repositories: null })).toMatchObject({ available: true, configured: true, name: "QCA", repositories: [], enabled: false });
   });
   it("maps fields and drops unexpected secrets", () => {
     const result = parseQoderConnection({

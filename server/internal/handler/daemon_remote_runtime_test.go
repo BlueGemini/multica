@@ -17,15 +17,25 @@ func TestDaemonRegisterExecutionMode(t *testing.T) {
 		status           int
 	}{
 		{"legacy", "", "local", http.StatusOK},
-		{"remote", "cloud", "cloud", http.StatusOK},
+		{"remote", "cloud", "local", http.StatusForbidden},
 		{"invalid", "unknown", "local", http.StatusBadRequest},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			daemonID := uuid.NewString()
-			id := dbfx.Runtime(t, "mode fixture", testutil.Cols{"daemon_id": daemonID, "provider": "qoder_cloud", "runtime_mode": "local"})
+			id := dbfx.Runtime(t, "mode fixture", testutil.Cols{"daemon_id": daemonID, "provider": func() string {
+				if tc.name == "legacy" {
+					return "claude"
+				}
+				return "qoder_cloud"
+			}(), "runtime_mode": "local"})
 			req := newDaemonTokenRequest("POST", "/api/daemon/register", map[string]any{
 				"workspace_id": testWorkspaceID, "daemon_id": daemonID,
-				"runtimes": []map[string]any{{"name": "Qoder Cloud Agent", "type": "qoder_cloud", "runtime_mode": tc.mode, "status": "online"}},
+				"runtimes": []map[string]any{{"name": "Qoder Cloud Agent", "type": func() string {
+					if tc.name == "legacy" {
+						return "claude"
+					}
+					return "qoder_cloud"
+				}(), "runtime_mode": tc.mode, "status": "online"}},
 			}, testWorkspaceID, daemonID)
 			testutil.Call(t, testHandler.DaemonRegister, req).Want(tc.status)
 			var mode string

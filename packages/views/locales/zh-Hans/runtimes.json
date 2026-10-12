@@ -455,15 +455,15 @@
     "no_data": "还没有使用数据"
   },
   "qoder": {
-    "title": "QCA 运行环境",
+    "title": "QCA 运行时",
     "description": "连接 Qoder Cloud Agent，由 Multica 管理执行并加密保存凭证。工作区管理员可修改配置。",
-    "loading": "加载中…",
+    "loading": "加载中...",
     "unavailable": "请先在服务端配置 MULTICA_VCS_SECRET_KEY 和持久化目录 MULTICA_QODER_STATE_DIR。",
     "online": "在线",
     "error": "连接异常",
     "starting": "启动中",
     "not_configured": "尚未配置",
-    "name": "运行环境名称",
+    "name": "运行时名称",
     "api_url": "QCA API 地址",
     "token": "QCA 访问凭证",
     "keep_secret": "留空保留已保存的凭证",
@@ -472,9 +472,9 @@
     "remove": "移除",
     "add_repository": "添加仓库",
     "check_success": "QCA 环境可访问。请在智能体配置中关联 QCA 智能体，仓库写权限会在实际执行时验证。",
-    "saved": "已保存，服务端将自动启动运行环境。",
+    "saved": "已保存，服务端将自动启动运行时。",
     "check": "测试连接",
-    "working": "处理中…",
+    "working": "处理中...",
     "save": "保存并启动",
     "stop": "停止接收任务",
     "stopped": "已停止",
@@ -518,7 +518,7 @@
   },
   "remote_runtime": {
     "action": "添加远端运行时",
-    "description": "选择托管 Agent 服务并配置连接，由 Multica 管理远端任务执行。",
+    "description": "选择托管智能体服务并配置连接，由 Multica 管理远端任务执行。",
     "type": "运行时类型",
     "select_type": "请选择运行时类型"
   }

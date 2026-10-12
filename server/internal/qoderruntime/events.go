@@ -2,6 +2,7 @@ package qoderruntime
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -51,6 +52,10 @@ func (b *Bridge) events(ctx context.Context) error {
 		NextPage string  `json:"next_page"`
 	}
 	if err := b.qoder.call(ctx, http.MethodGet, "/sessions/"+url.PathEscape(r.SessionID)+"/events?"+q.Encode(), nil, &page); err != nil {
+		var ae *apiError
+		if errors.As(err, &ae) && ae.Status == http.StatusNotFound {
+			return b.reject(ctx, "Qoder session no longer exists")
+		}
 		return err
 	}
 	for _, e := range page.Data {

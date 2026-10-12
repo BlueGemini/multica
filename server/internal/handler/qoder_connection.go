@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"net/url"
 	"os"
@@ -17,6 +18,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/multica-ai/multica/server/internal/auth"
 	"github.com/multica-ai/multica/server/internal/qoderruntime"
@@ -219,6 +221,10 @@ func (h *Handler) SaveQoderConnection(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
+	cfg, ok := h.qoderInput(w, r, uuidToString(ws))
+	if !ok {
+		return
+	}
 	tx, err := h.TxStarter.Begin(r.Context())
 	if err != nil {
 		writeError(w, 500, "cannot save QCA configuration")
@@ -230,10 +236,42 @@ func (h *Handler) SaveQoderConnection(w http.ResponseWriter, r *http.Request) {
 		writeError(w, 500, "cannot lock QCA configuration")
 		return
 	}
-	cfg, ok := h.qoderInput(w, r, uuidToString(ws))
-	if !ok {
+	var busy bool
+	if err := tx.QueryRow(r.Context(), `SELECT EXISTS(SELECT 1 FROM qoder_connection WHERE workspace_id=$1 AND busy_until>now())`, ws).Scan(&busy); err != nil {
+		writeError(w, 500, "cannot check QCA connection")
 		return
 	}
+	if busy {
+		writeError(w, 409, "QCA is synchronizing; retry shortly")
+		return
+	}
+
+	var journal string
+	if err := tx.QueryRow(r.Context(), `SELECT journal_encrypted FROM qoder_connection WHERE workspace_id=$1`, ws).Scan(&journal); err != nil && !errors.Is(err, pgx.ErrNoRows) {
+		writeError(w, 500, "cannot read execution state")
+		return
+	}
+	if journal != "" {
+		raw, err := h.openVCSSecret(journal)
+		if err != nil {
+			writeError(w, 500, "cannot read execution state")
+			return
+		}
+		var state struct {
+			Run     json.RawMessage `json:"run"`
+			Cleanup []string        `json:"cleanup"`
+		}
+		if json.Unmarshal([]byte(raw), &state) != nil {
+			writeError(w, 500, "cannot read execution state")
+			return
+		}
+		if len(state.Cleanup) > 0 || (len(state.Run) > 0 && string(state.Run) != "null") {
+			writeError(w, 409, "wait for QCA execution cleanup before changing configuration")
+			return
+		}
+	}
+	var revokedHash string
+	_ = tx.QueryRow(r.Context(), `SELECT d.token_hash FROM daemon_token d JOIN qoder_connection c ON c.token_id=d.id WHERE c.workspace_id=$1`, ws).Scan(&revokedHash)
 	var active bool
 	err = tx.QueryRow(r.Context(), `SELECT EXISTS(SELECT 1 FROM agent_task_queue t JOIN agent_runtime rt ON rt.id=t.runtime_id WHERE rt.workspace_id=$1 AND rt.provider='qoder_cloud' AND t.status IN ('running','dispatched'))`, ws).Scan(&active)
 	if err != nil {
@@ -244,13 +282,13 @@ func (h *Handler) SaveQoderConnection(w http.ResponseWriter, r *http.Request) {
 		writeError(w, 409, "wait for active QCA tasks to finish before changing configuration")
 		return
 	}
-	rawToken, err := auth.GeneratePATToken()
+	rawToken, err := auth.GenerateDaemonToken()
 	if err != nil {
 		writeError(w, 500, "cannot generate service credential")
 		return
 	}
 	q := h.Queries.WithTx(tx)
-	pat, err := q.CreatePersonalAccessToken(r.Context(), db.CreatePersonalAccessTokenParams{UserID: parseUUID(user), Name: "Managed QCA runtime", TokenHash: auth.HashToken(rawToken), TokenPrefix: rawToken[:12]})
+	pat, err := q.CreateDaemonToken(r.Context(), db.CreateDaemonTokenParams{WorkspaceID: ws, DaemonID: "qoder-managed-" + uuidToString(ws), TokenHash: auth.HashToken(rawToken), ExpiresAt: pgtype.Timestamptz{Time: time.Now().Add(time.Hour), Valid: true}})
 	if err != nil {
 		writeError(w, 500, "cannot create service credential")
 		return
@@ -262,14 +300,15 @@ func (h *Handler) SaveQoderConnection(w http.ResponseWriter, r *http.Request) {
 		writeError(w, 500, "cannot encrypt QCA configuration")
 		return
 	}
-	_, err = tx.Exec(r.Context(), `UPDATE personal_access_token SET revoked=true WHERE id IN (SELECT token_id FROM qoder_connection WHERE workspace_id=$1)`, ws)
+	_, err = tx.Exec(r.Context(), `DELETE FROM daemon_token WHERE id IN (SELECT token_id FROM qoder_connection WHERE workspace_id=$1)`, ws)
 	if err == nil {
-		_, err = tx.Exec(r.Context(), `INSERT INTO qoder_connection(workspace_id,owner_id,token_id,config_encrypted) VALUES($1,$2,$3,$4) ON CONFLICT(workspace_id) DO UPDATE SET owner_id=excluded.owner_id,token_id=excluded.token_id,config_encrypted=excluded.config_encrypted,enabled=true,revision=qoder_connection.revision+1,status='starting',last_error='',updated_at=now()`, ws, parseUUID(user), pat.ID, encrypted)
+		_, err = tx.Exec(r.Context(), `INSERT INTO qoder_connection(workspace_id,owner_id,token_id,config_encrypted) VALUES($1,$2,$3,$4) ON CONFLICT(workspace_id) DO UPDATE SET owner_id=excluded.owner_id,token_id=excluded.token_id,config_encrypted=excluded.config_encrypted,enabled=true,journal_encrypted='',revision=qoder_connection.revision+1,status='starting',last_error='',updated_at=now()`, ws, parseUUID(user), pat.ID, encrypted)
 	}
 	if err != nil || tx.Commit(r.Context()) != nil {
 		writeError(w, 500, "cannot save QCA configuration")
 		return
 	}
+	h.DaemonTokenCache.Invalidate(r.Context(), revokedHash)
 	h.GetQoderConnection(w, r)
 }
 
@@ -282,7 +321,16 @@ func (h *Handler) RunQoderConnections(ctx context.Context, pool *pgxpool.Pool, s
 	for ctx.Err() == nil {
 		conn, err := pool.Acquire(ctx)
 		if err != nil {
-			return
+			if ctx.Err() != nil {
+				return
+			}
+			slog.WarnContext(ctx, "Qoder supervisor database connection unavailable", "error", err)
+			select {
+			case <-ctx.Done():
+				return
+			case <-time.After(5 * time.Second):
+				continue
+			}
 		}
 		var locked bool
 		err = conn.QueryRow(ctx, `SELECT pg_try_advisory_lock(71243, 8191)`).Scan(&locked)
@@ -309,6 +357,8 @@ type managedQoderRun struct {
 
 func (h *Handler) runQoderSupervisor(ctx context.Context, conn *pgxpool.Conn, serverURL, stateDir string) {
 	runs := map[string]managedQoderRun{}
+	retryAt := map[string]time.Time{}
+	failures := map[string]int{}
 	defer func() {
 		for _, run := range runs {
 			run.cancel()
@@ -316,7 +366,19 @@ func (h *Handler) runQoderSupervisor(ctx context.Context, conn *pgxpool.Conn, se
 		}
 	}()
 	for ctx.Err() == nil {
-		rows, err := conn.Query(ctx, `SELECT c.workspace_id::text,c.revision FROM qoder_connection c JOIN workspace w ON w.id=c.workspace_id JOIN member m ON m.workspace_id=c.workspace_id AND m.user_id=c.owner_id WHERE c.enabled=true`)
+		_, _ = conn.Exec(ctx, `UPDATE daemon_token d SET expires_at=now()+interval '1 hour' FROM qoder_connection c JOIN member m ON m.workspace_id=c.workspace_id AND m.user_id=c.owner_id WHERE d.id=c.token_id AND c.enabled=true AND m.role IN ('owner','admin') AND d.expires_at<now()+interval '30 minutes'`)
+		revoked, revokeErr := conn.Query(ctx, `DELETE FROM daemon_token d USING qoder_connection c WHERE d.id=c.token_id AND (NOT c.enabled OR NOT EXISTS(SELECT 1 FROM member m WHERE m.workspace_id=c.workspace_id AND m.user_id=c.owner_id AND m.role IN ('owner','admin'))) RETURNING d.token_hash`)
+		if revokeErr != nil {
+			return
+		}
+		for revoked.Next() {
+			var hash string
+			if revoked.Scan(&hash) == nil {
+				h.DaemonTokenCache.Invalidate(ctx, hash)
+			}
+		}
+		revoked.Close()
+		rows, err := conn.Query(ctx, `SELECT c.workspace_id::text,c.revision FROM qoder_connection c JOIN workspace w ON w.id=c.workspace_id JOIN member m ON m.workspace_id=c.workspace_id AND m.user_id=c.owner_id WHERE c.enabled=true AND m.role IN ('owner','admin')`)
 		if err != nil {
 			return
 		}
@@ -347,16 +409,21 @@ func (h *Handler) runQoderSupervisor(ctx context.Context, conn *pgxpool.Conn, se
 			case err := <-run.done:
 				message := "execution service stopped; retrying"
 				if err != nil {
-					message = err.Error()
+					slog.WarnContext(ctx, "Qoder bridge stopped", "workspace_id", ws, "error", err)
+					message = "remote execution unavailable; retrying"
 				}
 				_, _ = conn.Exec(ctx, `UPDATE qoder_connection SET status='error',last_error=$2 WHERE workspace_id=$1`, ws, message)
 				delete(runs, ws)
 				retryLater[ws] = true
+				failures[ws]++
+				delay := 10 * time.Second << min(failures[ws]-1, 5)
+				retryAt[ws] = time.Now().Add(delay)
 			default:
 			}
 		}
+		h.cleanupInactiveQoder(ctx)
 		for ws, rev := range desired {
-			if retryLater[ws] {
+			if retryLater[ws] || time.Now().Before(retryAt[ws]) {
 				continue
 			}
 			if _, ok := runs[ws]; ok {
@@ -366,31 +433,31 @@ func (h *Handler) runQoderSupervisor(ctx context.Context, conn *pgxpool.Conn, se
 			if err != nil {
 				continue
 			}
-			bridge, err := qoderruntime.New(qoderruntime.Config{MulticaURL: serverURL, MulticaToken: cfg.MulticaToken, WorkspaceID: ws, QoderURL: cfg.BaseURL, QoderToken: cfg.QoderToken, EnvironmentID: cfg.EnvironmentID, Name: cfg.Name, StateDir: filepath.Join(stateDir, ws, fmt.Sprintf("%x", sha256.Sum256([]byte(cfg.BaseURL+cfg.EnvironmentID)))), GitHubTokens: cfg.GitHubTokens,
+			bridge, err := qoderruntime.New(qoderruntime.Config{DaemonID: "qoder-managed-" + ws, MulticaURL: serverURL, MulticaToken: cfg.MulticaToken, WorkspaceID: ws, QoderURL: cfg.BaseURL, QoderToken: cfg.QoderToken, EnvironmentID: cfg.EnvironmentID, Name: cfg.Name, StateDir: filepath.Join(stateDir, ws, fmt.Sprintf("%x", sha256.Sum256([]byte(cfg.BaseURL+cfg.EnvironmentID)))), GitHubTokens: cfg.GitHubTokens,
+				LoadState: func(loadCtx context.Context) ([]byte, error) {
+					var encrypted string
+					if err := h.DB.QueryRow(loadCtx, `SELECT journal_encrypted FROM qoder_connection WHERE workspace_id=$1`, ws).Scan(&encrypted); err != nil {
+						return nil, err
+					}
+					if encrypted == "" {
+						return nil, nil
+					}
+					raw, err := h.openVCSSecret(encrypted)
+					return []byte(raw), err
+				},
+				SaveState: func(saveCtx context.Context, raw []byte) error {
+					encrypted, err := h.sealVCSSecret(string(raw))
+					if err != nil {
+						return err
+					}
+					_, err = h.DB.Exec(saveCtx, `UPDATE qoder_connection SET journal_encrypted=$2 WHERE workspace_id=$1`, ws, encrypted)
+					return err
+				},
 				OnReady: func(readyCtx context.Context, runtimeID string) error {
 					return h.qoderReady(readyCtx, ws, rev, runtimeID)
 				},
 				BeforeStep: func(stepCtx context.Context) (func(), error) {
-					tx, err := h.TxStarter.Begin(stepCtx)
-					if err != nil {
-						return nil, err
-					}
-					release := func() { _ = tx.Rollback(context.Background()) }
-					if _, err = tx.Exec(stepCtx, `SELECT pg_advisory_xact_lock(hashtextextended($1,19))`, ws); err != nil {
-						release()
-						return nil, err
-					}
-					var valid bool
-					err = tx.QueryRow(stepCtx, `SELECT EXISTS(SELECT 1 FROM qoder_connection c JOIN member m ON m.workspace_id=c.workspace_id AND m.user_id=c.owner_id WHERE c.workspace_id=$1 AND c.revision=$2 AND c.enabled=true)`, ws, rev).Scan(&valid)
-					if err != nil {
-						release()
-						return nil, err
-					}
-					if !valid {
-						release()
-						return nil, context.Canceled
-					}
-					return release, nil
+					return h.acquireQoderStep(stepCtx, ws, rev)
 				}}, nil)
 			if err != nil {
 				_, _ = conn.Exec(ctx, `UPDATE qoder_connection SET status='error',last_error='invalid execution configuration' WHERE workspace_id=$1`, ws)
@@ -428,6 +495,17 @@ func (h *Handler) StopQoderConnection(w http.ResponseWriter, r *http.Request) {
 		writeError(w, 500, "cannot lock QCA configuration")
 		return
 	}
+	var busy bool
+	if err := tx.QueryRow(r.Context(), `SELECT EXISTS(SELECT 1 FROM qoder_connection WHERE workspace_id=$1 AND busy_until>now())`, ws).Scan(&busy); err != nil {
+		writeError(w, 500, "cannot check QCA connection")
+		return
+	}
+	if busy {
+		writeError(w, 409, "QCA is synchronizing; retry shortly")
+		return
+	}
+	var revokedHash string
+	_ = tx.QueryRow(r.Context(), `SELECT d.token_hash FROM daemon_token d JOIN qoder_connection c ON c.token_id=d.id WHERE c.workspace_id=$1`, ws).Scan(&revokedHash)
 	var active bool
 	err = tx.QueryRow(r.Context(), `SELECT EXISTS(SELECT 1 FROM agent_task_queue t JOIN agent_runtime rt ON rt.id=t.runtime_id WHERE rt.workspace_id=$1 AND rt.provider='qoder_cloud' AND t.status IN ('running','dispatched'))`, ws).Scan(&active)
 	if err != nil {
@@ -438,18 +516,61 @@ func (h *Handler) StopQoderConnection(w http.ResponseWriter, r *http.Request) {
 		writeError(w, 409, "wait for or cancel active QCA tasks before stopping")
 		return
 	}
+	_, err = tx.Exec(r.Context(), `DELETE FROM daemon_token WHERE id IN (SELECT token_id FROM qoder_connection WHERE workspace_id=$1)`, ws)
+	if err != nil {
+		writeError(w, 500, "cannot revoke runtime credential")
+		return
+	}
 	_, err = tx.Exec(r.Context(), `UPDATE qoder_connection SET enabled=false,revision=revision+1,status='stopped',last_error='' WHERE workspace_id=$1`, ws)
 	if err != nil || tx.Commit(r.Context()) != nil {
 		writeError(w, 500, "cannot stop QCA runtime")
 		return
 	}
+	h.DaemonTokenCache.Invalidate(r.Context(), revokedHash)
 	h.GetQoderConnection(w, r)
 }
 
 func (h *Handler) qoderReady(ctx context.Context, ws string, revision int64, runtimeID string) error {
-	if _, err := h.DB.Exec(ctx, `UPDATE agent_runtime SET visibility='public' WHERE id=$1 AND workspace_id=$2`, runtimeID, ws); err != nil {
+	if _, err := h.DB.Exec(ctx, `UPDATE agent_runtime SET visibility='public',owner_id=(SELECT owner_id FROM qoder_connection WHERE workspace_id=$2) WHERE id=$1 AND workspace_id=$2`, runtimeID, ws); err != nil {
 		return fmt.Errorf("cannot publish managed runtime")
 	}
 	_, err := h.DB.Exec(ctx, `UPDATE qoder_connection SET status='online',last_error='' WHERE workspace_id=$1 AND revision=$2`, ws, revision)
 	return err
+}
+
+func (h *Handler) qoderCredentialAllowed(r *http.Request, ws, daemonID string) (bool, error) {
+	var allowed bool
+	err := h.DB.QueryRow(r.Context(), `SELECT EXISTS(SELECT 1 FROM qoder_connection c JOIN daemon_token d ON d.id=c.token_id JOIN member m ON m.workspace_id=c.workspace_id AND m.user_id=c.owner_id WHERE c.workspace_id=$1 AND c.enabled AND d.daemon_id=$2 AND d.token_hash=$3 AND d.expires_at>now() AND m.role IN ('owner','admin'))`, ws, daemonID, auth.HashToken(strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer "))).Scan(&allowed)
+	return allowed, err
+}
+
+func (h *Handler) acquireQoderStep(stepCtx context.Context, ws string, rev int64) (func(), error) {
+	tx, err := h.TxStarter.Begin(stepCtx)
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback(stepCtx)
+	release := func() {
+		releaseCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		_, _ = h.DB.Exec(releaseCtx, `UPDATE qoder_connection SET busy_until=NULL WHERE workspace_id=$1 AND revision=$2`, ws, rev)
+	}
+	if _, err = tx.Exec(stepCtx, `SELECT pg_advisory_xact_lock(hashtextextended($1,19))`, ws); err != nil {
+		return nil, err
+	}
+	var valid bool
+	err = tx.QueryRow(stepCtx, `SELECT EXISTS(SELECT 1 FROM qoder_connection c JOIN member m ON m.workspace_id=c.workspace_id AND m.user_id=c.owner_id WHERE c.workspace_id=$1 AND c.revision=$2 AND c.enabled=true AND m.role IN ('owner','admin') AND (c.busy_until IS NULL OR c.busy_until<now()))`, ws, rev).Scan(&valid)
+	if err != nil {
+		return nil, err
+	}
+	if !valid {
+		return nil, context.Canceled
+	}
+	if _, err := tx.Exec(stepCtx, `UPDATE qoder_connection SET busy_until=now()+interval '45 seconds' WHERE workspace_id=$1 AND revision=$2`, ws, rev); err != nil {
+		return nil, err
+	}
+	if err := tx.Commit(stepCtx); err != nil {
+		return nil, err
+	}
+	return release, nil
 }
