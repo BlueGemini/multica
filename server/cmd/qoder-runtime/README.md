@@ -222,9 +222,10 @@ bindings. Never move a journal with an active run.
 
 ### Updating an early development database
 
-The QCA migrations now use `564_qoder_connection` and
-`565_qoder_connection_workspace_index` after rebasing onto upstream main.
-If you ran an earlier draft with `509_qoder_connection` and
+The QCA migrations now use `573_qoder_connection` and
+`574_qoder_connection_workspace_index` after rebasing onto upstream main.
+If you ran an earlier draft with `564_qoder_connection` and
+`565_qoder_connection_workspace_index`, with `509_qoder_connection` and
 `510_qoder_connection_workspace_index`, with `479_qoder_connection` and
 `480_qoder_connection_workspace_index`, or with `451_qoder_connection` and
 `452_qoder_connection_workspace_index`, verify that the QCA table and its valid
@@ -234,7 +235,7 @@ existing table, encrypted credentials, and journal. Do not mark upstream's
 `451_agent_task_comment_thread` or `452_agent_task_pending_thread_unique` as
 applied; the normal migration runner must still execute them.
 
-Migration 566 revokes the early PoC's user-wide internal PATs and pauses existing
+Migration 575 revokes the early PoC's user-wide internal PATs and pauses existing
 connections. Before upgrading, let old executions finish or cancel them while the
 old bridge is still running. After migration, save the connection once to issue a
 scoped daemon credential; QCA and repository secrets are preserved. The managed
@@ -249,3 +250,8 @@ must be retried; the encrypted recovery record is retained. Retired connections
 are retried by the supervisor, and task prompts are removed after cleanup.
 Catalog requests are limited to six per workspace per minute and ten pages per
 request. A failed bridge restarts with bounded exponential backoff.
+
+If lifecycle migration `566_qoder_lifecycle` was already applied, rename that
+exact ledger entry to `575_qoder_lifecycle` as well; do not re-run its credential
+revocation and connection pause. Do not rename upstream migrations sharing the
+old numeric prefixes.
