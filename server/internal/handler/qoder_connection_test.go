@@ -182,3 +182,19 @@ func TestQoderStepLeaseReleasesDatabaseConnection(t *testing.T) {
 	release()
 	testutil.Call(t, testHandler.StopQoderConnection, vcsHandlerRequest("POST", "/qoder/stop", nil, "")).Want(200)
 }
+
+func TestQoderQuickCreateUnsupported(t *testing.T) {
+	if testHandler == nil {
+		t.Skip("database not available")
+	}
+	for _, metadata := range []string{`{}`, `{"cli_version":"99.0.0"}`} {
+		runtimeID := dbfx.Runtime(t, "Qoder issue-only runtime", testutil.Cols{"provider": "qoder_cloud", "runtime_mode": "cloud", "metadata": metadata})
+		status, payload := testHandler.checkQuickCreateDaemonVersion(context.Background(), "issue", parseUUID(runtimeID))
+		if status != http.StatusUnprocessableEntity || payload["code"] != "agent_unavailable" {
+			t.Fatalf("Qoder quick-create should be unavailable, got %d: %v", status, payload)
+		}
+		if !strings.Contains(payload["reason"].(string), "create the issue manually") {
+			t.Fatalf("missing actionable issue-only explanation: %v", payload)
+		}
+	}
+}

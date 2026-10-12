@@ -10,10 +10,11 @@ import (
 )
 
 type event struct {
-	ID      string `json:"id"`
-	Type    string `json:"type"`
-	Name    string `json:"name"`
-	Content []struct {
+	ToolUseID string `json:"tool_use_id"`
+	ID        string `json:"id"`
+	Type      string `json:"type"`
+	Name      string `json:"name"`
+	Content   []struct {
 		Type string `json:"type"`
 		Text string `json:"text"`
 	} `json:"content"`
@@ -83,10 +84,14 @@ func (b *Bridge) events(ctx context.Context) error {
 			r.Output = e.text()
 		case "agent.tool_use", "agent.mcp_tool_use":
 			msg["type"] = "tool_use"
+			msg["call_id"] = e.ID
 			msg["tool"] = e.Name
 			msg["input"] = e.Input
 		case "agent.tool_result", "agent.mcp_tool_result":
 			msg["type"] = "tool_result"
+			if e.ToolUseID != "" {
+				msg["call_id"] = e.ToolUseID
+			}
 			msg["output"] = e.text()
 		case "session.error":
 			msg["type"] = "error"

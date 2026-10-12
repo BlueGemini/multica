@@ -569,3 +569,32 @@ func TestManagedJournalPersistsWithoutLocalFiles(t *testing.T) {
 		t.Fatal("managed recovery lost session or deadline")
 	}
 }
+
+func TestToolResultsPreserveCallIdentity(t *testing.T) {
+	for _, prefix := range []string{"agent.", "agent.mcp_"} {
+		t.Run(prefix, func(t *testing.T) {
+			h := setup(t)
+			ctx := context.Background()
+			if err := h.b.step(ctx); err != nil {
+				t.Fatal(err)
+			}
+			h.events = append(h.events,
+				map[string]any{"id": "call-a", "type": prefix + "tool_use", "name": "Read"},
+				map[string]any{"id": "call-b", "type": prefix + "tool_use", "name": "Read"},
+				map[string]any{"id": "result-b", "type": prefix + "tool_result", "tool_use_id": "call-b"},
+				map[string]any{"id": "result-a", "type": prefix + "tool_result", "tool_use_id": "call-a"},
+			)
+			if err := h.b.step(ctx); err != nil {
+				t.Fatal(err)
+			}
+			if len(h.messages) != 4 {
+				t.Fatalf("got %d messages", len(h.messages))
+			}
+			for i, want := range []string{"call-a", "call-b", "call-b", "call-a"} {
+				if h.messages[i]["call_id"] != want {
+					t.Errorf("message %d: call_id = %v, want %s", i, h.messages[i]["call_id"], want)
+				}
+			}
+		})
+	}
+}
