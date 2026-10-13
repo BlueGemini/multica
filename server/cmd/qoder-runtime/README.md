@@ -7,6 +7,21 @@ managed Qoder session, sends the work, and reports messages and the final result
 No local coding-agent CLI, repository checkout, or shell execution is performed
 by the bridge. Run it on a server that can reach both APIs.
 
+## Issue status
+
+For issues still assigned to the executing Qoder agent, the server moves
+`todo` or `backlog` to `in_progress` when execution starts. A successful run
+moves that issue to `in_review`, never directly to `done`, only if its revision
+is unchanged and no newer task has been created for it. Any intervening issue
+edit or reassignment prevents the completion transition. Custom status columns,
+triage, and issues already in progress, review, or a terminal state are left
+unchanged. Failed and cancelled runs do not advance the issue to review.
+
+These transitions and their activity entries commit with the task transition;
+connected clients receive status and activity updates. Existing runs started
+before this support was deployed have no revision marker and are not advanced
+automatically.
+
 ## Build and configure
 
 From `server/`:
