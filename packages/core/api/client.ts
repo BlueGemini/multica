@@ -138,7 +138,6 @@ import type {
   ListIssueWorkflowsResponse,
   SetProjectWorkflowRequest,
   SetProjectWorkflowHandoffRequest,
-  AddProjectWorkflowColumnRequest,
   WorkflowHandoffPreview,
   IssueLabelsResponse,
   LabelResourceType,
@@ -4204,27 +4203,6 @@ export class ApiClient {
       `/api/projects/${projectId}/workflow/handoffs/${encodeURIComponent(statusKey)}`,
       { method: "PUT", body: JSON.stringify(data) },
     );
-  }
-
-  /**
-   * Adds a column to a project's board. Scope "project" may copy a shared
-   * workflow into one of the project's own, so the response names both.
-   */
-  async addProjectWorkflowColumn(
-    projectId: string,
-    data: AddProjectWorkflowColumnRequest,
-  ): Promise<{ project: Project; workflow: IssueWorkflow; status_key: string }> {
-    const raw = await this.fetch<{ project: Project; workflow: unknown; status_key: string }>(
-      `/api/projects/${projectId}/workflow/columns`,
-      { method: "POST", body: JSON.stringify(data) },
-    );
-    return {
-      project: raw.project,
-      status_key: raw.status_key,
-      workflow: parseWithFallback(raw.workflow, IssueWorkflowSchema, EMPTY_ISSUE_WORKFLOW, {
-        endpoint: "POST /api/projects/{id}/workflow/columns",
-      }),
-    };
   }
 
   /**

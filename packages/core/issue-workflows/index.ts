@@ -23,5 +23,4 @@ export {
   useDeleteIssueWorkflow,
   useSetProjectWorkflow,
   useSetProjectWorkflowHandoff,
-  useAddProjectWorkflowColumn,
 } from "./mutations";

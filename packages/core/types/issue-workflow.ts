@@ -71,8 +71,6 @@ export interface IssueWorkflowWriteRequest {
   description?: string;
   /** The middle columns; the fixed head and tail are placed by the server. */
   steps?: IssueWorkflowStepInput[];
-  /** Lets a project lead create a workflow for that project. */
-  project_id?: string;
   /** Destination for issues on statuses an edit removes, keyed by removed status. */
   status_mapping?: Record<string, string>;
   dry_run?: boolean;
@@ -143,16 +141,4 @@ export interface SetProjectWorkflowHandoffRequest {
   instructions?: string;
   next_status_key?: string;
   back_status_key?: string;
-}
-
-/**
- * Adds a column to a project's board. "project" changes only this project,
- * copying a shared workflow (or Default) into one of its own first;
- * "workflow" changes the shared workflow for every project using it.
- */
-export interface AddProjectWorkflowColumnRequest {
-  status_key?: string;
-  new_status?: NewWorkflowStatus;
-  scope: "project" | "workflow";
-  after_status_key?: string;
 }

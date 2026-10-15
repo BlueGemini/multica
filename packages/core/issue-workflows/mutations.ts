@@ -4,7 +4,6 @@ import { useWorkspaceId } from "../hooks";
 import { issueKeys } from "../issues/queries";
 import { projectKeys } from "../projects/queries";
 import type {
-  AddProjectWorkflowColumnRequest,
   IssueWorkflowWriteRequest,
   ListProjectsResponse,
   Project,
@@ -95,20 +94,5 @@ export function useSetProjectWorkflowHandoff() {
     mutationFn: ({ projectId, statusKey, ...data }: { projectId: string; statusKey: string } & SetProjectWorkflowHandoffRequest) =>
       api.setProjectWorkflowHandoff(projectId, statusKey, data),
     onSettled: (project, _error, { projectId }) => settled(project, projectId),
-  });
-}
-
-/** Adds a column to a project's board, possibly giving it its own workflow. */
-export function useAddProjectWorkflowColumn() {
-  const qc = useQueryClient();
-  const wsId = useWorkspaceId();
-  const settled = useProjectWorkflowWriteSettled();
-  return useMutation({
-    mutationFn: ({ projectId, ...data }: { projectId: string } & AddProjectWorkflowColumnRequest) =>
-      api.addProjectWorkflowColumn(projectId, data),
-    onSettled: (result, _error, { projectId }) => {
-      settled(result?.project, projectId);
-      qc.invalidateQueries({ queryKey: issueWorkflowKeys.all(wsId) });
-    },
   });
 }
