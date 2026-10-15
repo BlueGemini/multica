@@ -18,8 +18,9 @@ type Metrics struct {
 	SlowEvictionsTotal   atomic.Int64
 	MessagesSentTotal    atomic.Int64
 	MessagesDroppedTotal atomic.Int64
-	// MembershipRemovalDroppedTotal counts advisory signals discarded when
-	// the bounded revalidation queue is full. Content authorization still runs.
+	// MembershipRemovalDroppedTotal counts target revalidations discarded when
+	// the bounded queue is full. Peer invalidation and content authorization
+	// still run.
 	MembershipRemovalDroppedTotal atomic.Int64
 
 	// InboundTooLargeTotal counts connections closed because a peer sent a

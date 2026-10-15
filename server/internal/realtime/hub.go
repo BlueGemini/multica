@@ -511,27 +511,23 @@ func (h *Hub) BroadcastToScopeDedup(scopeType, scopeID string, message []byte, e
 	if scopeType == "" || scopeID == "" {
 		return
 	}
-	// Both the local fast path and every relay backend converge here. A
-	// replayed removal is meaningful only while the user is still absent.
+	// Both the local fast path and every relay backend converge here. Removal
+	// invalidations reach peers immediately; target connections are revalidated.
 	if scopeType == ScopeWorkspace && h.queueMemberRemoval(scopeID, message, eventID) {
 		return
 	}
-	h.broadcastToScope(scopeType, scopeID, message, eventID, "", nil)
+	h.broadcastToScope(scopeType, scopeID, message, eventID, "")
 }
 
-func (h *Hub) broadcastToScope(scopeType, scopeID string, message []byte, eventID, excludeUserID string, snapshot map[*Client]bool) {
+func (h *Hub) broadcastToScope(scopeType, scopeID string, message []byte, eventID, excludeUserID string) {
 	key := sk(scopeType, scopeID)
 
 	h.mu.RLock()
-	room := h.rooms[key]
-	clients := snapshot
-	if clients == nil {
-		clients = room
-	}
+	clients := h.rooms[key]
 	var slow []*Client
 	var sent int64
 	for client := range clients {
-		if !room[client] || (excludeUserID != "" && client.userID == excludeUserID) {
+		if excludeUserID != "" && client.userID == excludeUserID {
 			continue
 		}
 		if !client.markSeen(eventID) {

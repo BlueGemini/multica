@@ -10,20 +10,13 @@ type memberRemovalJob struct {
 	userID      string
 	checker     MembershipChecker
 	clients     []*Client
-	subscribers map[*Client]bool
 	notice      []byte
-	eventID     string
 }
 
 func (h *Hub) snapshotMemberRemoval(workspaceID, userID string) memberRemovalJob {
 	h.mu.RLock()
 	defer h.mu.RUnlock()
 	job := memberRemovalJob{workspaceID: workspaceID, userID: userID, checker: h.membership}
-	room := h.rooms[sk(ScopeWorkspace, workspaceID)]
-	job.subscribers = make(map[*Client]bool, len(room))
-	for client := range room {
-		job.subscribers[client] = true
-	}
 	for client := range h.clients {
 		if client.workspaceID == workspaceID && client.userID == userID {
 			job.clients = append(job.clients, client)
@@ -43,13 +36,18 @@ func (h *Hub) queueMemberRemoval(workspaceID string, raw []byte, eventID string)
 	if userID == "" {
 		return true
 	}
-	// Freeze targets and recipients before queueing, not when a worker starts:
+	// Freeze targets before fanout and queueing, not when a worker starts:
 	// a later registration must not inherit this signal or lookup result.
 	job := h.snapshotMemberRemoval(workspaceID, userID)
-	if len(job.clients) == 0 && len(job.subscribers) == 0 {
+	// Peers use member:* events to refetch the current member list. Deliver
+	// that invalidation in reader order, independently of lookup latency or
+	// queue overflow. Exclude the target: its client would navigate away even
+	// if the removal is stale and it has already rejoined.
+	h.broadcastToScope(ScopeWorkspace, workspaceID, raw, eventID, userID)
+	if len(job.clients) == 0 {
 		return true
 	}
-	job.notice, job.eventID = raw, eventID
+	job.notice = raw
 	h.memberRemovalOnce.Do(func() {
 		for i := 0; i < memberRemovalWorkers; i++ {
 			go h.runMemberRemovals()
@@ -68,11 +66,7 @@ func (h *Hub) queueMemberRemoval(workspaceID string, raw []byte, eventID string)
 
 func (h *Hub) runMemberRemovals() {
 	for job := range h.memberRemovals {
-		if h.disconnectMember(job) {
-			// The target receives its best-effort notice only through stopClient.
-			// Later registrations and unsubscribed recipients get no old notice.
-			h.broadcastToScope(ScopeWorkspace, job.workspaceID, job.notice, job.eventID, job.userID, job.subscribers)
-		}
+		h.disconnectMember(job)
 		h.memberRemovalPending.Add(-1)
 	}
 }

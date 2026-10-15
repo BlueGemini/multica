@@ -77,11 +77,12 @@ func (h *Hub) DisconnectMember(workspaceID, userID, memberID string) {
 	h.disconnectMember(job)
 }
 
-// Returns false when a removal notification is stale or cannot be verified.
-func (h *Hub) disconnectMember(job memberRemovalJob) bool {
+// Only confirmed removals send the target a notice; stale signals are ignored
+// and lookup failures close captured connections without a navigation notice.
+func (h *Hub) disconnectMember(job memberRemovalJob) {
 	member, err := checkMembership(job.checker, job.userID, job.workspaceID)
 	if err == nil && member {
-		return false
+		return
 	}
 	if err != nil {
 		job.notice = nil
@@ -93,7 +94,6 @@ func (h *Hub) disconnectMember(job memberRemovalJob) bool {
 	for _, client := range job.clients {
 		h.stopClient(client, job.notice, deadline)
 	}
-	return err == nil
 }
 
 // Returns the target and whether this is a removal frame. An empty target on

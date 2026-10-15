@@ -3,8 +3,10 @@ package realtime
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -17,6 +19,85 @@ func removalFrame(workspaceID, userID string) []byte {
 		"type": "member:removed", "payload": map[string]string{"workspace_id": workspaceID, "user_id": userID},
 	})
 	return raw
+}
+
+func TestMembershipRemovalPeerNotificationsKeepArrivalOrder(t *testing.T) {
+	for _, outcome := range []string{"removed", "rejoined", "lookup error"} {
+		t.Run(outcome, func(t *testing.T) {
+			hub := NewHub()
+			target := &Client{hub: hub, userID: testUserID, workspaceID: testWorkspaceID, send: make(chan []byte, 4)}
+			peer := &Client{hub: hub, userID: "current-member", workspaceID: testWorkspaceID, send: make(chan []byte, 4)}
+			hub.registerClient(target)
+			hub.registerClient(peer)
+			entered, release := make(chan struct{}), make(chan struct{})
+			var releaseOnce sync.Once
+			hub.SetMembershipChecker(membershipFunc(func(context.Context, string, string) (bool, error) {
+				close(entered)
+				<-release
+				if outcome == "lookup error" {
+					return false, errors.New("database unavailable")
+				}
+				return outcome == "rejoined", nil
+			}))
+			t.Cleanup(func() {
+				releaseOnce.Do(func() { close(release) })
+				waitFor(t, "removal completion", func() bool { return hub.memberRemovalPending.Load() == 0 })
+				close(hub.memberRemovals)
+				hub.removeClient(target)
+				hub.removeClient(peer)
+			})
+			removed := removalFrame(testWorkspaceID, testUserID)
+			hub.BroadcastToScopeDedup(ScopeWorkspace, testWorkspaceID, removed, "removal")
+			<-entered
+			if target.stopped.Load() || len(target.send) != 0 {
+				t.Fatal("target received an unverified removal")
+			}
+			// A rejoin can arrive while revocation still holds the old DB
+			// snapshot. Peer invalidations must retain the reader's order.
+			added := []byte(`{"type":"member:added"}`)
+			hub.BroadcastToWorkspace(testWorkspaceID, added)
+			for _, want := range [][]byte{removed, added} {
+				select {
+				case got := <-peer.send:
+					if string(got) != string(want) {
+						t.Fatalf("peer notification reordered: got %s, want %s", got, want)
+					}
+				default:
+					t.Fatal("peer notification waited for the removal query")
+				}
+			}
+			// A later subscriber must not inherit a deferred notification.
+			late := &Client{hub: hub, userID: "later-member", workspaceID: testWorkspaceID, send: make(chan []byte, 4)}
+			hub.registerClient(late)
+			t.Cleanup(func() { hub.removeClient(late) })
+			releaseOnce.Do(func() { close(release) })
+			waitFor(t, "removal completion", func() bool { return hub.memberRemovalPending.Load() == 0 })
+			if len(peer.send) != 0 || len(late.send) != 0 || target.stopped.Load() != (outcome != "rejoined") {
+				t.Fatal("removal completion replayed a notification or closed a rejoined member")
+			}
+		})
+	}
+}
+
+func TestMembershipRemovalWithOnlyPeersSkipsRevalidationAndDeduplicates(t *testing.T) {
+	hub := NewHub()
+	peer := &Client{hub: hub, userID: "current-member", workspaceID: testWorkspaceID, send: make(chan []byte, 4)}
+	hub.registerClient(peer)
+	t.Cleanup(func() { hub.removeClient(peer) })
+	var queries atomic.Int32
+	hub.SetMembershipChecker(membershipFunc(func(context.Context, string, string) (bool, error) {
+		queries.Add(1)
+		return false, nil
+	}))
+	raw := removalFrame(testWorkspaceID, testUserID)
+	for i := 0; i < 2; i++ {
+		hub.BroadcastToScopeDedup(ScopeWorkspace, testWorkspaceID, raw, "removal")
+	}
+	waitFor(t, "removal completion", func() bool { return hub.memberRemovalPending.Load() == 0 })
+	close(hub.memberRemovals)
+	if queries.Load() != 0 || len(peer.send) != 1 {
+		t.Fatalf("peer-only removal issued %d queries and sent %d notifications", queries.Load(), len(peer.send))
+	}
 }
 
 func TestMembershipRemovalLookupDoesNotBlockShardWithSubscribers(t *testing.T) {
@@ -78,6 +159,9 @@ func TestMembershipRemovalQueueOverflowDoesNotAllowContent(t *testing.T) {
 	target := &Client{hub: hub, conn: conn, userID: testUserID, workspaceID: testWorkspaceID, send: make(chan []byte, 4)}
 	hub.registerClient(target)
 	other := attachRealtimeTestClient(hub, ScopeWorkspace, "other-workspace")
+	const signals = memberRemovalWorkers + memberRemovalQueueSize + 1
+	member := &Client{hub: hub, userID: "current-member", workspaceID: testWorkspaceID, send: make(chan []byte, signals)}
+	hub.registerClient(member)
 	entered, release := make(chan struct{}, memberRemovalWorkers), make(chan struct{})
 	hub.SetMembershipChecker(membershipBatchOverride{
 		membershipFunc: membershipFunc(func(context.Context, string, string) (bool, error) {
@@ -98,6 +182,7 @@ func TestMembershipRemovalQueueOverflowDoesNotAllowContent(t *testing.T) {
 		close(hub.memberRemovals)
 		hub.removeClient(target)
 		hub.removeClient(other)
+		hub.removeClient(member)
 	})
 	raw := removalFrame(testWorkspaceID, testUserID)
 	for i := 0; i < memberRemovalWorkers; i++ {
@@ -113,6 +198,9 @@ func TestMembershipRemovalQueueOverflowDoesNotAllowContent(t *testing.T) {
 	}
 	if hub.memberRemovalDropped.Load() != 1 || hub.memberRemovalPending.Load() != memberRemovalQueueSize+memberRemovalWorkers {
 		t.Fatal("removal queue did not enforce its bound")
+	}
+	if len(member.send) != signals {
+		t.Fatalf("queue overflow lost peer invalidations: got %d, want %d", len(member.send), signals)
 	}
 	hub.BroadcastToWorkspace("other-workspace", []byte(`{"type":"issue:updated"}`))
 	if raw := <-other.send; string(raw) != `{"type":"issue:updated"}` {
@@ -144,7 +232,10 @@ func TestMembershipQueuedRemovalKeepsRegistrationSnapshot(t *testing.T) {
 		hub.removeClient(old)
 	})
 	for i := 0; i < memberRemovalWorkers; i++ {
-		hub.BroadcastToWorkspace(testWorkspaceID, removalFrame(testWorkspaceID, fmt.Sprintf("busy-user-%d", i)))
+		busy := &Client{hub: hub, userID: fmt.Sprintf("busy-user-%d", i), workspaceID: testWorkspaceID, send: make(chan []byte, 4)}
+		hub.registerClient(busy)
+		t.Cleanup(func() { hub.removeClient(busy) })
+		hub.BroadcastToWorkspace(testWorkspaceID, removalFrame(testWorkspaceID, busy.userID))
 		<-entered
 	}
 	hub.BroadcastToWorkspace(testWorkspaceID, removalFrame(testWorkspaceID, testUserID))
