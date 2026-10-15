@@ -45,26 +45,30 @@ type ProjectResponse struct {
 	// that need the list call ListProjectResources directly.
 	ResourceCount int64 `json:"resource_count"`
 	// WorkflowID is the workflow this project uses; null means the workspace
-	// Default workflow (the whole status catalog, no handoffs). (MUL-7420)
+	// Default workflow. (MUL-7420)
 	WorkflowID *string `json:"workflow_id"`
+	// WorkflowHandoffs is what this project does when an issue enters one of
+	// its columns. (MUL-7420)
+	WorkflowHandoffs []IssueWorkflowHandoffPayload `json:"workflow_handoffs"`
 }
 
 func projectToResponse(p db.Project) ProjectResponse {
 	return ProjectResponse{
-		ID:          uuidToString(p.ID),
-		WorkspaceID: uuidToString(p.WorkspaceID),
-		Title:       p.Title,
-		Description: textToPtr(p.Description),
-		Icon:        textToPtr(p.Icon),
-		Status:      p.Status,
-		Priority:    p.Priority,
-		LeadType:    textToPtr(p.LeadType),
-		LeadID:      uuidToPtr(p.LeadID),
-		StartDate:   dateToPtr(p.StartDate),
-		DueDate:     dateToPtr(p.DueDate),
-		CreatedAt:   timestampToString(p.CreatedAt),
-		UpdatedAt:   timestampToString(p.UpdatedAt),
-		WorkflowID:  uuidToPtr(p.WorkflowID),
+		ID:               uuidToString(p.ID),
+		WorkspaceID:      uuidToString(p.WorkspaceID),
+		Title:            p.Title,
+		Description:      textToPtr(p.Description),
+		Icon:             textToPtr(p.Icon),
+		Status:           p.Status,
+		Priority:         p.Priority,
+		LeadType:         textToPtr(p.LeadType),
+		LeadID:           uuidToPtr(p.LeadID),
+		StartDate:        dateToPtr(p.StartDate),
+		DueDate:          dateToPtr(p.DueDate),
+		CreatedAt:        timestampToString(p.CreatedAt),
+		UpdatedAt:        timestampToString(p.UpdatedAt),
+		WorkflowID:       uuidToPtr(p.WorkflowID),
+		WorkflowHandoffs: projectHandoffsPayload(p),
 	}
 }
 
@@ -317,11 +321,14 @@ func (h *Handler) CreateProject(w http.ResponseWriter, r *http.Request) {
 		if !ok {
 			return
 		}
-		if _, err := h.Queries.GetIssueWorkflow(r.Context(), db.GetIssueWorkflowParams{ID: id, WorkspaceID: wsUUID}); err != nil {
+		row, err := h.Queries.GetIssueWorkflow(r.Context(), db.GetIssueWorkflowParams{ID: id, WorkspaceID: wsUUID})
+		if err != nil {
 			writeError(w, http.StatusBadRequest, "workflow not found in this workspace")
 			return
 		}
-		workflowID = id
+		if !row.IsDefault {
+			workflowID = id
+		}
 	}
 
 	// start_date / due_date are optional calendar days; an absent or empty

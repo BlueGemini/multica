@@ -282,16 +282,16 @@ func (s *IssueService) Create(ctx context.Context, p IssueCreateParams, opts Iss
 		}
 	}
 
-	// Project workflow (MUL-7420): an issue created in a project whose workflow
-	// does not list the requested status starts on the workflow's starting
-	// status instead. The HTTP create path already rejects an explicit status
-	// outside the workflow; this keeps the other creators (channels, captured
-	// comments) inside it too. Resolved before the custom-status guard below
-	// so that guard checks the status actually written.
+	// Project workflow (MUL-7420): an issue created in a project whose named
+	// workflow does not list the requested status starts on todo instead.
+	// The HTTP create path already rejects an explicit status outside the
+	// workflow; this keeps the other creators (channels, captured comments)
+	// inside it too. Resolved before the custom-status guard below so that
+	// guard checks the status actually written.
 	if def, err := s.createWorkflow(ctx, qtx, p); err != nil {
 		return IssueCreateResult{}, err
-	} else if def != nil && !def.Has(p.Status) {
-		p.Status = def.InitialStatusKey
+	} else if def != nil && !def.IsDefault && !def.Has(p.Status) {
+		p.Status = issueworkflow.StartStatus
 	}
 
 	// A create landing on a CUSTOM status takes the shared catalog lock AND

@@ -215,15 +215,11 @@ func (h *Handler) PreviewIssueTrigger(w http.ResponseWriter, r *http.Request) {
 			AssigneeType: newAssigneeType,
 			AssigneeID:   newAssigneeID,
 		}
-		// Mirror CreateIssue's workflow handling: the starting status when
-		// none was picked, and the starting step's handoff when no assignee
-		// was picked. (MUL-7420)
+		// Mirror CreateIssue's workflow handling: the starting column's
+		// handoff when no assignee was picked. (MUL-7420)
 		if req.ProjectID != nil && *req.ProjectID != "" {
 			if projectUUID, err := util.ParseUUID(*req.ProjectID); err == nil {
 				if def, project, err := issueworkflow.ForProject(r.Context(), h.Queries, wsUUID, projectUUID); err == nil && def != nil {
-					if req.Status == nil || *req.Status == "" {
-						candidate.Status = def.InitialStatusKey
-					}
 					if step, ok := def.Step(candidate.Status); ok && step.HandsOff() && !hasNewAssignee {
 						if t, id, ok := issueworkflow.ResolveHandler(step, project, actorType, parseUUID(actorID)); ok {
 							candidate.AssigneeType = pgtype.Text{String: t, Valid: true}
@@ -276,6 +272,7 @@ func (h *Handler) PreviewIssueTrigger(w http.ResponseWriter, r *http.Request) {
 					post.AssigneeType = params.AssigneeType
 					post.AssigneeID = params.AssigneeID
 					in.AssigneeChanged = true
+					in.EnteredHandoffStep = true
 				}
 			}
 		}

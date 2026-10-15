@@ -1088,6 +1088,7 @@ type IssueWorkflow struct {
 	Steps            []byte             `json:"steps"`
 	CreatedAt        pgtype.Timestamptz `json:"created_at"`
 	UpdatedAt        pgtype.Timestamptz `json:"updated_at"`
+	IsDefault        bool               `json:"is_default"`
 }
 
 type LarkBindingToken struct {
@@ -1332,20 +1333,21 @@ type PluginStorage struct {
 }
 
 type Project struct {
-	ID          pgtype.UUID        `json:"id"`
-	WorkspaceID pgtype.UUID        `json:"workspace_id"`
-	Title       string             `json:"title"`
-	Description pgtype.Text        `json:"description"`
-	Icon        pgtype.Text        `json:"icon"`
-	Status      string             `json:"status"`
-	LeadType    pgtype.Text        `json:"lead_type"`
-	LeadID      pgtype.UUID        `json:"lead_id"`
-	CreatedAt   pgtype.Timestamptz `json:"created_at"`
-	UpdatedAt   pgtype.Timestamptz `json:"updated_at"`
-	Priority    string             `json:"priority"`
-	StartDate   pgtype.Date        `json:"start_date"`
-	DueDate     pgtype.Date        `json:"due_date"`
-	WorkflowID  pgtype.UUID        `json:"workflow_id"`
+	ID               pgtype.UUID        `json:"id"`
+	WorkspaceID      pgtype.UUID        `json:"workspace_id"`
+	Title            string             `json:"title"`
+	Description      pgtype.Text        `json:"description"`
+	Icon             pgtype.Text        `json:"icon"`
+	Status           string             `json:"status"`
+	LeadType         pgtype.Text        `json:"lead_type"`
+	LeadID           pgtype.UUID        `json:"lead_id"`
+	CreatedAt        pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt        pgtype.Timestamptz `json:"updated_at"`
+	Priority         string             `json:"priority"`
+	StartDate        pgtype.Date        `json:"start_date"`
+	DueDate          pgtype.Date        `json:"due_date"`
+	WorkflowID       pgtype.UUID        `json:"workflow_id"`
+	WorkflowHandoffs []byte             `json:"workflow_handoffs"`
 }
 
 type ProjectResource struct {

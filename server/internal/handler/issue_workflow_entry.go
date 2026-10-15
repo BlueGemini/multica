@@ -17,13 +17,14 @@ import (
 
 // Project workflows on the issue write paths (MUL-7420).
 //
-// Two rules apply to an issue whose project uses a workflow:
-//   - its status must be one the workflow lists; a move into such a project
-//     keeps an equivalent status instead of failing;
-//   - entering a step with a handler, through an ordinary status change of an
-//     issue that stays in its project, assigns the issue to that handler and
-//     starts its run with the step's instructions. A write that sets the
-//     assignee itself keeps its explicit choice.
+// Two rules apply to an issue in a project:
+//   - when the project uses a named workflow, its status must be one the
+//     workflow lists; a move into such a project keeps an equivalent status
+//     instead of failing. Default accepts every status;
+//   - entering a column the project hands off, through an ordinary status
+//     change of an issue that stays in its project, assigns the issue to that
+//     handler and starts its run with the step's instructions. A write that
+//     sets the assignee itself keeps its explicit choice.
 //
 // Handoffs reuse assignment wholesale: the resolved handler goes through the
 // same permission gate as a hand-picked assignee, and the run starts through
@@ -48,7 +49,7 @@ func (h *Handler) applyIssueWorkflow(ctx context.Context, prev db.Issue, params 
 		return nil, err
 	}
 	projectMoving := params.ProjectID != prev.ProjectID
-	if projectMoving && !statusExplicit && !def.Has(prev.Status) {
+	if projectMoving && !statusExplicit && !def.IsDefault && !def.Has(prev.Status) {
 		target := issueworkflow.MoveTarget(*def, prev.Status, func(key string) string {
 			return issuestatus.Category(ctx, h.Queries, prev.WorkspaceID, key)
 		})
@@ -211,6 +212,7 @@ func (h *Handler) workflowHandoffNote(ctx context.Context, issue db.Issue, hand 
 	identifier := h.getIssuePrefix(ctx, issue.WorkspaceID) + "-" + strconv.Itoa(int(issue.Number))
 	return issueworkflow.Brief(issueworkflow.BriefInput{
 		Workflow:        hand.def,
+		ProjectName:     hand.project.Title,
 		StatusKey:       hand.step.StatusKey,
 		IssueIdentifier: identifier,
 		StatusName: func(key string) string {
@@ -301,7 +303,8 @@ func (h *Handler) assigneeActiveRuns(ctx context.Context, issue db.Issue) []db.A
 }
 
 // claimProjectWorkflow describes the issue's project workflow for a task
-// claim, or nil when the project uses the Default workflow.
+// claim, or nil when there is nothing to say beyond the runtime's own status
+// rules: no project, or Default with no handoffs.
 func (h *Handler) claimProjectWorkflow(ctx context.Context, issue db.Issue) *TaskProjectWorkflowData {
 	def, project, err := issueworkflow.ForProject(ctx, h.Queries, issue.WorkspaceID, issue.ProjectID)
 	if err != nil {
@@ -309,7 +312,7 @@ func (h *Handler) claimProjectWorkflow(ctx context.Context, issue db.Issue) *Tas
 			"issue_id", uuidToString(issue.ID), "error", err)
 		return nil
 	}
-	if def == nil {
+	if def == nil || (def.IsDefault && !def.HandsOffAnywhere()) {
 		return nil
 	}
 	resolver := issuestatus.NewResolver(issue.WorkspaceID)
@@ -322,7 +325,7 @@ func (h *Handler) claimProjectWorkflow(ctx context.Context, issue db.Issue) *Tas
 		entry := TaskProjectWorkflowStep{
 			Key:           step.StatusKey,
 			Name:          resolver.Name(ctx, h.Queries, step.StatusKey),
-			NextStatusKey: step.NextStatusKey,
+			NextStatusKey: def.NextStatus(step.StatusKey),
 			BackStatusKey: step.BackStatusKey,
 		}
 		if step.HandsOff() {

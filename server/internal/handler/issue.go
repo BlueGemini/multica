@@ -3275,12 +3275,11 @@ func (h *Handler) CreateIssue(w http.ResponseWriter, r *http.Request) {
 		projectID = id
 	}
 
-	// Project workflow (MUL-7420). A new issue in a project that uses a
-	// workflow starts on the workflow's starting status unless the caller
-	// picked one, the status must be one the workflow lists, and a starting
-	// step with a handler hands the new issue to it unless the caller chose an
-	// assignee. A sub-issue without its own project inherits the parent's, as
-	// IssueService.Create does.
+	// Project workflow (MUL-7420). A new issue in a project on a named
+	// workflow must start on a status the workflow lists, and a column the
+	// project hands off gives the new issue to its handler unless the caller
+	// chose an assignee. A sub-issue without its own project inherits the
+	// parent's, as IssueService.Create does.
 	workflowProjectID := projectID
 	if !workflowProjectID.Valid && parentIssueID.Valid {
 		if parent, err := h.Queries.GetIssueInWorkspace(r.Context(), db.GetIssueInWorkspaceParams{
@@ -3297,9 +3296,6 @@ func (h *Handler) CreateIssue(w http.ResponseWriter, r *http.Request) {
 	}
 	var createHandoff *workflowHandoff
 	if createWorkflow != nil {
-		if req.Status == "" {
-			status = createWorkflow.InitialStatusKey
-		}
 		if err := issueworkflow.CheckStatus(createWorkflow, status); err != nil {
 			writeIssueWorkflowError(w, err)
 			return
@@ -4111,10 +4107,11 @@ func (h *Handler) UpdateIssue(w http.ResponseWriter, r *http.Request) {
 	}
 	trigger, willRun := h.IssueService.WillEnqueueRun(r.Context(),
 		service.IssueTriggerInput{
-			Issue:           issue,
-			PrevStatus:      prevIssue.Status,
-			AssigneeChanged: assigneeChanged || handoff != nil,
-			StatusChanged:   statusChanged,
+			Issue:              issue,
+			PrevStatus:         prevIssue.Status,
+			AssigneeChanged:    assigneeChanged || handoff != nil,
+			StatusChanged:      statusChanged,
+			EnteredHandoffStep: handoff != nil,
 		},
 		h.issueTriggerWriteProbe(r, actorType, actorID, issue),
 	)
@@ -4910,10 +4907,11 @@ func (h *Handler) BatchUpdateIssues(w http.ResponseWriter, r *http.Request) {
 		}
 		trigger, willRun := h.IssueService.WillEnqueueRun(r.Context(),
 			service.IssueTriggerInput{
-				Issue:           issue,
-				PrevStatus:      prevIssue.Status,
-				AssigneeChanged: assigneeChanged || handoff != nil,
-				StatusChanged:   statusChanged,
+				Issue:              issue,
+				PrevStatus:         prevIssue.Status,
+				AssigneeChanged:    assigneeChanged || handoff != nil,
+				StatusChanged:      statusChanged,
+				EnteredHandoffStep: handoff != nil,
 			},
 			h.issueTriggerWriteProbe(r, actorType, actorID, issue),
 		)

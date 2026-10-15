@@ -8,6 +8,8 @@ import (
 	"log/slog"
 	"net/http"
 	"sort"
+	"strings"
+	"unicode/utf8"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/jackc/pgx/v5"
@@ -24,10 +26,11 @@ import (
 // Project workflow API (MUL-7420).
 //
 // Reading workflows is open to any member: every client needs them to render
-// a project's board and to filter status choices. Creating, editing and
-// deleting a workflow is owner/admin only, like the status catalog it builds
-// on. Choosing which workflow a project uses is a project edit, open to the
-// same members who can edit the project.
+// a project's board and to filter status choices. A project's own workflow
+// settings — which workflow it uses, who each column hands off to, adding a
+// column only for it — are open to workspace owners/admins and to the
+// project's lead. Changing the Default workflow, a workflow several projects
+// share, or deleting a workflow is owner/admin only.
 
 // requireProjectWorkflowsV1 gates adopting workflows behind the
 // project_workflows_v1 flag. Reads, edits of existing workflows and switching
@@ -41,12 +44,32 @@ func (h *Handler) requireProjectWorkflowsV1(w http.ResponseWriter, r *http.Reque
 	return false
 }
 
+func isWorkspaceAdmin(member db.Member) bool {
+	return roleAllowed(member.Role, "owner", "admin")
+}
+
+// canManageProjectWorkflow reports whether member may change a project's own
+// workflow settings: owners and admins, and the member who leads the project.
+func canManageProjectWorkflow(member db.Member, project db.Project) bool {
+	if isWorkspaceAdmin(member) {
+		return true
+	}
+	return project.LeadType.Valid && project.LeadType.String == "member" && project.LeadID == member.UserID
+}
+
 type IssueWorkflowHandlerPayload struct {
 	Type string `json:"type"`
 	ID   string `json:"id,omitempty"`
 }
 
+// IssueWorkflowStepPayload is one status of a workflow, in board order.
 type IssueWorkflowStepPayload struct {
+	StatusKey string `json:"status_key"`
+}
+
+// IssueWorkflowHandoffPayload is what a project does when an issue enters
+// one of its columns.
+type IssueWorkflowHandoffPayload struct {
 	StatusKey     string                      `json:"status_key"`
 	Handler       IssueWorkflowHandlerPayload `json:"handler"`
 	Instructions  string                      `json:"instructions"`
@@ -55,15 +78,15 @@ type IssueWorkflowStepPayload struct {
 }
 
 type IssueWorkflowResponse struct {
-	ID               string                     `json:"id"`
-	WorkspaceID      string                     `json:"workspace_id"`
-	Name             string                     `json:"name"`
-	Description      string                     `json:"description"`
-	InitialStatusKey string                     `json:"initial_status_key"`
-	Steps            []IssueWorkflowStepPayload `json:"steps"`
-	ProjectIDs       []string                   `json:"project_ids"`
-	CreatedAt        string                     `json:"created_at"`
-	UpdatedAt        string                     `json:"updated_at"`
+	ID          string                     `json:"id"`
+	WorkspaceID string                     `json:"workspace_id"`
+	Name        string                     `json:"name"`
+	Description string                     `json:"description"`
+	IsDefault   bool                       `json:"is_default"`
+	Steps       []IssueWorkflowStepPayload `json:"steps"`
+	ProjectIDs  []string                   `json:"project_ids"`
+	CreatedAt   string                     `json:"created_at"`
+	UpdatedAt   string                     `json:"updated_at"`
 }
 
 // StatusMappingRequirement names a status some issues are on that the target
@@ -88,62 +111,85 @@ type workflowMappingPlan struct {
 	AffectedIssues int64                      `json:"affected_issues"`
 }
 
-func stepsToPayload(steps []issueworkflow.Step) []IssueWorkflowStepPayload {
-	out := make([]IssueWorkflowStepPayload, len(steps))
-	for i, s := range steps {
-		out[i] = IssueWorkflowStepPayload{
+func handoffsToPayload(steps []issueworkflow.Step) []IssueWorkflowHandoffPayload {
+	out := make([]IssueWorkflowHandoffPayload, 0, len(steps))
+	for _, s := range steps {
+		out = append(out, IssueWorkflowHandoffPayload{
 			StatusKey:     s.StatusKey,
 			Handler:       IssueWorkflowHandlerPayload{Type: s.Handler.Type, ID: s.Handler.ID},
 			Instructions:  s.Instructions,
 			NextStatusKey: s.NextStatusKey,
 			BackStatusKey: s.BackStatusKey,
-		}
+		})
 	}
 	return out
 }
 
-func payloadToSteps(in []IssueWorkflowStepPayload) []issueworkflow.Step {
-	out := make([]issueworkflow.Step, len(in))
-	for i, s := range in {
-		out[i] = issueworkflow.Step{
-			StatusKey:     s.StatusKey,
-			Handler:       issueworkflow.Handler{Type: s.Handler.Type, ID: s.Handler.ID},
-			Instructions:  s.Instructions,
-			NextStatusKey: s.NextStatusKey,
-			BackStatusKey: s.BackStatusKey,
-		}
+func payloadToHandoff(statusKey string, in IssueWorkflowHandoffPayload) issueworkflow.Step {
+	return issueworkflow.Step{
+		StatusKey:     statusKey,
+		Handler:       issueworkflow.Handler{Type: in.Handler.Type, ID: in.Handler.ID},
+		Instructions:  in.Instructions,
+		NextStatusKey: in.NextStatusKey,
+		BackStatusKey: in.BackStatusKey,
 	}
-	return out
+}
+
+// projectHandoffsPayload is a project's stored handoffs for its response. A
+// malformed column reads as none rather than failing the project read.
+func projectHandoffsPayload(p db.Project) []IssueWorkflowHandoffPayload {
+	steps, err := issueworkflow.DecodeHandoffs(p.WorkflowHandoffs)
+	if err != nil {
+		return []IssueWorkflowHandoffPayload{}
+	}
+	return handoffsToPayload(steps)
 }
 
 func issueWorkflowToResponse(row db.IssueWorkflow, def issueworkflow.Definition, projectIDs []string) IssueWorkflowResponse {
 	if projectIDs == nil {
 		projectIDs = []string{}
 	}
+	steps := make([]IssueWorkflowStepPayload, len(def.Steps))
+	for i, s := range def.Steps {
+		steps[i] = IssueWorkflowStepPayload{StatusKey: s.StatusKey}
+	}
 	return IssueWorkflowResponse{
-		ID:               uuidToString(row.ID),
-		WorkspaceID:      uuidToString(row.WorkspaceID),
-		Name:             row.Name,
-		Description:      row.Description,
-		InitialStatusKey: row.InitialStatusKey,
-		Steps:            stepsToPayload(def.Steps),
-		ProjectIDs:       projectIDs,
-		CreatedAt:        timestampToString(row.CreatedAt),
-		UpdatedAt:        timestampToString(row.UpdatedAt),
+		ID:          uuidToString(row.ID),
+		WorkspaceID: uuidToString(row.WorkspaceID),
+		Name:        row.Name,
+		Description: row.Description,
+		IsDefault:   row.IsDefault,
+		Steps:       steps,
+		ProjectIDs:  projectIDs,
+		CreatedAt:   timestampToString(row.CreatedAt),
+		UpdatedAt:   timestampToString(row.UpdatedAt),
 	}
 }
 
-// projectIDsByWorkflow groups the workspace's projects by the workflow they
-// use, so a list response can say where each workflow applies.
-func (h *Handler) projectIDsByWorkflow(ctx context.Context, wsUUID pgtype.UUID) (map[string][]string, error) {
+// projectIDsByWorkflow groups the workspace's projects by the workflow row
+// they use, so a list response can say where each workflow applies. Projects
+// without a workflow, or pointing at a deleted one, count for Default.
+func (h *Handler) projectIDsByWorkflow(ctx context.Context, wsUUID pgtype.UUID, rows []db.IssueWorkflow) (map[string][]string, error) {
 	projects, err := h.Queries.ListProjects(ctx, db.ListProjectsParams{WorkspaceID: wsUUID})
 	if err != nil {
 		return nil, err
 	}
+	known := map[string]bool{}
+	defaultID := ""
+	for _, row := range rows {
+		id := uuidToString(row.ID)
+		known[id] = true
+		if row.IsDefault {
+			defaultID = id
+		}
+	}
 	out := map[string][]string{}
 	for _, p := range projects {
-		if p.WorkflowID.Valid {
-			key := uuidToString(p.WorkflowID)
+		key := uuidToString(p.WorkflowID)
+		if !p.WorkflowID.Valid || !known[key] {
+			key = defaultID
+		}
+		if key != "" {
 			out[key] = append(out[key], uuidToString(p.ID))
 		}
 	}
@@ -184,13 +230,22 @@ func (h *Handler) ListIssueWorkflows(w http.ResponseWriter, r *http.Request) {
 	if _, ok := h.requireWorkspaceMember(w, r, workspaceID, "workspace not found"); !ok {
 		return
 	}
+	// Default is stored the first time workflows are read with the feature
+	// on, so every client sees the same Default from then on.
+	if featureflags.ProjectWorkflowsV1Enabled(r.Context(), h.FeatureFlags) {
+		if _, err := issueworkflow.EnsureDefault(r.Context(), h.Queries, wsUUID); err != nil {
+			slog.Warn("ListIssueWorkflows ensure default failed", append(logger.RequestAttrs(r), "error", err)...)
+			writeError(w, http.StatusInternalServerError, "failed to list workflows")
+			return
+		}
+	}
 	rows, err := h.Queries.ListIssueWorkflows(r.Context(), wsUUID)
 	if err != nil {
 		slog.Warn("ListIssueWorkflows failed", append(logger.RequestAttrs(r), "error", err)...)
 		writeError(w, http.StatusInternalServerError, "failed to list workflows")
 		return
 	}
-	byWorkflow, err := h.projectIDsByWorkflow(r.Context(), wsUUID)
+	byWorkflow, err := h.projectIDsByWorkflow(r.Context(), wsUUID, rows)
 	if err != nil {
 		slog.Warn("ListIssueWorkflows projects failed", append(logger.RequestAttrs(r), "error", err)...)
 		writeError(w, http.StatusInternalServerError, "failed to list workflows")
@@ -230,24 +285,50 @@ func (h *Handler) GetIssueWorkflow(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) writeIssueWorkflow(w http.ResponseWriter, r *http.Request, status int, row db.IssueWorkflow) {
+	writeJSON(w, status, h.issueWorkflowResponse(r.Context(), row))
+}
+
+func (h *Handler) issueWorkflowResponse(ctx context.Context, row db.IssueWorkflow) IssueWorkflowResponse {
 	def, err := issueworkflow.Decode(row)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "failed to read workflow")
-		return
+		def = issueworkflow.Definition{}
 	}
-	byWorkflow, err := h.projectIDsByWorkflow(r.Context(), row.WorkspaceID)
+	rows, err := h.Queries.ListIssueWorkflows(ctx, row.WorkspaceID)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "failed to read workflow")
-		return
+		rows = []db.IssueWorkflow{row}
 	}
-	writeJSON(w, status, issueWorkflowToResponse(row, def, byWorkflow[uuidToString(row.ID)]))
+	byWorkflow, err := h.projectIDsByWorkflow(ctx, row.WorkspaceID, rows)
+	if err != nil {
+		byWorkflow = map[string][]string{}
+	}
+	return issueWorkflowToResponse(row, def, byWorkflow[uuidToString(row.ID)])
+}
+
+// NewWorkflowStatus creates a catalog status as part of a workflow write, so
+// a project lead can add a column without the status settings page.
+type NewWorkflowStatus struct {
+	Name     string `json:"name"`
+	Category string `json:"category"`
+	Color    string `json:"color"`
+}
+
+// IssueWorkflowStepInput names a step by an existing status key or by a
+// status to create.
+type IssueWorkflowStepInput struct {
+	StatusKey string             `json:"status_key,omitempty"`
+	NewStatus *NewWorkflowStatus `json:"new_status,omitempty"`
 }
 
 type IssueWorkflowWriteRequest struct {
-	Name             *string                     `json:"name"`
-	Description      *string                     `json:"description"`
-	InitialStatusKey *string                     `json:"initial_status_key"`
-	Steps            *[]IssueWorkflowStepPayload `json:"steps"`
+	Name        *string `json:"name"`
+	Description *string `json:"description"`
+	// Steps are the workflow's own statuses, in order. The fixed statuses
+	// (backlog, todo, blocked, done, cancelled) are placed around them and
+	// may be omitted.
+	Steps *[]IssueWorkflowStepInput `json:"steps"`
+	// ProjectID, on create, names the project the workflow is made for; its
+	// lead may create it. Applying it is a separate project write.
+	ProjectID *string `json:"project_id,omitempty"`
 	// StatusMapping moves issues off statuses an edit removes, keyed by the
 	// removed status. Required for every removed status that issues of the
 	// workflow's projects still use.
@@ -256,22 +337,85 @@ type IssueWorkflowWriteRequest struct {
 	DryRun bool `json:"dry_run,omitempty"`
 }
 
-// validateWorkflowHandlers checks that every concrete handler exists in the
-// workspace and that the saving admin may hand work to it — the same gate an
-// assignment passes.
-func (h *Handler) validateWorkflowHandlers(ctx context.Context, r *http.Request, workspaceID string, steps []issueworkflow.Step) (int, string) {
-	for _, s := range steps {
-		switch s.Handler.Type {
-		case issueworkflow.HandlerAgent, issueworkflow.HandlerSquad, issueworkflow.HandlerMember:
-			id, err := parseUUIDString(s.Handler.ID)
-			if err != nil {
-				return http.StatusBadRequest, fmt.Sprintf("step %q has an invalid handler id", s.StatusKey)
-			}
-			if status, msg := h.validateAssigneePair(ctx, r, workspaceID,
-				pgtype.Text{String: s.Handler.Type, Valid: true}, id); status != 0 {
-				return status, fmt.Sprintf("step %q: %s", s.StatusKey, msg)
-			}
+var newStatusDefaultColor = map[string]string{
+	"unstarted": "#94a3b8",
+	"started":   "#3b82f6",
+	"done":      "#22c55e",
+	"closed":    "#64748b",
+}
+
+// resolveStepInputs turns step inputs into status keys, creating the new
+// statuses they name. The caller holds the exclusive catalog lock. A
+// non-empty message is a caller error.
+func resolveStepInputs(ctx context.Context, qtx *db.Queries, wsUUID pgtype.UUID, inputs []IssueWorkflowStepInput) ([]string, []db.IssueStatus, string, error) {
+	keys := make([]string, 0, len(inputs))
+	var created []db.IssueStatus
+	for _, in := range inputs {
+		if in.NewStatus == nil {
+			keys = append(keys, strings.TrimSpace(in.StatusKey))
+			continue
 		}
+		entry, msg, err := createWorkflowStatus(ctx, qtx, wsUUID, *in.NewStatus)
+		if msg != "" || err != nil {
+			return nil, nil, msg, err
+		}
+		created = append(created, entry)
+		keys = append(keys, entry.Key)
+	}
+	return keys, created, "", nil
+}
+
+func createWorkflowStatus(ctx context.Context, qtx *db.Queries, wsUUID pgtype.UUID, in NewWorkflowStatus) (db.IssueStatus, string, error) {
+	name := strings.TrimSpace(in.Name)
+	if name == "" || utf8.RuneCountInString(name) > 64 {
+		return db.IssueStatus{}, "status name must be 1-64 characters", nil
+	}
+	category, ok := issuestatus.ParseCategory(in.Category)
+	if !ok {
+		category = "started"
+	}
+	color := newStatusDefaultColor[category]
+	if strings.TrimSpace(in.Color) != "" {
+		c, err := normalizeColor(in.Color)
+		if err != nil {
+			return db.IssueStatus{}, err.Error(), nil
+		}
+		color = c
+	}
+	// A status with this name already exists: reuse it instead of failing,
+	// so the same template applied twice lands on the same statuses.
+	entries, err := qtx.ListIssueStatusEntries(ctx, db.ListIssueStatusEntriesParams{WorkspaceID: wsUUID, IncludeArchived: false})
+	if err != nil {
+		return db.IssueStatus{}, "", err
+	}
+	for _, e := range entries {
+		if strings.EqualFold(e.Name, name) {
+			return e, "", nil
+		}
+	}
+	entry, msg, err := createIssueStatusEntryLocked(ctx, qtx, wsUUID, category, db.CreateIssueStatusEntryParams{
+		WorkspaceID: wsUUID,
+		Name:        name,
+		Category:    category,
+		Color:       color,
+	})
+	if err != nil && isUniqueViolation(err) {
+		return db.IssueStatus{}, fmt.Sprintf("a status named %q already exists", name), nil
+	}
+	return entry, msg, err
+}
+
+// validateHandoffHandler checks that a concrete handler exists in the
+// workspace and that the caller may hand work to it — the same gate an
+// assignment passes.
+func (h *Handler) validateHandoffHandler(ctx context.Context, r *http.Request, workspaceID string, s issueworkflow.Step) (int, string) {
+	switch s.Handler.Type {
+	case issueworkflow.HandlerAgent, issueworkflow.HandlerSquad, issueworkflow.HandlerMember:
+		id, err := parseUUIDString(s.Handler.ID)
+		if err != nil {
+			return http.StatusBadRequest, "invalid handler id"
+		}
+		return h.validateAssigneePair(ctx, r, workspaceID, pgtype.Text{String: s.Handler.Type, Valid: true}, id)
 	}
 	return 0, ""
 }
@@ -290,7 +434,7 @@ func (h *Handler) CreateIssueWorkflow(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	member, ok := h.requireWorkspaceRole(w, r, workspaceID, "workspace not found", "owner", "admin")
+	member, ok := h.requireWorkspaceMember(w, r, workspaceID, "workspace not found")
 	if !ok {
 		return
 	}
@@ -302,44 +446,82 @@ func (h *Handler) CreateIssueWorkflow(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "invalid request body")
 		return
 	}
-	var name, description, initial string
-	var steps []issueworkflow.Step
+	if !isWorkspaceAdmin(member) {
+		allowed := false
+		if req.ProjectID != nil && *req.ProjectID != "" {
+			projectUUID, ok := parseUUIDOrBadRequest(w, *req.ProjectID, "project_id")
+			if !ok {
+				return
+			}
+			if project, err := h.Queries.GetProjectInWorkspace(r.Context(), db.GetProjectInWorkspaceParams{ID: projectUUID, WorkspaceID: wsUUID}); err == nil {
+				allowed = canManageProjectWorkflow(member, project)
+			}
+		}
+		if !allowed {
+			writeError(w, http.StatusForbidden, "insufficient permissions")
+			return
+		}
+	}
+	var name, description string
 	if req.Name != nil {
 		name = *req.Name
 	}
 	if req.Description != nil {
 		description = *req.Description
 	}
-	if req.InitialStatusKey != nil {
-		initial = *req.InitialStatusKey
-	}
+	var inputs []IssueWorkflowStepInput
 	if req.Steps != nil {
-		steps = payloadToSteps(*req.Steps)
+		inputs = *req.Steps
 	}
-	name, description, initial, steps = issueworkflow.Normalize(name, description, initial, steps)
-	catalog, err := h.workflowStatusCatalog(r.Context(), h.Queries, wsUUID)
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, "failed to load issue statuses")
-		return
-	}
-	if err := issueworkflow.Validate(name, description, initial, steps, catalog); err != nil {
-		writeErrorCode(w, http.StatusBadRequest, "invalid_workflow", err.Error())
-		return
-	}
-	if status, msg := h.validateWorkflowHandlers(r.Context(), r, workspaceID, steps); status != 0 {
-		writeErrorCode(w, status, "invalid_workflow", msg)
-		return
-	}
-	raw, err := issueworkflow.EncodeSteps(steps)
+
+	ctx := r.Context()
+	tx, err := h.TxStarter.Begin(ctx)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to save workflow")
 		return
 	}
-	row, err := h.Queries.CreateIssueWorkflow(r.Context(), db.CreateIssueWorkflowParams{
+	defer tx.Rollback(ctx)
+	qtx := h.Queries.WithTx(tx)
+	if err := qtx.LockIssueStatusCatalog(ctx, wsUUID); err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to save workflow")
+		return
+	}
+	// Store Default before creating statuses for this workflow, so they
+	// never join Default's snapshot.
+	if _, err := issueworkflow.EnsureDefault(ctx, qtx, wsUUID); err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to save workflow")
+		return
+	}
+	keys, createdStatuses, msg, err := resolveStepInputs(ctx, qtx, wsUUID, inputs)
+	if msg != "" {
+		writeErrorCode(w, http.StatusBadRequest, "invalid_workflow", msg)
+		return
+	}
+	if err != nil {
+		slog.Warn("CreateIssueWorkflow statuses failed", append(logger.RequestAttrs(r), "error", err)...)
+		writeError(w, http.StatusInternalServerError, "failed to save workflow")
+		return
+	}
+	name, description, keys = issueworkflow.Normalize(name, description, keys)
+	catalog, err := h.workflowStatusCatalog(ctx, qtx, wsUUID)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to load issue statuses")
+		return
+	}
+	if err := issueworkflow.Validate(name, description, keys, false, catalog); err != nil {
+		writeErrorCode(w, http.StatusBadRequest, "invalid_workflow", err.Error())
+		return
+	}
+	raw, err := issueworkflow.EncodeKeys(keys)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to save workflow")
+		return
+	}
+	row, err := qtx.CreateIssueWorkflow(ctx, db.CreateIssueWorkflowParams{
 		WorkspaceID:      wsUUID,
 		Name:             name,
 		Description:      description,
-		InitialStatusKey: initial,
+		InitialStatusKey: issueworkflow.StartStatus,
 		Steps:            raw,
 	})
 	if err != nil {
@@ -350,6 +532,13 @@ func (h *Handler) CreateIssueWorkflow(w http.ResponseWriter, r *http.Request) {
 		slog.Warn("CreateIssueWorkflow failed", append(logger.RequestAttrs(r), "error", err)...)
 		writeError(w, http.StatusInternalServerError, "failed to save workflow")
 		return
+	}
+	if err := tx.Commit(ctx); err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to save workflow")
+		return
+	}
+	if len(createdStatuses) > 0 {
+		h.publishIssueStatusChanged(workspaceID, member, "created")
 	}
 	h.publishIssueWorkflowChanged(workspaceID, member, "created")
 	h.writeIssueWorkflow(w, r, http.StatusCreated, row)
@@ -428,13 +617,31 @@ func remapIssues(ctx context.Context, qtx *db.Queries, wsUUID pgtype.UUID, proje
 	return changed, cancelled, nil
 }
 
+// canEditWorkflowStatuses reports whether member may change which statuses a
+// workflow lists: owners and admins always; a project lead only for a named
+// workflow that serves nothing but projects they lead.
+func canEditWorkflowStatuses(member db.Member, row db.IssueWorkflow, projects []db.Project) bool {
+	if isWorkspaceAdmin(member) {
+		return true
+	}
+	if row.IsDefault || len(projects) == 0 {
+		return false
+	}
+	for _, p := range projects {
+		if !canManageProjectWorkflow(member, p) {
+			return false
+		}
+	}
+	return true
+}
+
 func (h *Handler) UpdateIssueWorkflow(w http.ResponseWriter, r *http.Request) {
 	workspaceID := h.resolveWorkspaceID(r)
 	wsUUID, ok := parseUUIDOrBadRequest(w, workspaceID, "workspace id")
 	if !ok {
 		return
 	}
-	member, ok := h.requireWorkspaceRole(w, r, workspaceID, "workspace not found", "owner", "admin")
+	member, ok := h.requireWorkspaceMember(w, r, workspaceID, "workspace not found")
 	if !ok {
 		return
 	}
@@ -468,53 +675,70 @@ func (h *Handler) UpdateIssueWorkflow(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusNotFound, "workflow not found")
 		return
 	}
-	currentDef, err := issueworkflow.Decode(current)
+	var projects []db.Project
+	if current.IsDefault {
+		projects, err = qtx.ListProjectsUsingDefaultIssueWorkflow(ctx, wsUUID)
+	} else {
+		projects, err = qtx.ListProjectsUsingIssueWorkflow(ctx, db.ListProjectsUsingIssueWorkflowParams{WorkspaceID: wsUUID, WorkflowID: current.ID})
+	}
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to save workflow")
+		return
+	}
+	if !canEditWorkflowStatuses(member, current, projects) {
+		writeError(w, http.StatusForbidden, "insufficient permissions")
+		return
+	}
+	currentKeys, err := issueworkflow.DecodeKeys(current.Steps)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to read workflow")
 		return
 	}
-	name, description, initial, steps := current.Name, current.Description, current.InitialStatusKey, currentDef.Steps
-	if req.Name != nil {
+	name, description, keys := current.Name, current.Description, currentKeys
+	if req.Name != nil && !current.IsDefault {
 		name = *req.Name
 	}
 	if req.Description != nil {
 		description = *req.Description
 	}
-	if req.InitialStatusKey != nil {
-		initial = *req.InitialStatusKey
-	}
+	var createdStatuses []db.IssueStatus
 	if req.Steps != nil {
-		steps = payloadToSteps(*req.Steps)
+		var msg string
+		keys, createdStatuses, msg, err = resolveStepInputs(ctx, qtx, wsUUID, *req.Steps)
+		if msg != "" {
+			writeErrorCode(w, http.StatusBadRequest, "invalid_workflow", msg)
+			return
+		}
+		if err != nil {
+			slog.Warn("UpdateIssueWorkflow statuses failed", append(logger.RequestAttrs(r), "error", err)...)
+			writeError(w, http.StatusInternalServerError, "failed to save workflow")
+			return
+		}
 	}
-	name, description, initial, steps = issueworkflow.Normalize(name, description, initial, steps)
+	name, description, keys = issueworkflow.Normalize(name, description, keys)
 	catalog, err := h.workflowStatusCatalog(ctx, qtx, wsUUID)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to load issue statuses")
 		return
 	}
-	if err := issueworkflow.Validate(name, description, initial, steps, catalog); err != nil {
+	if err := issueworkflow.Validate(name, description, keys, current.IsDefault, catalog); err != nil {
 		writeErrorCode(w, http.StatusBadRequest, "invalid_workflow", err.Error())
 		return
 	}
-	if req.Steps != nil {
-		if status, msg := h.validateWorkflowHandlers(ctx, r, workspaceID, steps); status != 0 {
-			writeErrorCode(w, status, "invalid_workflow", msg)
-			return
-		}
-	}
 
-	next := issueworkflow.Definition{ID: current.ID, Name: name, InitialStatusKey: initial, Steps: steps}
-	projects, err := qtx.ListProjectsUsingIssueWorkflow(ctx, db.ListProjectsUsingIssueWorkflowParams{WorkspaceID: wsUUID, WorkflowID: current.ID})
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, "failed to save workflow")
-		return
-	}
+	// Default accepts every status, so editing it never moves issues; issues
+	// on a status it drops stay there and show under hidden columns.
+	plan := workflowMappingPlan{Required: []StatusMappingRequirement{}, Unchanged: []StatusIssueCount{}}
 	projectIDs := make([]pgtype.UUID, len(projects))
 	for i, p := range projects {
 		projectIDs[i] = p.ID
 	}
-	plan := workflowMappingPlan{Required: []StatusMappingRequirement{}, Unchanged: []StatusIssueCount{}}
-	if len(projectIDs) > 0 {
+	if !current.IsDefault && len(projectIDs) > 0 {
+		next := issueworkflow.Definition{ID: current.ID, Name: name}
+		next.Steps = make([]issueworkflow.Step, len(keys))
+		for i, key := range keys {
+			next.Steps[i] = issueworkflow.Step{StatusKey: key}
+		}
 		counts, err := qtx.CountProjectIssuesByStatus(ctx, db.CountProjectIssuesByStatusParams{WorkspaceID: wsUUID, ProjectIds: projectIDs})
 		if err != nil {
 			writeError(w, http.StatusInternalServerError, "failed to save workflow")
@@ -522,16 +746,19 @@ func (h *Handler) UpdateIssueWorkflow(w http.ResponseWriter, r *http.Request) {
 		}
 		categoryOf := func(key string) string { return catalog[key].Category }
 		plan = mappingPlan(counts, next.Has, func(key string) string { return issueworkflow.MoveTarget(next, key, categoryOf) })
-	}
-	if req.DryRun {
+		if req.DryRun {
+			writeJSON(w, http.StatusOK, map[string]any{"dry_run": true, "plan": plan})
+			return
+		}
+		if msg := checkMapping(plan, req.StatusMapping, next.Has); msg != "" {
+			writeMappingRequired(w, plan, msg)
+			return
+		}
+	} else if req.DryRun {
 		writeJSON(w, http.StatusOK, map[string]any{"dry_run": true, "plan": plan})
 		return
 	}
-	if msg := checkMapping(plan, req.StatusMapping, next.Has); msg != "" {
-		writeMappingRequired(w, plan, msg)
-		return
-	}
-	raw, err := issueworkflow.EncodeSteps(steps)
+	raw, err := issueworkflow.EncodeKeys(keys)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to save workflow")
 		return
@@ -541,7 +768,7 @@ func (h *Handler) UpdateIssueWorkflow(w http.ResponseWriter, r *http.Request) {
 		WorkspaceID:      wsUUID,
 		Name:             name,
 		Description:      description,
-		InitialStatusKey: initial,
+		InitialStatusKey: issueworkflow.StartStatus,
 		Steps:            raw,
 	})
 	if err != nil {
@@ -567,6 +794,9 @@ func (h *Handler) UpdateIssueWorkflow(w http.ResponseWriter, r *http.Request) {
 	// notifies subscribers per issue nor looks like a handoff.
 	h.publishIssueSnapshots(ctx, changed, "member", uuidToString(member.UserID))
 	h.broadcastCancelledWakeups(ctx, wsUUID, cancelledWakeups)
+	if len(createdStatuses) > 0 {
+		h.publishIssueStatusChanged(workspaceID, member, "created")
+	}
 	h.publishIssueWorkflowChanged(workspaceID, member, "updated")
 	h.writeIssueWorkflow(w, r, http.StatusOK, row)
 }
@@ -595,6 +825,15 @@ func (h *Handler) DeleteIssueWorkflow(w http.ResponseWriter, r *http.Request) {
 	qtx := h.Queries.WithTx(tx)
 	if err := qtx.LockIssueStatusCatalog(ctx, wsUUID); err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to delete workflow")
+		return
+	}
+	row, err := qtx.GetIssueWorkflow(ctx, db.GetIssueWorkflowParams{ID: idUUID, WorkspaceID: wsUUID})
+	if err != nil {
+		writeError(w, http.StatusNotFound, "workflow not found")
+		return
+	}
+	if row.IsDefault {
+		writeErrorCode(w, http.StatusBadRequest, "workflow_is_default", "the Default workflow cannot be deleted")
 		return
 	}
 	projects, err := qtx.ListProjectsUsingIssueWorkflow(ctx, db.ListProjectsUsingIssueWorkflowParams{WorkspaceID: wsUUID, WorkflowID: idUUID})
@@ -633,6 +872,44 @@ func (h *Handler) publishIssueWorkflowChanged(workspaceID string, actor db.Membe
 	})
 }
 
+// publishProjectWorkflowUpdate announces a project whose workflow settings
+// changed and returns the project as the API shapes it.
+func (h *Handler) publishProjectWorkflowUpdate(ctx context.Context, workspaceID string, member db.Member, project db.Project) ProjectResponse {
+	resp := projectToResponse(project)
+	resp.IssueCount, resp.DoneCount = h.loadProjectIssueStats(ctx, project.WorkspaceID, project.ID)
+	resp.ResourceCount = h.loadProjectResourceCount(ctx, project.ID)
+	h.publish(protocol.EventProjectUpdated, workspaceID, "member", uuidToString(member.UserID), map[string]any{"project": resp})
+	return resp
+}
+
+// loadProjectForWorkflowWrite resolves the {id} project and checks that the
+// caller may change its workflow settings.
+func (h *Handler) loadProjectForWorkflowWrite(w http.ResponseWriter, r *http.Request) (db.Project, db.Member, string, bool) {
+	workspaceID := h.resolveWorkspaceID(r)
+	wsUUID, ok := parseUUIDOrBadRequest(w, workspaceID, "workspace id")
+	if !ok {
+		return db.Project{}, db.Member{}, "", false
+	}
+	member, ok := h.requireWorkspaceMember(w, r, workspaceID, "workspace not found")
+	if !ok {
+		return db.Project{}, db.Member{}, "", false
+	}
+	projectUUID, ok := parseUUIDOrBadRequest(w, chi.URLParam(r, "id"), "project id")
+	if !ok {
+		return db.Project{}, db.Member{}, "", false
+	}
+	project, err := h.Queries.GetProjectInWorkspace(r.Context(), db.GetProjectInWorkspaceParams{ID: projectUUID, WorkspaceID: wsUUID})
+	if err != nil {
+		writeError(w, http.StatusNotFound, "project not found")
+		return db.Project{}, db.Member{}, "", false
+	}
+	if !canManageProjectWorkflow(member, project) {
+		writeError(w, http.StatusForbidden, "only workspace admins and the project lead can change this project's workflow")
+		return db.Project{}, db.Member{}, "", false
+	}
+	return project, member, workspaceID, true
+}
+
 type SetProjectWorkflowRequest struct {
 	// WorkflowID is the workflow to use; null switches back to the workspace
 	// Default workflow.
@@ -644,21 +921,14 @@ type SetProjectWorkflowRequest struct {
 // SetProjectWorkflow switches the workflow a project uses. Issues on statuses
 // the new workflow does not list move to the statuses the caller maps them to,
 // in the same transaction. The move is administrative: it neither reassigns
-// issues nor starts runs.
+// issues nor starts runs. The project's handoffs stay keyed by status, so a
+// column both workflows list keeps its handoff.
 func (h *Handler) SetProjectWorkflow(w http.ResponseWriter, r *http.Request) {
-	workspaceID := h.resolveWorkspaceID(r)
-	wsUUID, ok := parseUUIDOrBadRequest(w, workspaceID, "workspace id")
+	loaded, member, workspaceID, ok := h.loadProjectForWorkflowWrite(w, r)
 	if !ok {
 		return
 	}
-	member, ok := h.requireWorkspaceMember(w, r, workspaceID, "workspace not found")
-	if !ok {
-		return
-	}
-	projectUUID, ok := parseUUIDOrBadRequest(w, chi.URLParam(r, "id"), "project id")
-	if !ok {
-		return
-	}
+	wsUUID := loaded.WorkspaceID
 	var req SetProjectWorkflowRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid request body")
@@ -689,7 +959,7 @@ func (h *Handler) SetProjectWorkflow(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "failed to change workflow")
 		return
 	}
-	project, err := qtx.LockProjectForWorkflowChange(ctx, db.LockProjectForWorkflowChangeParams{ID: projectUUID, WorkspaceID: wsUUID})
+	project, err := qtx.LockProjectForWorkflowChange(ctx, db.LockProjectForWorkflowChangeParams{ID: loaded.ID, WorkspaceID: wsUUID})
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			writeError(w, http.StatusNotFound, "project not found")
@@ -710,7 +980,12 @@ func (h *Handler) SetProjectWorkflow(w http.ResponseWriter, r *http.Request) {
 			writeError(w, http.StatusInternalServerError, "failed to read workflow")
 			return
 		}
-		target = &def
+		if def.IsDefault {
+			// Choosing the Default row is the same as choosing Default.
+			targetID = pgtype.UUID{}
+		} else {
+			target = &def
+		}
 	}
 	catalog, err := h.workflowStatusCatalog(ctx, qtx, wsUUID)
 	if err != nil {
@@ -768,13 +1043,9 @@ func (h *Handler) SetProjectWorkflow(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "failed to change workflow")
 		return
 	}
-	actorID := uuidToString(member.UserID)
-	h.publishIssueSnapshots(ctx, changed, "member", actorID)
+	h.publishIssueSnapshots(ctx, changed, "member", uuidToString(member.UserID))
 	h.broadcastCancelledWakeups(ctx, wsUUID, cancelledWakeups)
-	resp := projectToResponse(updated)
-	resp.IssueCount, resp.DoneCount = h.loadProjectIssueStats(ctx, wsUUID, updated.ID)
-	resp.ResourceCount = h.loadProjectResourceCount(ctx, updated.ID)
-	h.publish(protocol.EventProjectUpdated, workspaceID, "member", actorID, map[string]any{"project": resp})
+	resp := h.publishProjectWorkflowUpdate(ctx, workspaceID, member, updated)
 	writeJSON(w, http.StatusOK, map[string]any{
 		"project":        resp,
 		"updated_issues": len(changed),
@@ -782,11 +1053,317 @@ func (h *Handler) SetProjectWorkflow(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// PreviewIssueWorkflowBrief renders the brief a step's handler would receive,
-// for a workflow being edited. It takes the unsaved definition so the editor
-// can preview before saving. Project-relative handlers are named generically
-// because a workflow may serve several projects.
-func (h *Handler) PreviewIssueWorkflowBrief(w http.ResponseWriter, r *http.Request) {
+// SetProjectWorkflowHandoff saves what the project does when an issue enters
+// one of its columns: who it is handed to, the instructions their run gets,
+// and where the handler moves it next. Saving "none" with no instructions
+// clears the column. It changes only this project.
+func (h *Handler) SetProjectWorkflowHandoff(w http.ResponseWriter, r *http.Request) {
+	loaded, member, workspaceID, ok := h.loadProjectForWorkflowWrite(w, r)
+	if !ok {
+		return
+	}
+	var req IssueWorkflowHandoffPayload
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+	step := issueworkflow.NormalizeHandoff(payloadToHandoff(chi.URLParam(r, "status"), req))
+	if step.HandsOff() && !h.requireProjectWorkflowsV1(w, r) {
+		return
+	}
+	if status, msg := h.validateHandoffHandler(r.Context(), r, workspaceID, step); status != 0 {
+		writeErrorCode(w, status, "invalid_handoff", msg)
+		return
+	}
+	ctx := r.Context()
+	tx, err := h.TxStarter.Begin(ctx)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to save handoff")
+		return
+	}
+	defer tx.Rollback(ctx)
+	qtx := h.Queries.WithTx(tx)
+	if err := qtx.LockIssueStatusCatalogShared(ctx, loaded.WorkspaceID); err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to save handoff")
+		return
+	}
+	project, err := qtx.LockProjectForWorkflowChange(ctx, db.LockProjectForWorkflowChangeParams{ID: loaded.ID, WorkspaceID: loaded.WorkspaceID})
+	if err != nil {
+		writeError(w, http.StatusNotFound, "project not found")
+		return
+	}
+	def, err := issueworkflow.ForProjectRow(ctx, qtx, project)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to load project workflow")
+		return
+	}
+	if err := issueworkflow.ValidateHandoff(step, *def); err != nil {
+		writeErrorCode(w, http.StatusBadRequest, "invalid_handoff", err.Error())
+		return
+	}
+	stored, err := issueworkflow.DecodeHandoffs(project.WorkflowHandoffs)
+	if err != nil {
+		stored = nil
+	}
+	next := make([]issueworkflow.Step, 0, len(stored)+1)
+	replaced := false
+	for _, s := range stored {
+		if s.StatusKey == step.StatusKey {
+			next = append(next, step)
+			replaced = true
+			continue
+		}
+		next = append(next, s)
+	}
+	if !replaced {
+		next = append(next, step)
+	}
+	raw, err := issueworkflow.EncodeHandoffs(next)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to save handoff")
+		return
+	}
+	updated, err := qtx.SetProjectWorkflowHandoffs(ctx, db.SetProjectWorkflowHandoffsParams{ID: project.ID, WorkspaceID: project.WorkspaceID, WorkflowHandoffs: raw})
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to save handoff")
+		return
+	}
+	if err := tx.Commit(ctx); err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to save handoff")
+		return
+	}
+	writeJSON(w, http.StatusOK, h.publishProjectWorkflowUpdate(ctx, workspaceID, member, updated))
+}
+
+// AddProjectWorkflowColumnRequest adds one status to a project's board.
+type AddProjectWorkflowColumnRequest struct {
+	StatusKey string             `json:"status_key,omitempty"`
+	NewStatus *NewWorkflowStatus `json:"new_status,omitempty"`
+	// Scope "project" adds the column only to this project: a project on
+	// Default, or on a workflow other projects share, moves to its own copy.
+	// Scope "workflow" adds it to the workflow the project uses, for every
+	// project using it.
+	Scope string `json:"scope"`
+	// AfterStatusKey places the column after this one; empty places it after
+	// the workflow's last own step.
+	AfterStatusKey string `json:"after_status_key,omitempty"`
+}
+
+const (
+	columnScopeProject  = "project"
+	columnScopeWorkflow = "workflow"
+)
+
+// AddProjectWorkflowColumn adds a column to a project's board, creating the
+// status first when asked. Adding a status never moves an issue.
+func (h *Handler) AddProjectWorkflowColumn(w http.ResponseWriter, r *http.Request) {
+	loaded, member, workspaceID, ok := h.loadProjectForWorkflowWrite(w, r)
+	if !ok {
+		return
+	}
+	if !h.requireProjectWorkflowsV1(w, r) {
+		return
+	}
+	var req AddProjectWorkflowColumnRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+	if req.Scope == "" {
+		req.Scope = columnScopeProject
+	}
+	if req.Scope != columnScopeProject && req.Scope != columnScopeWorkflow {
+		writeError(w, http.StatusBadRequest, "scope must be project or workflow")
+		return
+	}
+	if req.NewStatus == nil && strings.TrimSpace(req.StatusKey) == "" {
+		writeError(w, http.StatusBadRequest, "status_key or new_status is required")
+		return
+	}
+	wsUUID := loaded.WorkspaceID
+	ctx := r.Context()
+	tx, err := h.TxStarter.Begin(ctx)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to add column")
+		return
+	}
+	defer tx.Rollback(ctx)
+	qtx := h.Queries.WithTx(tx)
+	if err := qtx.LockIssueStatusCatalog(ctx, wsUUID); err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to add column")
+		return
+	}
+	project, err := qtx.LockProjectForWorkflowChange(ctx, db.LockProjectForWorkflowChangeParams{ID: loaded.ID, WorkspaceID: wsUUID})
+	if err != nil {
+		writeError(w, http.StatusNotFound, "project not found")
+		return
+	}
+	defaultRow, err := issueworkflow.EnsureDefault(ctx, qtx, wsUUID)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to add column")
+		return
+	}
+	row := defaultRow
+	if project.WorkflowID.Valid {
+		if named, err := qtx.GetIssueWorkflow(ctx, db.GetIssueWorkflowParams{ID: project.WorkflowID, WorkspaceID: wsUUID}); err == nil {
+			row = named
+		}
+	}
+	shared := row.IsDefault
+	if !row.IsDefault {
+		users, err := qtx.ListProjectsUsingIssueWorkflow(ctx, db.ListProjectsUsingIssueWorkflowParams{WorkspaceID: wsUUID, WorkflowID: row.ID})
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, "failed to add column")
+			return
+		}
+		shared = len(users) > 1
+	}
+	inPlace := !shared || req.Scope == columnScopeWorkflow
+	if inPlace && shared && !isWorkspaceAdmin(member) {
+		writeError(w, http.StatusForbidden, "only workspace admins can change a workflow other projects use")
+		return
+	}
+
+	key := strings.TrimSpace(req.StatusKey)
+	var createdStatus bool
+	if req.NewStatus != nil {
+		entry, msg, err := createWorkflowStatus(ctx, qtx, wsUUID, *req.NewStatus)
+		if msg != "" {
+			writeErrorCode(w, http.StatusBadRequest, "invalid_workflow", msg)
+			return
+		}
+		if err != nil {
+			slog.Warn("AddProjectWorkflowColumn status failed", append(logger.RequestAttrs(r), "error", err)...)
+			writeError(w, http.StatusInternalServerError, "failed to add column")
+			return
+		}
+		key = entry.Key
+		createdStatus = true
+	}
+	keys, err := issueworkflow.DecodeKeys(row.Steps)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to read workflow")
+		return
+	}
+	for _, k := range keys {
+		if k == key {
+			writeErrorCode(w, http.StatusConflict, "workflow_column_exists", "this status is already a column of the board")
+			return
+		}
+	}
+	middle := insertAfter(issueworkflow.MiddleKeys(keys), key, req.AfterStatusKey)
+	name, description, nextKeys := issueworkflow.Normalize(row.Name, row.Description, middle)
+	catalog, err := h.workflowStatusCatalog(ctx, qtx, wsUUID)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to load issue statuses")
+		return
+	}
+	if err := issueworkflow.Validate(name, description, nextKeys, row.IsDefault, catalog); err != nil {
+		writeErrorCode(w, http.StatusBadRequest, "invalid_workflow", err.Error())
+		return
+	}
+	raw, err := issueworkflow.EncodeKeys(nextKeys)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to add column")
+		return
+	}
+	var saved db.IssueWorkflow
+	if inPlace {
+		saved, err = qtx.UpdateIssueWorkflow(ctx, db.UpdateIssueWorkflowParams{
+			ID:               row.ID,
+			WorkspaceID:      wsUUID,
+			Name:             row.Name,
+			Description:      row.Description,
+			InitialStatusKey: issueworkflow.StartStatus,
+			Steps:            raw,
+		})
+	} else {
+		var forkName string
+		forkName, err = h.freeWorkflowName(ctx, qtx, wsUUID, project.Title)
+		if err == nil {
+			saved, err = qtx.CreateIssueWorkflow(ctx, db.CreateIssueWorkflowParams{
+				WorkspaceID:      wsUUID,
+				Name:             forkName,
+				Description:      "",
+				InitialStatusKey: issueworkflow.StartStatus,
+				Steps:            raw,
+			})
+		}
+		if err == nil {
+			// The copy lists every status the project's issues may be on,
+			// so switching to it moves nothing.
+			project, err = qtx.SetProjectWorkflow(ctx, db.SetProjectWorkflowParams{ID: project.ID, WorkspaceID: wsUUID, WorkflowID: saved.ID})
+		}
+	}
+	if err != nil {
+		slog.Warn("AddProjectWorkflowColumn save failed", append(logger.RequestAttrs(r), "error", err)...)
+		writeError(w, http.StatusInternalServerError, "failed to add column")
+		return
+	}
+	if err := tx.Commit(ctx); err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to add column")
+		return
+	}
+	if createdStatus {
+		h.publishIssueStatusChanged(workspaceID, member, "created")
+	}
+	h.publishIssueWorkflowChanged(workspaceID, member, "updated")
+	resp := h.publishProjectWorkflowUpdate(ctx, workspaceID, member, project)
+	writeJSON(w, http.StatusOK, map[string]any{
+		"project":    resp,
+		"workflow":   h.issueWorkflowResponse(ctx, saved),
+		"status_key": key,
+	})
+}
+
+// insertAfter places key after anchor in keys, or at the end when anchor is
+// empty or not among them.
+func insertAfter(keys []string, key, anchor string) []string {
+	out := make([]string, 0, len(keys)+1)
+	placed := false
+	for _, k := range keys {
+		out = append(out, k)
+		if !placed && anchor != "" && k == anchor {
+			out = append(out, key)
+			placed = true
+		}
+	}
+	if !placed {
+		out = append(out, key)
+	}
+	return out
+}
+
+// freeWorkflowName picks a workflow name based on a project title that no
+// workflow of the workspace uses yet. The caller holds the exclusive catalog
+// lock, which every workflow write takes, so the name stays free until the
+// insert.
+func (h *Handler) freeWorkflowName(ctx context.Context, qtx *db.Queries, wsUUID pgtype.UUID, base string) (string, error) {
+	rows, err := qtx.ListIssueWorkflows(ctx, wsUUID)
+	if err != nil {
+		return "", err
+	}
+	taken := map[string]bool{strings.ToLower(issueworkflow.DefaultName): true}
+	for _, row := range rows {
+		taken[strings.ToLower(row.Name)] = true
+	}
+	base = strings.TrimSpace(base)
+	if base == "" {
+		base = "Project"
+	}
+	if runes := []rune(base); len(runes) > issueworkflow.MaxNameRunes-4 {
+		base = string(runes[:issueworkflow.MaxNameRunes-4])
+	}
+	candidate := base
+	for n := 2; taken[strings.ToLower(candidate)]; n++ {
+		candidate = fmt.Sprintf("%s %d", base, n)
+	}
+	return candidate, nil
+}
+
+// PreviewProjectWorkflowBrief renders the brief a column's handler would
+// receive, for a handoff being edited before it is saved.
+func (h *Handler) PreviewProjectWorkflowBrief(w http.ResponseWriter, r *http.Request) {
 	workspaceID := h.resolveWorkspaceID(r)
 	wsUUID, ok := parseUUIDOrBadRequest(w, workspaceID, "workspace id")
 	if !ok {
@@ -795,47 +1372,48 @@ func (h *Handler) PreviewIssueWorkflowBrief(w http.ResponseWriter, r *http.Reque
 	if _, ok := h.requireWorkspaceMember(w, r, workspaceID, "workspace not found"); !ok {
 		return
 	}
-	var req struct {
-		IssueWorkflowWriteRequest
-		StatusKey string `json:"status_key"`
+	projectUUID, ok := parseUUIDOrBadRequest(w, chi.URLParam(r, "id"), "project id")
+	if !ok {
+		return
 	}
+	var req IssueWorkflowHandoffPayload
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid request body")
 		return
 	}
-	var name, initial string
-	var steps []issueworkflow.Step
-	if req.Name != nil {
-		name = *req.Name
-	}
-	if req.InitialStatusKey != nil {
-		initial = *req.InitialStatusKey
-	}
-	if req.Steps != nil {
-		steps = payloadToSteps(*req.Steps)
-	}
-	name, _, initial, steps = issueworkflow.Normalize(name, "", initial, steps)
-	def := issueworkflow.Definition{Name: name, InitialStatusKey: initial, Steps: steps}
-	if !def.Has(req.StatusKey) {
-		writeError(w, http.StatusBadRequest, "status_key is not a step of this workflow")
+	ctx := r.Context()
+	def, project, err := issueworkflow.ForProject(ctx, h.Queries, wsUUID, projectUUID)
+	if err != nil || def == nil {
+		writeError(w, http.StatusNotFound, "project not found")
 		return
+	}
+	step := issueworkflow.NormalizeHandoff(payloadToHandoff(req.StatusKey, req))
+	if !def.Has(step.StatusKey) {
+		writeError(w, http.StatusBadRequest, "status_key is not a column of this project")
+		return
+	}
+	for i, s := range def.Steps {
+		if s.StatusKey == step.StatusKey {
+			def.Steps[i] = step
+		}
 	}
 	resolver := issuestatus.NewResolver(wsUUID)
 	brief := issueworkflow.Brief(issueworkflow.BriefInput{
-		Workflow:        def,
-		StatusKey:       req.StatusKey,
-		IssueIdentifier: h.getIssuePrefix(r.Context(), wsUUID) + "-123",
+		Workflow:        *def,
+		ProjectName:     project.Title,
+		StatusKey:       step.StatusKey,
+		IssueIdentifier: h.getIssuePrefix(ctx, wsUUID) + "-123",
 		StatusName: func(key string) string {
-			return resolver.Name(r.Context(), h.Queries, key)
+			return resolver.Name(ctx, h.Queries, key)
 		},
-		HandlerName: func(step issueworkflow.Step) string {
-			switch step.Handler.Type {
+		HandlerName: func(s issueworkflow.Step) string {
+			switch s.Handler.Type {
 			case issueworkflow.HandlerAgent, issueworkflow.HandlerSquad, issueworkflow.HandlerMember:
-				id, err := parseUUIDString(step.Handler.ID)
+				id, err := parseUUIDString(s.Handler.ID)
 				if err != nil {
-					return step.Handler.Type
+					return s.Handler.Type
 				}
-				return h.actorDisplayName(r.Context(), wsUUID, step.Handler.Type, id)
+				return h.actorDisplayName(ctx, wsUUID, s.Handler.Type, id)
 			case issueworkflow.HandlerProjectLead:
 				return "the project lead"
 			case issueworkflow.HandlerCreator:
@@ -904,13 +1482,11 @@ func (h *Handler) PreviewWorkflowHandoff(w http.ResponseWriter, r *http.Request)
 		writeError(w, http.StatusInternalServerError, "failed to resolve project workflow")
 		return
 	}
-	if def, _, err := issueworkflow.ForProject(r.Context(), h.Queries, issue.WorkspaceID, issue.ProjectID); err == nil && def != nil {
-		resp.WorkflowName = def.Name
-	}
 	if hand == nil {
 		writeJSON(w, http.StatusOK, resp)
 		return
 	}
+	resp.WorkflowName = hand.def.Name
 	resp.Handoff = true
 	resp.HandlerType = params.AssigneeType.String
 	resp.HandlerID = uuidToString(params.AssigneeID)
