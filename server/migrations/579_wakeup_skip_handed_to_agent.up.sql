@@ -3,8 +3,9 @@
 -- agent as its own run. Recording the same write for the agent's event wakeups
 -- would start a second run for one fact, so the write names the agent in the
 -- transaction-local multica.handed_to_agent and its issue.* events skip that
--- agent's subscriptions. Everyone else's wakeups, and every task, comment and
--- reaction event, are captured as before.
+-- agent's subscriptions. Everyone else's wakeups — including platform rules,
+-- which have no agent_id — and every task, comment and reaction event, are
+-- captured as before.
 CREATE OR REPLACE FUNCTION capture_issue_wakeup(p_issue uuid, p_type text, p_key text, p_agent uuid, p_task uuid, p_payload jsonb)
 RETURNS void LANGUAGE plpgsql AS $$
 DECLARE w issue_wakeup; owner_workspace uuid; evidence jsonb; violated_constraint text;
@@ -29,7 +30,7 @@ BEGIN
    AND (filter_task_id IS NULL OR filter_task_id=p_task)
    AND (p_task IS NULL OR source_task_id IS DISTINCT FROM p_task)
    AND NOT EXISTS (SELECT 1 FROM agent_task_queue t WHERE t.id=p_task AND t.context->>'wakeup_id'=issue_wakeup.id::text)
-   AND (p_type NOT LIKE 'issue.%' OR agent_id IS DISTINCT FROM NULLIF(current_setting('multica.handed_to_agent',true),'')::uuid)
+   AND (p_type NOT LIKE 'issue.%' OR agent_id IS NULL OR agent_id IS DISTINCT FROM NULLIF(current_setting('multica.handed_to_agent',true),'')::uuid)
    ORDER BY id
  LOOP
   -- One pending notification per event type. Preserve the first key for

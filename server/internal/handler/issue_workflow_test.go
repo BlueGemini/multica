@@ -846,8 +846,9 @@ func TestWorkflowSwitchIntoDoneEndsWakeups(t *testing.T) {
 }
 
 // A write that hands an issue to an agent delivers the change to that agent
-// as its run, so the agent's event wakeups skip it; other agents' wakeups
-// still capture it. Holds for workflow handoffs and plain assignment alike.
+// as its run, so the agent's event wakeups skip it; other agents' wakeups and
+// the platform's own rules (which have no agent) still capture it. Holds for
+// workflow handoffs and plain assignment alike.
 func TestHandoffDoesNotAlsoWakeTheHandler(t *testing.T) {
 	seedTestCatalog(t)
 	handler := seededReadyAgentID(t)
@@ -879,12 +880,33 @@ func TestHandoffDoesNotAlsoWakeTheHandler(t *testing.T) {
 	handedOff := dbfx.Issue(t, "handed off", testutil.Cols{"project_id": projectID, "status": "todo"})
 	t.Cleanup(func() { testPool.Exec(context.Background(), `DELETE FROM issue_wakeup WHERE issue_id = $1`, handedOff) })
 	handlerWakeup, watcherWakeup := subscribe(handedOff, handler), subscribe(handedOff, watcher)
+	platformRule := func(issueID string) string {
+		t.Helper()
+		var id string
+		dbfx.QueryRow(t, `INSERT INTO issue_wakeup (id, workspace_id, issue_id, instruction, kind, mode, event_types, system_rule)
+			VALUES (gen_random_uuid(), $1, $2, 'stage closed', 'event', 'continuous', ARRAY['issue.status_changed'], 'child_done')
+			RETURNING id::text`, testWorkspaceID, issueID).Scan(&id)
+		t.Cleanup(func() { testPool.Exec(context.Background(), `DELETE FROM issue_wakeup_receipt WHERE wakeup_id = $1`, id) })
+		return id
+	}
+	handedOffRule := platformRule(handedOff)
 	updateIssueForTest(t, handedOff, map[string]any{"status": "in_progress"}).Want(http.StatusOK)
 	if n := pending(handlerWakeup); n != 0 {
 		t.Fatalf("the handoff also woke its handler: %d receipt(s)", n)
 	}
 	if n := pending(watcherWakeup); n == 0 {
 		t.Fatal("another agent's wakeup missed the handoff")
+	}
+	if n := pending(handedOffRule); n == 0 {
+		t.Fatal("the platform rule missed the handoff")
+	}
+
+	parked := dbfx.Issue(t, "parked without a handoff", testutil.Cols{"status": "todo"})
+	t.Cleanup(func() { testPool.Exec(context.Background(), `DELETE FROM issue_wakeup WHERE issue_id = $1`, parked) })
+	parkedRule := platformRule(parked)
+	updateIssueForTest(t, parked, map[string]any{"status": "backlog"}).Want(http.StatusOK)
+	if n := pending(parkedRule); n == 0 {
+		t.Fatal("the platform rule missed a status change that handed the issue to nobody")
 	}
 
 	assigned := dbfx.Issue(t, "assigned", testutil.Cols{"status": "todo"})
