@@ -355,6 +355,7 @@ func TestSetProjectHandoffValidatesAndClears(t *testing.T) {
 	projectID := createWorkflowTestProject(t, "Workflow handoff validation project")
 	setProjectHandoff(t, projectID, "done", map[string]any{"handler": map[string]any{"type": "project_lead"}}).Want(http.StatusBadRequest)
 	setProjectHandoff(t, projectID, "code_review_nope", handToAgent(agentID, "")).Want(http.StatusBadRequest)
+	setProjectHandoff(t, projectID, "in_progress", map[string]any{"handler": map[string]any{"type": "creator"}}).Want(http.StatusBadRequest)
 	setProjectHandoff(t, projectID, "in_progress", map[string]any{
 		"handler": map[string]any{"type": "agent", "id": agentID}, "next_status_key": "in_progress",
 	}).Want(http.StatusBadRequest)
@@ -402,86 +403,6 @@ func TestProjectWorkflowSettingsNeedAdminOrLead(t *testing.T) {
 	dbfx.Exec(t, `UPDATE project SET lead_type = 'member', lead_id = $1 WHERE id = $2`, userID, projectID)
 	put().Want(http.StatusOK)
 
-	// The lead may add a column only for this project, not to Default.
-	resetDefaultWorkflow(t)
-	statusName := "Lead " + workflowTestSuffix()[10:]
-	t.Cleanup(func() {
-		testPool.Exec(context.Background(), `DELETE FROM issue_status WHERE workspace_id = $1 AND name = $2`, testWorkspaceID, statusName)
-	})
-	addColumn := func(scope string) *testutil.Response {
-		req := withURLParam(asMember(workflowRequest("POST", "/api/projects/"+projectID+"/workflow/columns", map[string]any{
-			"new_status": map[string]any{"name": statusName}, "scope": scope,
-		})), "id", projectID)
-		return testutil.Call(t, testHandler.AddProjectWorkflowColumn, req)
-	}
-	addColumn("workflow").Want(http.StatusForbidden)
-	addColumn("project").Want(http.StatusOK)
-}
-
-func TestAddColumnOnlyForThisProjectCopiesDefault(t *testing.T) {
-	seedTestCatalog(t)
-	resetDefaultWorkflow(t)
-	withFeatureFlag(t, testHandler, featureflags.ProjectWorkflowsV1, true)
-	agentID := seededReadyAgentID(t)
-	projectID := deliveryProject(t, "Workflow column project", agentID)
-	other := createWorkflowTestProject(t, "Workflow column other project")
-	statusName := "QA " + workflowTestSuffix()[10:]
-	t.Cleanup(func() {
-		testPool.Exec(context.Background(), `DELETE FROM issue_status WHERE workspace_id = $1 AND name = $2`, testWorkspaceID, statusName)
-	})
-	add := func(body map[string]any) map[string]any {
-		req := withURLParam(workflowRequest("POST", "/api/projects/"+projectID+"/workflow/columns", body), "id", projectID)
-		return testutil.Call(t, testHandler.AddProjectWorkflowColumn, req).Want(http.StatusOK).Map()
-	}
-	resp := add(map[string]any{"new_status": map[string]any{"name": statusName, "category": "started"}, "scope": "project", "after_status_key": "in_progress"})
-	newKey, _ := resp["status_key"].(string)
-	var workflowID *string
-	dbfx.QueryRow(t, `SELECT workflow_id::text FROM project WHERE id = $1`, projectID).Scan(&workflowID)
-	if workflowID == nil {
-		t.Fatal("adding a column only for this project kept it on Default")
-	}
-	var steps string
-	dbfx.QueryRow(t, `SELECT steps::text FROM issue_workflow WHERE id = $1`, *workflowID).Scan(&steps)
-	if !strings.Contains(steps, `"in_progress"}, {"status_key": "`+newKey+`"}, {"status_key": "in_review"`) {
-		t.Fatalf("own workflow steps = %s, want %s after in_progress", steps, newKey)
-	}
-	var defaultSteps string
-	dbfx.QueryRow(t, `SELECT steps::text FROM issue_workflow WHERE workspace_id = $1 AND is_default`, testWorkspaceID).Scan(&defaultSteps)
-	if strings.Contains(defaultSteps, newKey) {
-		t.Fatalf("Default gained the project's column: %s", defaultSteps)
-	}
-	var otherWorkflow *string
-	dbfx.QueryRow(t, `SELECT workflow_id::text FROM project WHERE id = $1`, other).Scan(&otherWorkflow)
-	if otherWorkflow != nil {
-		t.Fatal("another Default project moved off Default")
-	}
-	// The handoff survives the copy.
-	issueID := dbfx.Issue(t, "still handed off", testutil.Cols{"project_id": projectID, "status": "todo"})
-	updateIssueForTest(t, issueID, map[string]any{"status": "in_progress"}).Want(http.StatusOK)
-	if _, at, aid := issueStatusAndAssignee(t, issueID); at != "agent" || aid != agentID {
-		t.Fatalf("assignee after the copy = %s/%s", at, aid)
-	}
-
-	// A second column goes into the project's own workflow in place.
-	add(map[string]any{"new_status": map[string]any{"name": statusName + " 2"}, "scope": "project"})
-	t.Cleanup(func() {
-		testPool.Exec(context.Background(), `DELETE FROM issue_status WHERE workspace_id = $1 AND name = $2`, testWorkspaceID, statusName+" 2")
-	})
-	req := withURLParam(workflowRequest("POST", "/api/projects/"+projectID+"/workflow/columns", map[string]any{"status_key": newKey}), "id", projectID)
-	testutil.Call(t, testHandler.AddProjectWorkflowColumn, req).Want(http.StatusConflict)
-	var again string
-	dbfx.QueryRow(t, `SELECT workflow_id::text FROM project WHERE id = $1`, projectID).Scan(&again)
-	if again != *workflowID {
-		t.Fatal("a column for a project's own workflow made another copy")
-	}
-
-	// An admin may add a column to Default for every project using it.
-	addOther := withURLParam(workflowRequest("POST", "/api/projects/"+other+"/workflow/columns", map[string]any{"status_key": newKey, "scope": "workflow"}), "id", other)
-	testutil.Call(t, testHandler.AddProjectWorkflowColumn, addOther).Want(http.StatusOK)
-	dbfx.QueryRow(t, `SELECT steps::text FROM issue_workflow WHERE workspace_id = $1 AND is_default`, testWorkspaceID).Scan(&defaultSteps)
-	if !strings.Contains(defaultSteps, newKey) {
-		t.Fatalf("Default steps = %s, want %s added", defaultSteps, newKey)
-	}
 }
 
 func TestExplicitAssigneeWinsOverStepHandler(t *testing.T) {
@@ -774,7 +695,8 @@ func TestAgentStatusChangeRefusedAfterIssueMoved(t *testing.T) {
 	agentUpdateIssue(t, issueID, agentID, fresh, map[string]any{"status": "in_review"}).Want(http.StatusOK)
 }
 
-// A handoff away from a squad offers to stop — and stops — the runs made on
+// Squads can't be handed to, but a handoff away from an issue a squad owns
+// offers to stop — and stops — the runs made on
 // the squad's behalf, recording who stopped them.
 func TestHandoffStopsPreviousSquadRuns(t *testing.T) {
 	seedTestCatalog(t)
@@ -782,7 +704,7 @@ func TestHandoffStopsPreviousSquadRuns(t *testing.T) {
 	squadID := dbfx.Squad(t, "Workflow review squad "+workflowTestSuffix(), agentID)
 	projectID := createWorkflowTestProject(t, "Workflow squad stop project")
 	setProjectHandoff(t, projectID, "in_progress", map[string]any{"handler": map[string]any{"type": "member", "id": testUserID}}).Want(http.StatusOK)
-	setProjectHandoff(t, projectID, "in_review", map[string]any{"handler": map[string]any{"type": "squad", "id": squadID}}).Want(http.StatusOK)
+	setProjectHandoff(t, projectID, "in_review", map[string]any{"handler": map[string]any{"type": "squad", "id": squadID}}).Want(http.StatusBadRequest)
 	issueID := dbfx.Issue(t, "squad reviewing", testutil.Cols{
 		"project_id": projectID, "status": "in_review", "assignee_type": "squad", "assignee_id": squadID,
 	})

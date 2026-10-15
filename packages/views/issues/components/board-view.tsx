@@ -21,14 +21,9 @@ import type {
   Issue,
   IssueAssigneeType,
   IssueStatus,
-  IssueWorkflow,
   Project,
   IssueProperty,
 } from "@multica/core/types";
-import { Plus } from "lucide-react";
-import { Button } from "@multica/ui/components/ui/button";
-import { useFeatureEnabled } from "@multica/core/config";
-import { PROJECT_WORKFLOWS_V1_FLAG } from "@multica/core/feature-flags";
 import { useViewStore } from "@multica/core/issues/stores/view-store-context";
 import { propertyIdFromViewKey } from "@multica/core/issues/stores/view-store";
 import { propertyListOptions, useSetIssueProperty, useUnsetIssueProperty } from "@multica/core/properties";
@@ -45,8 +40,6 @@ import {
   workflowStep,
 } from "@multica/core/issue-workflows";
 import { WorkflowHandoffConfirmDialog } from "../../workflows/handoff-confirm-dialog";
-import { AddColumnPopover } from "../../workflows/add-column";
-import { useWorkflowPermissions } from "../../workflows/permissions";
 import { stepHandlerActor, useStepHandlerLabel } from "../../workflows/step-handler";
 import { projectListOptions } from "@multica/core/projects/queries";
 import { BoardCardContent } from "./board-card";
@@ -915,9 +908,6 @@ function BoardViewImpl({
           </div>
         )}
 
-        {grouping === "status" && scopeProject && boardWorkflow.scopeWorkflow && (
-          <BoardAddColumn project={scopeProject} workflow={boardWorkflow.scopeWorkflow} />
-        )}
 
         {grouping === "status" && hiddenStatuses.length > 0 && (
           <BoardHiddenColumnsPanel
@@ -1014,27 +1004,6 @@ const ServerPaginatedBoardColumn = memo(function ServerPaginatedBoardColumn({
   );
 });
 
-/** A project board's trailing "Add column", for whoever may add one. (MUL-7420) */
-function BoardAddColumn({ project, workflow }: { project: Project; workflow: IssueWorkflow }) {
-  const { t } = useT("issues");
-  const enabled = useFeatureEnabled(PROJECT_WORKFLOWS_V1_FLAG, false);
-  const { canManageProject } = useWorkflowPermissions(project);
-  if (!enabled || !canManageProject) return null;
-  return (
-    <div className="shrink-0 pt-1.5">
-      <AddColumnPopover
-        project={project}
-        workflow={workflow}
-        trigger={
-          <Button variant="ghost" size="sm" className="gap-1.5 text-muted-foreground">
-            <Plus className="size-3.5" />
-            {t(($) => $.workflows.columns.add_column)}
-          </Button>
-        }
-      />
-    </div>
-  );
-}
 
 function BoardHiddenColumnsPanel({
   hiddenStatuses,

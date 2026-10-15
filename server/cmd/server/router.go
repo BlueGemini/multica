@@ -2146,7 +2146,6 @@ func NewRouterWithOptions(pool *pgxpool.Pool, hub *realtime.Hub, bus *events.Bus
 					r.Delete("/", h.DeleteProject)
 					r.Post("/workflow", h.SetProjectWorkflow)
 					r.Put("/workflow/handoffs/{status}", h.SetProjectWorkflowHandoff)
-					r.Post("/workflow/columns", h.AddProjectWorkflowColumn)
 					r.Post("/workflow/brief", h.PreviewProjectWorkflowBrief)
 					r.Get("/resources", h.ListProjectResources)
 					r.Post("/resources", h.CreateProjectResource)

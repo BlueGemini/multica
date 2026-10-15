@@ -399,11 +399,15 @@ func ValidateHandoff(s Step, def Definition) error {
 		return invalid("status %q is not part of this project's workflow", s.StatusKey)
 	}
 	switch s.Handler.Type {
-	case HandlerNone, HandlerProjectLead, HandlerCreator:
-	case HandlerAgent, HandlerSquad, HandlerMember:
+	case HandlerNone, HandlerProjectLead:
+	case HandlerAgent, HandlerMember:
 		if s.Handler.ID == "" {
 			return invalid("choose a %s to hand off to", s.Handler.Type)
 		}
+	case HandlerSquad, HandlerCreator:
+		// A squad routes work itself, so a handoff to one would compete with
+		// its own assignment. (MUL-7420)
+		return invalid("hand off to an agent, a member or the project lead")
 	default:
 		return invalid("unknown handler type %q", s.Handler.Type)
 	}
