@@ -1489,7 +1489,9 @@
       "used_by_default_one": "Utilisé par {{count}} projet : {{names}}, et les tâches sans projet",
       "used_by_default_other": "Utilisé par {{count}} projets : {{names}}, et les tâches sans projet",
       "used_by_default_none": "Utilisé par les tâches sans projet",
-      "statuses_description": "États partagés par tous les workflows. La key sert à l’API et au CLI (multica issue status <id> <key>) ; faites glisser dans une catégorie pour réordonner les colonnes du tableau global."
+      "statuses_description": "États partagés par tous les workflows. La key sert à l’API et au CLI (multica issue status <id> <key>) ; faites glisser dans une catégorie pour réordonner les colonnes du tableau global.",
+      "new_blank": "Workflow vide",
+      "from_template": "À partir d’un modèle"
     },
     "editor": {
       "create_title": "Nouveau workflow",
@@ -1545,11 +1547,13 @@
       "select_step": "Sélectionnez une étape pour la configurer.",
       "unsaved": "Modifications non enregistrées",
       "not_found": "Ce workflow n’existe plus.",
-      "fixed": "Tous les workflows",
       "default_note": "Default est le tableau de tout projet sans workflow choisi, et des vues hors projet.",
       "handoffs_title": "Les passages de relais se règlent par projet",
       "handoffs_hint": "Un workflow ne décide que des colonnes d’un tableau. À qui revient une tâche en entrant dans une colonne se règle sur le tableau de chaque projet, depuis l’en-tête de colonne : des projets peuvent ainsi partager des colonnes et confier le travail à des personnes différentes.",
-      "new_badge": "Nouveau"
+      "new_badge": "Nouveau",
+      "fixed_start": "Commence par",
+      "fixed_end": "Se termine par",
+      "columns": "Colonnes"
     },
     "mapping": {
       "title": "Déplacer les tâches vers {{name}}",
@@ -1640,28 +1644,26 @@
       "next_default": "Colonne suivante ({{status}})",
       "saved": "Passage de relais enregistré",
       "error": "Impossible d’enregistrer le passage de relais",
-      "read_only": "Les admins de l’espace et le responsable du projet peuvent modifier les passages de relais."
+      "read_only": "Les admins de l’espace et le responsable du projet peuvent modifier les passages de relais.",
+      "to": "Confier à",
+      "none": "Pas de relais (l’assigné reste)",
+      "search": "Rechercher un agent ou un membre",
+      "agents": "Agents",
+      "members": "Membres",
+      "hint_on": "En entrant dans cette colonne, la tâche lui est assignée ; un agent démarre aussitôt.",
+      "hint_off": "En entrant dans cette colonne, l’assigné ne change pas.",
+      "then": "Une fois terminé, passe à « {{status}} »",
+      "then_none": "Une fois terminé, le responsable choisit la suite",
+      "more": "Plus d’options"
     },
     "columns": {
-      "title": "Ajouter une colonne",
-      "status": "État",
       "new_status": "Nouvel état…",
       "name_placeholder": "Nom de l’état",
-      "scope": "Où l’ajouter",
-      "scope_project": "Uniquement {{project}}",
-      "scope_project_hint": "Ce projet reçoit sa propre copie du workflow ; les autres projets gardent la leur.",
-      "scope_workflow": "Tous les projets qui utilisent {{workflow}}",
-      "scope_workflow_hint": "Modifie le workflow partagé.",
-      "scope_workflow_admin": "Seuls les admins de l’espace peuvent modifier un workflow partagé.",
-      "add": "Ajouter",
-      "add_column": "Ajouter une colonne",
-      "added": "Colonne ajoutée",
-      "error": "Impossible d’ajouter la colonne"
+      "add": "Ajouter"
     },
     "menu": {
       "view_flow": "Voir tout le flux",
-      "switch": "Changer de workflow",
-      "from_template": "Nouveau depuis un modèle"
+      "switch": "Changer de workflow"
     },
     "flow": {
       "title": "Workflow {{workflow}}",

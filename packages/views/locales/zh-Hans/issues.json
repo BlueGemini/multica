@@ -1437,7 +1437,9 @@
       "used_by_other": "用于 {{count}} 个项目：{{names}}",
       "used_by_default_other": "用于 {{count}} 个项目：{{names}}，以及没有项目的任务",
       "used_by_default_none": "用于没有项目的任务",
-      "statuses_description": "所有工作流共用的状态。key 用于 API 和 CLI（multica issue status <id> <key>）；在分类内拖动可调整全局看板的列顺序。"
+      "statuses_description": "所有工作流共用的状态。key 用于 API 和 CLI（multica issue status <id> <key>）；在分类内拖动可调整全局看板的列顺序。",
+      "new_blank": "空白工作流",
+      "from_template": "从模板创建"
     },
     "editor": {
       "create_title": "新建工作流",
@@ -1492,11 +1494,13 @@
       "select_step": "选择一个步骤进行配置。",
       "unsaved": "有未保存的修改",
       "not_found": "这个工作流已不存在。",
-      "fixed": "所有工作流都有",
       "default_note": "Default 是所有未选择工作流的项目、以及项目之外视图使用的看板。",
       "handoffs_title": "交接按项目设置",
       "handoffs_hint": "工作流只决定看板有哪些列。任务进入某一列时交给谁，在各项目看板的列头设置——所以多个项目可以共用列，却交给不同的人。",
-      "new_badge": "新建"
+      "new_badge": "新建",
+      "fixed_start": "开始",
+      "fixed_end": "结束",
+      "columns": "列"
     },
     "mapping": {
       "title": "将任务移入「{{name}}」",
@@ -1578,28 +1582,26 @@
       "next_default": "下一列（{{status}}）",
       "saved": "交接已保存",
       "error": "无法保存交接",
-      "read_only": "工作区管理员和项目负责人可以修改交接。"
+      "read_only": "工作区管理员和项目负责人可以修改交接。",
+      "to": "交给谁",
+      "none": "不交接（负责人不变）",
+      "search": "搜索智能体或成员",
+      "agents": "智能体",
+      "members": "成员",
+      "hint_on": "任务进入这一列时，负责人改为这里选的对象；交给智能体时会立即开始运行。",
+      "hint_off": "任务进入这一列时，负责人不变。",
+      "then": "完成后进入「{{status}}」",
+      "then_none": "完成后由处理人决定下一步",
+      "more": "更多选项"
     },
     "columns": {
-      "title": "添加列",
-      "status": "状态",
       "new_status": "新建状态…",
       "name_placeholder": "状态名称",
-      "scope": "添加到哪里",
-      "scope_project": "只给「{{project}}」",
-      "scope_project_hint": "这个项目会得到一份自己的工作流副本，其他项目不受影响。",
-      "scope_workflow": "所有使用「{{workflow}}」的项目",
-      "scope_workflow_hint": "修改共用的工作流。",
-      "scope_workflow_admin": "只有工作区管理员可以修改共用的工作流。",
-      "add": "添加",
-      "add_column": "添加列",
-      "added": "已添加列",
-      "error": "无法添加列"
+      "add": "添加"
     },
     "menu": {
       "view_flow": "查看完整流程",
-      "switch": "切换工作流",
-      "from_template": "从模板新建"
+      "switch": "切换工作流"
     },
     "flow": {
       "title": "「{{workflow}}」工作流",

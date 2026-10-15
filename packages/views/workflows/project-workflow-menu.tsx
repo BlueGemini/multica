@@ -2,9 +2,7 @@
 
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { ChevronDown, ChevronRight, LayoutTemplate, ListTree, Plus, Settings, Workflow } from "lucide-react";
-import { toast } from "sonner";
-import { clientErrorMessage } from "@multica/core/api";
+import { ChevronDown, ChevronRight, ListTree, Settings, Workflow } from "lucide-react";
 import { useFeatureEnabled } from "@multica/core/config";
 import { PROJECT_WORKFLOWS_V1_FLAG } from "@multica/core/feature-flags";
 import { useWorkspaceId } from "@multica/core/hooks";
@@ -12,7 +10,6 @@ import { useIssueStatuses } from "@multica/core/issue-statuses/hooks";
 import {
   resolveProjectWorkflow,
   statusAcceptsHandoff,
-  useCreateIssueWorkflow,
   useIssueWorkflows,
 } from "@multica/core/issue-workflows";
 import { useWorkspacePaths } from "@multica/core/paths";
@@ -38,17 +35,15 @@ import { StatusIcon } from "../issues/components/status-icon";
 import { useStatusLabel } from "../issues/utils/status-label";
 import { useNavigation } from "../navigation";
 import { useT } from "../i18n";
-import { AddColumnPopover } from "./add-column";
 import { ProjectHandoffForm } from "./handoff-form";
 import { useWorkflowPermissions } from "./permissions";
 import { useProjectWorkflowSwitch, WorkflowChoiceItems } from "./project-workflow-row";
 import { stepHandlerActor, useStepHandlerLabel } from "./step-handler";
-import { WORKFLOW_TEMPLATES, templateSteps, type WorkflowTemplateId } from "./templates";
 
 /**
- * The project board's "Workflow" menu (MUL-7420): open the full flow, switch
- * workflows, or start one from a template. Shown while workflows are on, or
- * when the project already names one.
+ * The project board's "Workflow" menu (MUL-7420): open the full flow or switch
+ * workflows; workflows themselves are made in settings. Shown while workflows
+ * are on, or when the project already names one.
  */
 export function ProjectWorkflowMenu({ project }: { project: Project }) {
   const { t } = useT("issues");
@@ -59,37 +54,16 @@ export function ProjectWorkflowMenu({ project }: { project: Project }) {
   const { workflows } = useIssueWorkflows(wsId);
   const { canManageProject, isAdmin } = useWorkflowPermissions(project);
   const { choose, busy, dialog } = useProjectWorkflowSwitch(project);
-  const createWorkflow = useCreateIssueWorkflow();
   const [flowOpen, setFlowOpen] = useState(false);
   const workflow = resolveProjectWorkflow(workflows, project);
 
   if (!workflow || (!enabled && !project.workflow_id)) return null;
 
-  const fromTemplate = async (id: WorkflowTemplateId) => {
-    const template = WORKFLOW_TEMPLATES.find((tpl) => tpl.id === id);
-    if (!template) return;
-    const templateName = t(($) => $.workflows.templates[id].name);
-    const taken = new Set(workflows.map((w) => w.name.toLowerCase()));
-    const name = taken.has(templateName.toLowerCase()) ? `${templateName} · ${project.title}`.slice(0, 64) : templateName;
-    try {
-      const created = await createWorkflow.mutateAsync({
-        name,
-        project_id: project.id,
-        steps: templateSteps(template, (status) =>
-          t(($) => ($.workflows.templates[id].statuses as Record<string, string>)[status] ?? status),
-        ),
-      });
-      await choose(created);
-    } catch (err) {
-      toast.error(clientErrorMessage(err) ?? t(($) => $.workflows.editor.error));
-    }
-  };
-
   return (
     <>
       <DropdownMenu>
         <DropdownMenuTrigger
-          disabled={busy || createWorkflow.isPending}
+          disabled={busy}
           render={
             <Button variant="ghost" size="sm" className="gap-1.5 text-muted-foreground">
               <Workflow className="size-3.5" />
@@ -104,44 +78,18 @@ export function ProjectWorkflowMenu({ project }: { project: Project }) {
             {t(($) => $.workflows.menu.view_flow)}
           </DropdownMenuItem>
           {canManageProject && (
-            <>
-              <DropdownMenuSub>
-                <DropdownMenuSubTrigger>
-                  <Workflow className="size-3.5" />
-                  {t(($) => $.workflows.menu.switch)}
-                </DropdownMenuSubTrigger>
-                <DropdownMenuSubContent className="w-80">
-                  <DropdownMenuGroup>
-                    <DropdownMenuLabel>{t(($) => $.workflows.project.picker_title)}</DropdownMenuLabel>
-                    <WorkflowChoiceItems project={project} onChoose={(w) => void choose(w)} />
-                  </DropdownMenuGroup>
-                </DropdownMenuSubContent>
-              </DropdownMenuSub>
-              {enabled && (
-                <DropdownMenuSub>
-                  <DropdownMenuSubTrigger>
-                    <LayoutTemplate className="size-3.5" />
-                    {t(($) => $.workflows.menu.from_template)}
-                  </DropdownMenuSubTrigger>
-                  <DropdownMenuSubContent className="w-72">
-                    {WORKFLOW_TEMPLATES.map((template) => (
-                      <DropdownMenuItem
-                        key={template.id}
-                        className="items-start py-2"
-                        onClick={() => void fromTemplate(template.id)}
-                      >
-                        <span className="min-w-0">
-                          <span className="block font-medium">{t(($) => $.workflows.templates[template.id].name)}</span>
-                          <span className="block text-caption text-muted-foreground">
-                            {t(($) => $.workflows.templates[template.id].summary)}
-                          </span>
-                        </span>
-                      </DropdownMenuItem>
-                    ))}
-                  </DropdownMenuSubContent>
-                </DropdownMenuSub>
-              )}
-            </>
+            <DropdownMenuSub>
+              <DropdownMenuSubTrigger>
+                <Workflow className="size-3.5" />
+                {t(($) => $.workflows.menu.switch)}
+              </DropdownMenuSubTrigger>
+              <DropdownMenuSubContent className="w-80">
+                <DropdownMenuGroup>
+                  <DropdownMenuLabel>{t(($) => $.workflows.project.picker_title)}</DropdownMenuLabel>
+                  <WorkflowChoiceItems project={project} onChoose={(w) => void choose(w)} />
+                </DropdownMenuGroup>
+              </DropdownMenuSubContent>
+            </DropdownMenuSub>
           )}
           {isAdmin && enabled && (
             <>
@@ -178,7 +126,6 @@ export function WorkflowFlowSheet({
   const { t } = useT("issues");
   const wsId = useWorkspaceId();
   const { data: projects = [] } = useQuery(projectListOptions(wsId));
-  const enabled = useFeatureEnabled(PROJECT_WORKFLOWS_V1_FLAG, false);
   const { canManageProject } = useWorkflowPermissions(project);
   const [expanded, setExpanded] = useState<string | null>(null);
   const sharedWith = workflow.is_default
@@ -209,18 +156,6 @@ export function WorkflowFlowSheet({
             />
           ))}
         </ol>
-        {canManageProject && enabled && (
-          <AddColumnPopover
-            project={project}
-            workflow={workflow}
-            trigger={
-              <Button variant="outline" size="sm" className="gap-1.5 self-start">
-                <Plus className="size-3.5" />
-                {t(($) => $.workflows.columns.add_column)}
-              </Button>
-            }
-          />
-        )}
       </SheetContent>
     </Sheet>
   );

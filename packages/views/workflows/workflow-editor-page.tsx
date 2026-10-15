@@ -48,17 +48,19 @@ import {
 } from "@multica/ui/components/ui/dropdown-menu";
 import { Input } from "@multica/ui/components/ui/input";
 import { Spinner } from "@multica/ui/components/ui/spinner";
+import { Textarea } from "@multica/ui/components/ui/textarea";
 import { cn } from "@multica/ui/lib/utils";
 import { StatusIcon } from "../issues/components/status-icon";
 import { useStatusLabel } from "../issues/utils/status-label";
 import { useT } from "../i18n";
+import { WORKFLOW_TEMPLATES, type WorkflowTemplateId } from "./templates";
 import { WorkflowMappingDialog } from "./workflow-mapping-dialog";
 
 /** A new workflow starts from the common delivery loop instead of nothing. */
 const NEW_WORKFLOW_MIDDLE = ["in_progress", "in_review"];
 
 /** A middle column of the draft: a library status, or one to create on save. */
-type DraftColumn = { id: string; status_key: string } | { id: string; new_name: string };
+type DraftColumn = { id: string; status_key: string } | { id: string; new_name: string; category?: "unstarted" | "started" };
 
 interface Draft {
   name: string;
@@ -96,12 +98,15 @@ function mappingPlanFrom(err: unknown): IssueWorkflowMappingPlan | null {
 export function WorkflowEditorPage({
   workflowId,
   seed,
+  template,
   canEdit,
   onBack,
   onOpen,
 }: {
   workflowId: string | null;
   seed: IssueWorkflow | null;
+  /** Pre-fills a new workflow from a template. */
+  template?: WorkflowTemplateId | null;
   canEdit: boolean;
   onBack: () => void;
   /** Navigates to another workflow's editor (after create, or to a duplicate). */
@@ -122,6 +127,23 @@ export function WorkflowEditorPage({
   const baseline = useMemo<Draft>(() => {
     if (saved) return draftFrom(saved);
     if (seed) return { ...draftFrom(seed), name: t(($) => $.workflows.editor.copy_name, { name: seed.name }) };
+    const tpl = template ? WORKFLOW_TEMPLATES.find((x) => x.id === template) : undefined;
+    if (tpl) {
+      const statusName = (name: string) =>
+        t(($) => ($.workflows.templates[tpl.id].statuses as Record<string, string>)[name] ?? name);
+      return {
+        name: t(($) => $.workflows.templates[tpl.id].name),
+        description: t(($) => $.workflows.templates[tpl.id].summary),
+        middle: tpl.columns.map((column): DraftColumn => {
+          if ("status" in column) return { id: column.status, status_key: column.status };
+          const name = statusName(column.name);
+          const existing = catalog.activeStatuses.find((e) => e.name.toLowerCase() === name.toLowerCase());
+          return existing
+            ? { id: existing.key, status_key: existing.key }
+            : { id: `new:${name}`, new_name: name, category: column.category };
+        }),
+      };
+    }
     return {
       name: "",
       description: "",
@@ -129,7 +151,7 @@ export function WorkflowEditorPage({
     };
     // Re-seed only when the target changes or the saved row is refreshed.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [saved?.updated_at, workflowId, seed?.id]);
+  }, [saved?.updated_at, workflowId, seed?.id, template, catalog.activeStatuses.length]);
 
   const [draft, setDraft] = useState<Draft>(baseline);
   const [mappingPlan, setMappingPlan] = useState<IssueWorkflowMappingPlan | null>(null);
@@ -165,7 +187,9 @@ export function WorkflowEditorPage({
 
   const save = async (mapping?: Record<string, string>) => {
     const steps: IssueWorkflowStepInput[] = draft.middle.map((c) =>
-      "status_key" in c ? { status_key: c.status_key } : { new_status: { name: c.new_name } },
+      "status_key" in c
+        ? { status_key: c.status_key }
+        : { new_status: { name: c.new_name, ...(c.category ? { category: c.category } : {}) } },
     );
     const body = {
       ...(isDefault ? {} : { name: draft.name.trim() }),
@@ -214,19 +238,23 @@ export function WorkflowEditorPage({
   }
 
   const title = draft.name.trim() || t(($) => $.workflows.editor.create_title);
-  const fixedRow = (key: string) => (
-    <li key={key}>
-      <div className="flex items-center gap-2 rounded-lg border border-dashed border-surface-border px-2.5 py-2 text-muted-foreground">
+  const fixedGroup = (label: string, keys: string[]) => (
+    <li>
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 rounded-lg border border-dashed border-surface-border px-2.5 py-2 text-muted-foreground">
         <Lock aria-hidden className="size-3.5 shrink-0" />
-        <StatusIcon
-          status={key}
-          category={catalog.categoryOf(key)}
-          color={catalog.colorOf(key)}
-          icon={catalog.iconOf(key)}
-          className="h-4 w-4 shrink-0"
-        />
-        <span className="truncate text-body">{labelOf(key)}</span>
-        <span className="ml-auto shrink-0 text-caption">{t(($) => $.workflows.editor.fixed)}</span>
+        <span className="text-caption">{label}</span>
+        {keys.map((key) => (
+          <span key={key} className="inline-flex items-center gap-1.5 text-body">
+            <StatusIcon
+              status={key}
+              category={catalog.categoryOf(key)}
+              color={catalog.colorOf(key)}
+              icon={catalog.iconOf(key)}
+              className="h-3.5 w-3.5 shrink-0"
+            />
+            {labelOf(key)}
+          </span>
+        ))}
       </div>
     </li>
   );
@@ -236,24 +264,7 @@ export function WorkflowEditorPage({
       <Breadcrumb onBack={onBack} current={title} />
       <div className="flex items-start gap-3">
         <div className="min-w-0 flex-1 space-y-1">
-          <input
-            aria-label={t(($) => $.workflows.editor.name)}
-            value={draft.name}
-            maxLength={64}
-            readOnly={!canEdit || isDefault}
-            placeholder={t(($) => $.workflows.editor.name_placeholder)}
-            onChange={(e) => setDraft((d) => ({ ...d, name: e.target.value }))}
-            className="w-full bg-transparent text-title-lg font-semibold tracking-tight outline-none placeholder:text-muted-foreground"
-          />
-          <input
-            aria-label={t(($) => $.workflows.editor.description)}
-            value={draft.description}
-            maxLength={256}
-            readOnly={!canEdit}
-            placeholder={canEdit ? t(($) => $.workflows.editor.description_placeholder) : ""}
-            onChange={(e) => setDraft((d) => ({ ...d, description: e.target.value }))}
-            className="w-full bg-transparent text-body text-muted-foreground outline-none placeholder:text-muted-foreground"
-          />
+          <h2 className="truncate text-title-lg font-semibold tracking-tight">{title}</h2>
           <p className="text-body text-muted-foreground">
             {isDefault
               ? t(($) => $.workflows.editor.default_note)
@@ -310,10 +321,41 @@ export function WorkflowEditorPage({
         )}
       </div>
 
+      <div className="grid max-w-xl gap-4">
+        <div className="space-y-1.5">
+          <label htmlFor="workflow-name" className="block text-caption font-medium">
+            {t(($) => $.workflows.editor.name)}
+          </label>
+          <Input
+            id="workflow-name"
+            value={draft.name}
+            maxLength={64}
+            readOnly={!canEdit || isDefault}
+            placeholder={t(($) => $.workflows.editor.name_placeholder)}
+            onChange={(e) => setDraft((d) => ({ ...d, name: e.target.value }))}
+          />
+        </div>
+        <div className="space-y-1.5">
+          <label htmlFor="workflow-description" className="block text-caption font-medium">
+            {t(($) => $.workflows.editor.description)}
+          </label>
+          <Textarea
+            id="workflow-description"
+            rows={2}
+            value={draft.description}
+            maxLength={256}
+            readOnly={!canEdit}
+            placeholder={canEdit ? t(($) => $.workflows.editor.description_placeholder) : ""}
+            onChange={(e) => setDraft((d) => ({ ...d, description: e.target.value }))}
+          />
+        </div>
+      </div>
+
       <div className="grid items-start gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,0.8fr)]">
         <div className="min-w-0">
+          <p className="mb-2 text-caption font-medium">{t(($) => $.workflows.editor.columns)}</p>
           <ol className="space-y-1.5">
-            {WORKFLOW_HEAD_STATUSES.map(fixedRow)}
+            {fixedGroup(t(($) => $.workflows.editor.fixed_start), [...WORKFLOW_HEAD_STATUSES])}
             <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={onDragEnd}>
               <SortableContext items={ids} strategy={verticalListSortingStrategy}>
                 {draft.middle.map((column) => (
@@ -329,7 +371,7 @@ export function WorkflowEditorPage({
                 ))}
               </SortableContext>
             </DndContext>
-            {WORKFLOW_TAIL_STATUSES.map(fixedRow)}
+            {fixedGroup(t(($) => $.workflows.editor.fixed_end), [...WORKFLOW_TAIL_STATUSES])}
           </ol>
           {canEdit && (
             <div className="mt-3 flex flex-wrap items-center gap-2">

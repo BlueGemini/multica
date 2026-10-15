@@ -1489,7 +1489,9 @@
       "used_by_default_one": "Used by {{count}} project: {{names}}, and issues without a project",
       "used_by_default_other": "Used by {{count}} projects: {{names}}, and issues without a project",
       "used_by_default_none": "Used by issues without a project",
-      "statuses_description": "Statuses shared by every workflow. The key is what the API and CLI use (multica issue status <id> <key>); drag within a category to reorder the global board’s columns."
+      "statuses_description": "Statuses shared by every workflow. The key is what the API and CLI use (multica issue status <id> <key>); drag within a category to reorder the global board’s columns.",
+      "new_blank": "Blank workflow",
+      "from_template": "From a template"
     },
     "editor": {
       "create_title": "New workflow",
@@ -1545,11 +1547,13 @@
       "select_step": "Select a step to configure it.",
       "unsaved": "Unsaved changes",
       "not_found": "This workflow no longer exists.",
-      "fixed": "Every workflow",
       "default_note": "Default is the board of every project that doesn’t pick a workflow, and of views outside a project.",
       "handoffs_title": "Handoffs are set per project",
       "handoffs_hint": "A workflow only decides a board’s columns. Who an issue goes to when it enters a column is set on each project’s board, from the column header — so projects can share columns and still hand off to different people.",
-      "new_badge": "New"
+      "new_badge": "New",
+      "fixed_start": "Starts with",
+      "fixed_end": "Ends with",
+      "columns": "Columns"
     },
     "mapping": {
       "title": "Move issues into {{name}}",
@@ -1640,28 +1644,26 @@
       "next_default": "Next column ({{status}})",
       "saved": "Handoff saved",
       "error": "Couldn't save the handoff",
-      "read_only": "Workspace admins and the project lead can change handoffs."
+      "read_only": "Workspace admins and the project lead can change handoffs.",
+      "to": "Hand to",
+      "none": "No handoff (assignee stays)",
+      "search": "Search agents or members",
+      "agents": "Agents",
+      "members": "Members",
+      "hint_on": "Entering this column makes them the assignee; an agent starts a run right away.",
+      "hint_off": "Entering this column keeps the current assignee.",
+      "then": "When done, moves to {{status}}",
+      "then_none": "When done, the handler picks the next status",
+      "more": "More options"
     },
     "columns": {
-      "title": "Add a column",
-      "status": "Status",
       "new_status": "New status…",
       "name_placeholder": "Status name",
-      "scope": "Where to add it",
-      "scope_project": "Only {{project}}",
-      "scope_project_hint": "This project gets its own copy of the workflow; other projects keep theirs.",
-      "scope_workflow": "Every project using {{workflow}}",
-      "scope_workflow_hint": "Changes the shared workflow.",
-      "scope_workflow_admin": "Only workspace admins can change a shared workflow.",
-      "add": "Add",
-      "add_column": "Add column",
-      "added": "Column added",
-      "error": "Couldn't add the column"
+      "add": "Add"
     },
     "menu": {
       "view_flow": "View full flow",
-      "switch": "Switch workflow",
-      "from_template": "New from template"
+      "switch": "Switch workflow"
     },
     "flow": {
       "title": "{{workflow}} workflow",

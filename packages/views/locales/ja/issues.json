@@ -1437,7 +1437,9 @@
       "used_by_other": "{{count}} 件のプロジェクトで使用中：{{names}}",
       "used_by_default_other": "{{count}} 件のプロジェクト（{{names}}）とプロジェクトのないタスクで使用中",
       "used_by_default_none": "プロジェクトのないタスクで使用中",
-      "statuses_description": "すべてのワークフローで共有するステータスです。key は API と CLI（multica issue status <id> <key>）で使います。カテゴリ内でドラッグすると全体ボードの列の順序を変えられます。"
+      "statuses_description": "すべてのワークフローで共有するステータスです。key は API と CLI（multica issue status <id> <key>）で使います。カテゴリ内でドラッグすると全体ボードの列の順序を変えられます。",
+      "new_blank": "空のワークフロー",
+      "from_template": "テンプレートから"
     },
     "editor": {
       "create_title": "新規ワークフロー",
@@ -1492,11 +1494,13 @@
       "select_step": "ステップを選んで設定します。",
       "unsaved": "未保存の変更があります",
       "not_found": "このワークフローはもう存在しません。",
-      "fixed": "全ワークフロー共通",
       "default_note": "Default は、ワークフローを選んでいないプロジェクトと、プロジェクト外のビューで使うボードです。",
       "handoffs_title": "引き継ぎはプロジェクトごとに設定します",
       "handoffs_hint": "ワークフローが決めるのはボードの列だけです。列に入ったタスクを誰に渡すかは、各プロジェクトのボードの列ヘッダーで設定します。列を共有しながら、引き継ぎ先はプロジェクトごとに変えられます。",
-      "new_badge": "新規"
+      "new_badge": "新規",
+      "fixed_start": "開始",
+      "fixed_end": "終了",
+      "columns": "列"
     },
     "mapping": {
       "title": "タスクを「{{name}}」に移動",
@@ -1578,28 +1582,26 @@
       "next_default": "次の列（{{status}}）",
       "saved": "引き継ぎを保存しました",
       "error": "引き継ぎを保存できませんでした",
-      "read_only": "引き継ぎはワークスペース管理者とプロジェクトリードが変更できます。"
+      "read_only": "引き継ぎはワークスペース管理者とプロジェクトリードが変更できます。",
+      "to": "引き継ぎ先",
+      "none": "引き継がない（担当者はそのまま）",
+      "search": "エージェントまたはメンバーを検索",
+      "agents": "エージェント",
+      "members": "メンバー",
+      "hint_on": "この列に入ると担当者がここで選んだ相手に変わります。エージェントならすぐに実行を始めます。",
+      "hint_off": "この列に入っても担当者は変わりません。",
+      "then": "完了後は「{{status}}」へ",
+      "then_none": "完了後の行き先は担当者が決めます",
+      "more": "その他のオプション"
     },
     "columns": {
-      "title": "列を追加",
-      "status": "ステータス",
       "new_status": "新しいステータス…",
       "name_placeholder": "ステータス名",
-      "scope": "追加先",
-      "scope_project": "「{{project}}」だけ",
-      "scope_project_hint": "このプロジェクト専用のワークフローのコピーを作ります。ほかのプロジェクトは変わりません。",
-      "scope_workflow": "「{{workflow}}」を使うすべてのプロジェクト",
-      "scope_workflow_hint": "共有ワークフローを変更します。",
-      "scope_workflow_admin": "共有ワークフローを変更できるのはワークスペース管理者だけです。",
-      "add": "追加",
-      "add_column": "列を追加",
-      "added": "列を追加しました",
-      "error": "列を追加できませんでした"
+      "add": "追加"
     },
     "menu": {
       "view_flow": "フロー全体を見る",
-      "switch": "ワークフローを切り替え",
-      "from_template": "テンプレートから作成"
+      "switch": "ワークフローを切り替え"
     },
     "flow": {
       "title": "ワークフロー「{{workflow}}」",

@@ -2,7 +2,7 @@
 
 import { Fragment, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { ChevronRight, Plus } from "lucide-react";
+import { ChevronDown, ChevronRight, LayoutTemplate, Plus } from "lucide-react";
 import { useAuthStore } from "@multica/core/auth";
 import { useWorkspaceId } from "@multica/core/hooks";
 import { useIssueStatuses } from "@multica/core/issue-statuses/hooks";
@@ -12,6 +12,15 @@ import { projectListOptions } from "@multica/core/projects/queries";
 import { memberListOptions } from "@multica/core/workspace/queries";
 import type { IssueWorkflow, IssueWorkflowStep, Project } from "@multica/core/types";
 import { Button } from "@multica/ui/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuGroup,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@multica/ui/components/ui/dropdown-menu";
 import { ActorAvatar } from "../common/actor-avatar";
 import { StatusIcon } from "../issues/components/status-icon";
 import { useStatusLabel } from "../issues/utils/status-label";
@@ -19,10 +28,12 @@ import { useNavigation } from "../navigation";
 import { IssueStatusesTab } from "../settings/components/issue-statuses-tab";
 import { SettingsTab } from "../settings/components/settings-layout";
 import { useT } from "../i18n";
+import { WORKFLOW_TEMPLATES, type WorkflowTemplateId } from "./templates";
 import { WorkflowEditorPage } from "./workflow-editor-page";
 
 const WORKFLOW_PARAM = "workflow";
 const DUPLICATE_PARAM = "from";
+const TEMPLATE_PARAM = "template";
 const NEW_WORKFLOW = "new";
 
 /**
@@ -43,6 +54,8 @@ export function WorkflowsTab() {
 
   const open = navigation.searchParams.get(WORKFLOW_PARAM);
   const duplicateOf = navigation.searchParams.get(DUPLICATE_PARAM);
+  const templateParam = navigation.searchParams.get(TEMPLATE_PARAM);
+  const template = WORKFLOW_TEMPLATES.find((tpl) => tpl.id === templateParam)?.id ?? null;
   const hrefWith = (params: Record<string, string | null>) => {
     const next = new URLSearchParams(navigation.searchParams);
     for (const [key, value] of Object.entries(params)) {
@@ -51,8 +64,10 @@ export function WorkflowsTab() {
     }
     return `${navigation.pathname}?${next.toString()}`;
   };
-  const openEditor = (id: string) => navigation.push(hrefWith({ [WORKFLOW_PARAM]: id, [DUPLICATE_PARAM]: null }));
-  const backToList = () => navigation.push(hrefWith({ [WORKFLOW_PARAM]: null, [DUPLICATE_PARAM]: null }));
+  const openEditor = (id: string, from: WorkflowTemplateId | null = null) =>
+    navigation.push(hrefWith({ [WORKFLOW_PARAM]: id, [DUPLICATE_PARAM]: null, [TEMPLATE_PARAM]: from }));
+  const backToList = () =>
+    navigation.push(hrefWith({ [WORKFLOW_PARAM]: null, [DUPLICATE_PARAM]: null, [TEMPLATE_PARAM]: null }));
 
   const usage = useMemo(() => {
     const counts = new Map<string, number>();
@@ -67,15 +82,18 @@ export function WorkflowsTab() {
     const seed = open === NEW_WORKFLOW && duplicateOf ? workflows.find((w) => w.id === duplicateOf) ?? null : null;
     return (
       <WorkflowEditorPage
-        key={`${open}:${duplicateOf ?? ""}`}
+        key={`${open}:${duplicateOf ?? ""}:${template ?? ""}`}
         workflowId={open === NEW_WORKFLOW ? null : open}
         seed={seed}
+        template={open === NEW_WORKFLOW && !duplicateOf ? template : null}
         canEdit={isAdmin}
         onBack={backToList}
         onOpen={(target) =>
           "id" in target
-            ? navigation.replace(hrefWith({ [WORKFLOW_PARAM]: target.id, [DUPLICATE_PARAM]: null }))
-            : navigation.push(hrefWith({ [WORKFLOW_PARAM]: NEW_WORKFLOW, [DUPLICATE_PARAM]: target.duplicateOf }))
+            ? navigation.replace(hrefWith({ [WORKFLOW_PARAM]: target.id, [DUPLICATE_PARAM]: null, [TEMPLATE_PARAM]: null }))
+            : navigation.push(
+                hrefWith({ [WORKFLOW_PARAM]: NEW_WORKFLOW, [DUPLICATE_PARAM]: target.duplicateOf, [TEMPLATE_PARAM]: null }),
+              )
         }
       />
     );
@@ -93,10 +111,38 @@ export function WorkflowsTab() {
             <p className="mt-1 text-caption text-muted-foreground">{t(($) => $.workflows.settings.section_description)}</p>
           </div>
           {isAdmin && (
-            <Button variant="outline" className="gap-1.5" onClick={() => openEditor(NEW_WORKFLOW)}>
-              <Plus className="size-3.5" />
-              {t(($) => $.workflows.settings.new)}
-            </Button>
+            <DropdownMenu>
+              <DropdownMenuTrigger
+                render={
+                  <Button variant="outline" className="gap-1.5">
+                    <Plus className="size-3.5" />
+                    {t(($) => $.workflows.settings.new)}
+                    <ChevronDown className="size-3" />
+                  </Button>
+                }
+              />
+              <DropdownMenuContent align="end" className="w-72">
+                <DropdownMenuItem onClick={() => openEditor(NEW_WORKFLOW)}>
+                  <Plus className="size-3.5" />
+                  {t(($) => $.workflows.settings.new_blank)}
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuGroup>
+                  <DropdownMenuLabel>{t(($) => $.workflows.settings.from_template)}</DropdownMenuLabel>
+                  {WORKFLOW_TEMPLATES.map((tpl) => (
+                    <DropdownMenuItem key={tpl.id} className="items-start py-2" onClick={() => openEditor(NEW_WORKFLOW, tpl.id)}>
+                      <LayoutTemplate className="mt-0.5 size-3.5" />
+                      <span className="min-w-0">
+                        <span className="block font-medium">{t(($) => $.workflows.templates[tpl.id].name)}</span>
+                        <span className="block text-caption text-muted-foreground">
+                          {t(($) => $.workflows.templates[tpl.id].summary)}
+                        </span>
+                      </span>
+                    </DropdownMenuItem>
+                  ))}
+                </DropdownMenuGroup>
+              </DropdownMenuContent>
+            </DropdownMenu>
           )}
         </header>
         <div className="divide-y divide-surface-border overflow-hidden rounded-lg border border-surface-border bg-card">
