@@ -3,7 +3,14 @@ import { api } from "../api";
 import { useWorkspaceId } from "../hooks";
 import { issueKeys } from "../issues/queries";
 import { projectKeys } from "../projects/queries";
-import type { IssueWorkflowWriteRequest, SetProjectWorkflowRequest } from "../types";
+import type {
+  AddProjectWorkflowColumnRequest,
+  IssueWorkflowWriteRequest,
+  ListProjectsResponse,
+  Project,
+  SetProjectWorkflowHandoffRequest,
+  SetProjectWorkflowRequest,
+} from "../types";
 import { issueWorkflowKeys } from "./queries";
 
 /**
@@ -63,6 +70,45 @@ export function useSetProjectWorkflow() {
       qc.invalidateQueries({ queryKey: issueWorkflowKeys.all(wsId) });
       // Remapped issues moved columns.
       qc.invalidateQueries({ queryKey: issueKeys.all(wsId) });
+    },
+  });
+}
+
+function useProjectWorkflowWriteSettled() {
+  const qc = useQueryClient();
+  const wsId = useWorkspaceId();
+  return (project: Project | undefined, projectId: string) => {
+    if (project) {
+      qc.setQueryData<ListProjectsResponse>(projectKeys.list(wsId), (old) =>
+        old && { ...old, projects: old.projects.map((p) => (p.id === project.id ? { ...p, ...project } : p)) },
+      );
+    }
+    qc.invalidateQueries({ queryKey: projectKeys.list(wsId) });
+    qc.invalidateQueries({ queryKey: projectKeys.detail(wsId, projectId) });
+  };
+}
+
+/** Saves this project's handoff for one column. */
+export function useSetProjectWorkflowHandoff() {
+  const settled = useProjectWorkflowWriteSettled();
+  return useMutation({
+    mutationFn: ({ projectId, statusKey, ...data }: { projectId: string; statusKey: string } & SetProjectWorkflowHandoffRequest) =>
+      api.setProjectWorkflowHandoff(projectId, statusKey, data),
+    onSettled: (project, _error, { projectId }) => settled(project, projectId),
+  });
+}
+
+/** Adds a column to a project's board, possibly giving it its own workflow. */
+export function useAddProjectWorkflowColumn() {
+  const qc = useQueryClient();
+  const wsId = useWorkspaceId();
+  const settled = useProjectWorkflowWriteSettled();
+  return useMutation({
+    mutationFn: ({ projectId, ...data }: { projectId: string } & AddProjectWorkflowColumnRequest) =>
+      api.addProjectWorkflowColumn(projectId, data),
+    onSettled: (result, _error, { projectId }) => {
+      settled(result?.project, projectId);
+      qc.invalidateQueries({ queryKey: issueWorkflowKeys.all(wsId) });
     },
   });
 }

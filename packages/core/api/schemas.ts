@@ -568,7 +568,7 @@ export const IssueWorkflowSchema = z.object({
   workspace_id: z.string(),
   name: z.string(),
   description: z.string().default(""),
-  initial_status_key: z.string(),
+  is_default: z.boolean().default(false),
   steps: z.array(IssueWorkflowStepSchema).default([]),
   project_ids: z.array(z.string()).default([]),
   created_at: z.string(),
@@ -590,7 +590,7 @@ export const EMPTY_ISSUE_WORKFLOW: IssueWorkflow = {
   workspace_id: "",
   name: "",
   description: "",
-  initial_status_key: "",
+  is_default: false,
   steps: [],
   project_ids: [],
   created_at: "",
@@ -620,6 +620,18 @@ export const EMPTY_ISSUE_WORKFLOW_DRY_RUN: IssueWorkflowDryRunResponse = {
   dry_run: true,
   plan: { required: [], unchanged: [], total_issues: 0, affected_issues: 0 },
 };
+
+// One bad handoff drops itself, not the project: the column then shows no
+// handler, which is what the server does with a handoff it cannot use.
+export const ProjectWorkflowHandoffsSchema = z
+  .array(z.unknown())
+  .default([])
+  .transform((items) =>
+    items.flatMap((item) => {
+      const parsed = IssueWorkflowStepSchema.safeParse(item);
+      return parsed.success ? [parsed.data] : [];
+    }),
+  );
 
 export const IssueWorkflowBriefPreviewSchema = z.object({
   brief: z.string().default(""),
@@ -1543,6 +1555,7 @@ const ProjectSchema = z.object({
   done_count: z.number().default(0),
   resource_count: z.number().default(0),
   workflow_id: z.string().nullable().default(null),
+  workflow_handoffs: ProjectWorkflowHandoffsSchema,
 }).loose();
 
 const SearchProjectResultSchema = ProjectSchema.extend({

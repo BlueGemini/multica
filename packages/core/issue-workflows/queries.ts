@@ -5,9 +5,10 @@ import type { IssueWorkflow, IssueWorkflowStep, Project } from "../types";
 /**
  * Workspace workflows (MUL-7420).
  *
- * A project either names a workflow or uses the implicit Default workflow:
- * every active catalog status, no handoffs. Every helper here returns null
- * for Default so callers keep their pre-workflow behavior unchanged.
+ * A project's board is its workflow's columns — the named one it picked, or
+ * the workspace Default — with the project's own handoffs on them. Helpers
+ * return null only while workflows are unknown (still loading, or a server
+ * without workflows), and callers then keep their pre-workflow behavior.
  */
 
 export const issueWorkflowKeys = {
@@ -41,14 +42,75 @@ export function issueWorkflowListOptions(wsId: string) {
   });
 }
 
-/** The workflow a project uses, or null for the Default workflow. */
+/** The workspace Default workflow, once loaded. */
+export function defaultWorkflow(workflows: readonly IssueWorkflow[] | undefined): IssueWorkflow | null {
+  return workflows?.find((w) => w.is_default) ?? null;
+}
+
+/** A workflow's columns with a project's handoffs on them. */
+export function withProjectHandoffs(
+  workflow: IssueWorkflow,
+  handoffs: readonly IssueWorkflowStep[] | undefined,
+): IssueWorkflow {
+  if (!handoffs || handoffs.length === 0) return workflow;
+  const byStatus = new Map(handoffs.map((h) => [h.status_key, h]));
+  return {
+    ...workflow,
+    steps: workflow.steps.map((s) => {
+      const handoff = byStatus.get(s.status_key);
+      return handoff && statusAcceptsHandoff(s.status_key) ? { ...handoff, status_key: s.status_key } : s;
+    }),
+  };
+}
+
+/** Statuses at the ends of every workflow, in the order they sit. */
+export const WORKFLOW_HEAD_STATUSES = ["backlog", "todo"] as const;
+export const WORKFLOW_TAIL_STATUSES = ["blocked", "done", "cancelled"] as const;
+const FIXED_STATUSES = new Set<string>([...WORKFLOW_HEAD_STATUSES, ...WORKFLOW_TAIL_STATUSES]);
+const NO_HANDOFF_STATUSES = new Set(["backlog", "done", "cancelled"]);
+
+/** Whether a status is one of the columns every workflow keeps. */
+export function isFixedWorkflowStatus(statusKey: string): boolean {
+  return FIXED_STATUSES.has(statusKey);
+}
+
+/** Whether a column can have a handler: parking and closing columns cannot. */
+export function statusAcceptsHandoff(statusKey: string): boolean {
+  return !NO_HANDOFF_STATUSES.has(statusKey);
+}
+
+/** The columns between the fixed head and tail, in order. */
+export function workflowMiddleKeys(workflow: Pick<IssueWorkflow, "steps">): string[] {
+  return workflow.steps.map((s) => s.status_key).filter((k) => !FIXED_STATUSES.has(k));
+}
+
+/**
+ * The column a step's handler is told to move to when done: the step's own
+ * choice, else the next column (skipping blocked); empty at the end.
+ */
+export function workflowNextStatus(workflow: Pick<IssueWorkflow, "steps">, statusKey: string): string {
+  const index = workflow.steps.findIndex((s) => s.status_key === statusKey);
+  if (index < 0) return "";
+  const own = workflow.steps[index]?.next_status_key;
+  if (own) return own;
+  for (const s of workflow.steps.slice(index + 1)) {
+    if (s.status_key !== "blocked") return s.status_key;
+  }
+  return "";
+}
+
+/**
+ * The workflow a project uses — its named one, else Default — with the
+ * project's handoffs overlaid; null while workflows are unknown.
+ */
 export function resolveProjectWorkflow(
   workflows: readonly IssueWorkflow[] | undefined,
-  project: Pick<Project, "workflow_id"> | null | undefined,
+  project: Pick<Project, "workflow_id" | "workflow_handoffs"> | null | undefined,
 ): IssueWorkflow | null {
-  const id = project?.workflow_id;
-  if (!id || !workflows) return null;
-  return workflows.find((w) => w.id === id) ?? null;
+  if (!project || !workflows) return null;
+  const named = project.workflow_id ? workflows.find((w) => w.id === project.workflow_id) : undefined;
+  const workflow = named ?? defaultWorkflow(workflows);
+  return workflow ? withProjectHandoffs(workflow, project.workflow_handoffs) : null;
 }
 
 export function workflowStep(
@@ -63,35 +125,17 @@ export function stepHandsOff(step: IssueWorkflowStep | undefined): boolean {
   return !!step && step.handler.type !== "none";
 }
 
-/** Whether a status is allowed for issues of a project using `workflow`. */
+/**
+ * Whether a status is allowed for issues of a project using `workflow`.
+ * Default allows every status, as the server does, so an issue on a status
+ * Default no longer lists can still be moved off and back.
+ */
 export function workflowAllowsStatus(
   workflow: IssueWorkflow | null | undefined,
   statusKey: string,
 ): boolean {
-  if (!workflow) return true;
+  if (!workflow || workflow.is_default) return true;
   return workflow.steps.some((s) => s.status_key === statusKey);
-}
-
-/**
- * Where a one-click "mark done" takes an issue of a project using `workflow`:
- * `done`, or the workflow's first done-category step when it does not list
- * `done`; null when the workflow has no done step at all.
- */
-export function workflowDoneStatus(
-  workflow: IssueWorkflow | null | undefined,
-  categoryOf: (key: string) => string,
-): string | null {
-  if (workflowAllowsStatus(workflow, "done")) return "done";
-  return workflow?.steps.find((s) => categoryOf(s.status_key) === "done")?.status_key ?? null;
-}
-
-/**
- * Where un-marking a duplicate returns an issue: `todo`, or the workflow's
- * starting step when the workflow does not list `todo`.
- */
-export function workflowReopenStatus(workflow: IssueWorkflow | null | undefined): string {
-  if (!workflow || workflowAllowsStatus(workflow, "todo")) return "todo";
-  return workflow.initial_status_key;
 }
 
 /** Steps whose entry reassigns the issue. */

@@ -137,6 +137,8 @@ import type {
   IssueWorkflowDryRunResponse,
   ListIssueWorkflowsResponse,
   SetProjectWorkflowRequest,
+  SetProjectWorkflowHandoffRequest,
+  AddProjectWorkflowColumnRequest,
   WorkflowHandoffPreview,
   IssueLabelsResponse,
   LabelResourceType,
@@ -4177,16 +4179,52 @@ export class ApiClient {
     await this.fetch(`/api/issue-workflows/${id}`, { method: "DELETE" });
   }
 
-  /** Renders the brief a step's handler would receive, from an unsaved workflow. */
-  async previewIssueWorkflowBrief(data: IssueWorkflowWriteRequest & { status_key: string }): Promise<string> {
-    const raw = await this.fetch<unknown>(`/api/issue-workflows/preview-brief`, {
+  /** Renders the brief a column's handler would receive, from an unsaved handoff. */
+  async previewProjectWorkflowBrief(
+    projectId: string,
+    data: SetProjectWorkflowHandoffRequest & { status_key: string },
+  ): Promise<string> {
+    const raw = await this.fetch<unknown>(`/api/projects/${projectId}/workflow/brief`, {
       method: "POST",
       body: JSON.stringify(data),
     });
     const parsed = parseWithFallback(raw, IssueWorkflowBriefPreviewSchema, { brief: "" }, {
-      endpoint: "POST /api/issue-workflows/preview-brief",
+      endpoint: "POST /api/projects/{id}/workflow/brief",
     });
     return parsed.brief;
+  }
+
+  /** Saves this project's handoff for one column; handler "none" clears it. */
+  async setProjectWorkflowHandoff(
+    projectId: string,
+    statusKey: string,
+    data: SetProjectWorkflowHandoffRequest,
+  ): Promise<Project> {
+    return this.fetch(
+      `/api/projects/${projectId}/workflow/handoffs/${encodeURIComponent(statusKey)}`,
+      { method: "PUT", body: JSON.stringify(data) },
+    );
+  }
+
+  /**
+   * Adds a column to a project's board. Scope "project" may copy a shared
+   * workflow into one of the project's own, so the response names both.
+   */
+  async addProjectWorkflowColumn(
+    projectId: string,
+    data: AddProjectWorkflowColumnRequest,
+  ): Promise<{ project: Project; workflow: IssueWorkflow; status_key: string }> {
+    const raw = await this.fetch<{ project: Project; workflow: unknown; status_key: string }>(
+      `/api/projects/${projectId}/workflow/columns`,
+      { method: "POST", body: JSON.stringify(data) },
+    );
+    return {
+      project: raw.project,
+      status_key: raw.status_key,
+      workflow: parseWithFallback(raw.workflow, IssueWorkflowSchema, EMPTY_ISSUE_WORKFLOW, {
+        endpoint: "POST /api/projects/{id}/workflow/columns",
+      }),
+    };
   }
 
   /**

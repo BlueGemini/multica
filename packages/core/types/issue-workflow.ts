@@ -1,11 +1,12 @@
 /**
  * Workspace workflows (MUL-7420).
  *
- * A workflow picks and orders statuses from the shared status catalog. Each
- * step can hand the issue off: entering the step through a status change
- * assigns the issue to the step's handler and, for an agent or squad, starts
- * its run with the step's instructions. A project without a workflow uses the
- * implicit Default workflow — every active status, no handoffs.
+ * A workflow is a board's columns: an ordered pick from the shared status
+ * catalog, always opening with backlog and todo and closing with blocked, done
+ * and cancelled. Handoffs belong to the project: entering a column through a
+ * status change assigns the issue to the column's handler and, for an agent or
+ * squad, starts its run with the column's instructions. Projects that name no
+ * workflow use the workspace's Default workflow.
  */
 
 export type IssueWorkflowHandlerType =
@@ -22,6 +23,10 @@ export interface IssueWorkflowHandler {
   id?: string;
 }
 
+/**
+ * A column with its project's handoff. Workflow rows carry only the status
+ * key, so their handler is "none" until a project's handoffs are overlaid.
+ */
 export interface IssueWorkflowStep {
   status_key: string;
   handler: IssueWorkflowHandler;
@@ -37,7 +42,8 @@ export interface IssueWorkflow {
   workspace_id: string;
   name: string;
   description: string;
-  initial_status_key: string;
+  /** The workspace Default: used by every project that names no workflow. */
+  is_default: boolean;
   steps: IssueWorkflowStep[];
   /** Projects currently using this workflow. */
   project_ids: string[];
@@ -50,11 +56,23 @@ export interface ListIssueWorkflowsResponse {
   total: number;
 }
 
+/** A status for a new column, created with the workflow write. */
+export interface NewWorkflowStatus {
+  name: string;
+  category?: string;
+  color?: string;
+}
+
+/** A column of a workflow write: an existing status or a new one. */
+export type IssueWorkflowStepInput = { status_key: string } | { new_status: NewWorkflowStatus };
+
 export interface IssueWorkflowWriteRequest {
   name?: string;
   description?: string;
-  initial_status_key?: string;
-  steps?: IssueWorkflowStep[];
+  /** The middle columns; the fixed head and tail are placed by the server. */
+  steps?: IssueWorkflowStepInput[];
+  /** Lets a project lead create a workflow for that project. */
+  project_id?: string;
   /** Destination for issues on statuses an edit removes, keyed by removed status. */
   status_mapping?: Record<string, string>;
   dry_run?: boolean;
@@ -117,4 +135,24 @@ export interface WorkflowHandoffPreview {
   previous_runs: WorkflowHandoffRun[];
   /** The brief the handler's run receives; empty for a member handler. */
   brief: string;
+}
+
+/** A project's handoff for one column; handler "none" clears it. */
+export interface SetProjectWorkflowHandoffRequest {
+  handler: IssueWorkflowHandler;
+  instructions?: string;
+  next_status_key?: string;
+  back_status_key?: string;
+}
+
+/**
+ * Adds a column to a project's board. "project" changes only this project,
+ * copying a shared workflow (or Default) into one of its own first;
+ * "workflow" changes the shared workflow for every project using it.
+ */
+export interface AddProjectWorkflowColumnRequest {
+  status_key?: string;
+  new_status?: NewWorkflowStatus;
+  scope: "project" | "workflow";
+  after_status_key?: string;
 }

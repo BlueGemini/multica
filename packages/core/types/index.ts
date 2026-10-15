@@ -23,6 +23,10 @@ export type {
   IssueWorkflowStatusCount,
   WorkflowHandoffPreview,
   WorkflowHandoffRun,
+  NewWorkflowStatus,
+  IssueWorkflowStepInput,
+  SetProjectWorkflowHandoffRequest,
+  AddProjectWorkflowColumnRequest,
 } from "./issue-workflow";
 export type {
   Agent,
