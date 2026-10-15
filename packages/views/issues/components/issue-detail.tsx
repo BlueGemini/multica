@@ -480,17 +480,13 @@ function ActivityText({ entry, text }: { entry: TimelineEntry; text: string }) {
   );
 }
 
-// ---------------------------------------------------------------------------
 // Helpers
-// ---------------------------------------------------------------------------
 
 // Stable reference for threads with no replies. Inline `[]` would create a
 // new array on every render and bust React.memo on CommentCard / ResolvedThreadBar.
 const EMPTY_REPLIES: TimelineEntry[] = [];
 
-// ---------------------------------------------------------------------------
 // Sidebar progressive disclosure
-// ---------------------------------------------------------------------------
 //
 // Properties shown in the sidebar split into two groups:
 //   - core: always rendered (status / assignee / project)
@@ -820,9 +816,7 @@ function ActivityBlock({
   );
 }
 
-// ---------------------------------------------------------------------------
 // SubIssueRow — sub-issue list item with inline status & assignee editing
-// ---------------------------------------------------------------------------
 
 function SubIssueRow({
   child,
@@ -1041,9 +1035,7 @@ function SubIssueRow({
   );
 }
 
-// ---------------------------------------------------------------------------
 // SubIssueDisplayPopover — per-user "which properties do rows show" control
-// ---------------------------------------------------------------------------
 
 // Reuses the main Display panel's `card_*` labels — the property names are
 // identical, so the sub-issues control needs no locale keys of its own.
@@ -1130,9 +1122,7 @@ function SubIssueDisplayPopover({
   );
 }
 
-// ---------------------------------------------------------------------------
 // Props
-// ---------------------------------------------------------------------------
 
 interface IssueDetailProps {
   issueId: string;
@@ -1170,9 +1160,7 @@ interface IssueDetailProps {
   trailingActions?: ReactNode;
 }
 
-// ---------------------------------------------------------------------------
 // Not found
-// ---------------------------------------------------------------------------
 
 /**
  * Exported so `IssueDetailRoute` can render it for an identifier that names no
@@ -1221,9 +1209,7 @@ export function IssueNotFound({
   );
 }
 
-// ---------------------------------------------------------------------------
 // Loading skeleton
-// ---------------------------------------------------------------------------
 
 /**
  * Exported so `IssueDetailRoute` can show the identical frame while it resolves
@@ -1298,9 +1284,7 @@ export function IssueDetailSkeleton({
   );
 }
 
-// ---------------------------------------------------------------------------
 // IssueDetail
-// ---------------------------------------------------------------------------
 
 export function IssueDetail({ issueId, onDelete, onDone, defaultSidebarOpen = true, layoutId = "multica_issue_detail_layout", highlightCommentId, highlightRequestToken, leadingAction, variant = "page", trailingActions }: IssueDetailProps) {
   const isPeek = variant === "peek";

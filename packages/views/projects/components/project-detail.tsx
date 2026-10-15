@@ -78,9 +78,7 @@ import { useT } from "../../i18n";
 import { useProjectStatusLabels, useProjectPriorityLabels } from "./labels";
 import { matchesPinyin } from "../../editor/extensions/pinyin-match";
 
-// ---------------------------------------------------------------------------
 // Property row — sidebar property display
-// ---------------------------------------------------------------------------
 
 function PropRow({
   label,
@@ -112,9 +110,7 @@ function ProjectWorkflowPropRow({ project }: { project: Project }) {
   );
 }
 
-// ---------------------------------------------------------------------------
 // ProjectDetail
-// ---------------------------------------------------------------------------
 
 export function ProjectDetail({ projectId }: { projectId: string }) {
   const { t } = useT("projects");
