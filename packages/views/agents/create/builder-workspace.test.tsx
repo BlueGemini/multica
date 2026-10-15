@@ -40,19 +40,27 @@ vi.mock("./use-create-agent-form", () => ({
   },
 }));
 vi.mock("./use-create-agent-submit", () => ({
-  useCreateAgentSubmit: () => ({ creating: false }),
+  useCreateAgentSubmit: () => ({ creating: false, clearNameError: vi.fn() }),
 }));
 vi.mock("./agent-configuration-panel", () => ({
-  AgentConfigurationPanel: ({ draft, onChange }: {
+  AgentConfigurationPanel: ({ draft, onChange, onNameChange }: {
     draft: AgentDraft; onChange: (draft: AgentDraft) => void;
+    onNameChange: (name: string) => void;
   }) => (
+    <>
     <input aria-label="Agent name" value={draft.name}
-      onChange={(event) => onChange({ ...draft, name: event.target.value })} />
+      onChange={(event) => onNameChange(event.target.value)} />
+    <input aria-label="Agent description" value={draft.description}
+      onChange={(event) => onChange({ ...draft, description: event.target.value })} />
+    </>
   ),
 }));
 vi.mock("./builder-conversation", () => ({
-  BuilderConversation: ({ error }: { error: string | null }) =>
-    error ? <div role="alert">{error}</div> : null,
+  BuilderConversation: ({ error, onDismissError }: {
+    error: string | null; onDismissError?: () => void;
+  }) => error ? <div role="alert">{error}
+    {onDismissError && <button onClick={onDismissError}>Close</button>}
+  </div> : null,
 }));
 vi.mock("./create-agent-footer", () => ({ CreateAgentFooter: () => null }));
 vi.mock("react-resizable-panels", () => ({ useDefaultLayout: () => ({}) }));
@@ -68,6 +76,13 @@ function reply(content: string, id = "reply-1"): ChatMessage {
   return {
     id, content, role: "assistant", chat_session_id: "session-1",
     task_id: "task-1", created_at: "2026-09-17T05:00:00Z",
+  };
+}
+function savedSession(draft: AgentBuilderSessionSummary["draft"]): AgentBuilderSessionSummary {
+  return {
+    session_id: "session-1", title: "Poet", runtime_id: "local",
+    created_at: "", updated_at: "", last_message_at: "",
+    last_message_content: "", last_message_role: "assistant", draft,
   };
 }
 function workspace() {
@@ -147,6 +162,66 @@ describe("builder draft recovery wiring", () => {
     expect(screen.queryByRole("alert")).toBeNull();
   });
 
+  it.each(["name", "description"])("acknowledges a failed draft after editing %s, including after reopening", (field) => {
+    h.messages = [
+      reply('<agent_draft>{"name":"Older draft"}</agent_draft>', "older"),
+      reply('<agent_draft>{"name":"Unfinished'),
+    ];
+    h.session = savedSession(toStoredAgentDraft({ ...EMPTY_AGENT_DRAFT, name: "Older draft" }, "older"));
+    const view = mount();
+    expect(screen.getByRole("alert")).toHaveTextContent(guidance);
+
+    const label = field === "name" ? "Agent name" : "Agent description";
+    fireEvent.change(screen.getByLabelText(label), { target: { value: "Manual edit" } });
+    expect(screen.queryByRole("alert")).toBeNull();
+    expect(screen.getByLabelText(label)).toHaveValue("Manual edit");
+    view.unmount();
+    const stored = h.save.mock.lastCall?.[1];
+    expect(stored).toMatchObject({ [field]: "Manual edit", applied_message_id: "older", dismissed_message_id: "reply-1" });
+
+    h.session = savedSession(stored);
+    const reopened = mount();
+    expect(screen.queryByRole("alert")).toBeNull();
+    expect(screen.getByLabelText(label)).toHaveValue("Manual edit");
+    h.messages = [...h.messages, reply('<agent_draft>{"name":"Still unfinished', "reply-2")];
+    reopened.refresh();
+    expect(screen.getByRole("alert")).toHaveTextContent(guidance);
+    expect(screen.getByLabelText(label)).toHaveValue("Manual edit");
+    h.messages = [...h.messages, reply(unclosed, "reply-3")];
+    reopened.refresh();
+    expect(screen.queryByRole("alert")).toBeNull();
+    expect(screen.getByLabelText("Agent name")).toHaveValue("Poet");
+  });
+
+  it("persists dismissal even when the configuration is unchanged", () => {
+    h.messages = [reply('<agent_draft>{"name":"Unfinished')];
+    const view = mount();
+    fireEvent.click(screen.getByRole("button", { name: "Close" }));
+    expect(screen.queryByRole("alert")).toBeNull();
+    expect(screen.getByLabelText("Agent name")).toHaveValue("");
+    view.unmount();
+    const stored = h.save.mock.lastCall?.[1];
+    expect(stored).toMatchObject({ name: "", applied_message_id: null, dismissed_message_id: "reply-1" });
+
+    h.session = savedSession(stored);
+    mount();
+    expect(screen.queryByRole("alert")).toBeNull();
+    expect(screen.getByLabelText("Agent name")).toHaveValue("");
+  });
+
+  it("waits for stored configuration before showing draft guidance", () => {
+    h.messages = [reply('<agent_draft>{"name":"Unfinished')];
+    h.settled = false;
+    const view = mount();
+    expect(screen.queryByRole("alert")).toBeNull();
+
+    h.session = savedSession(toStoredAgentDraft({ ...EMPTY_AGENT_DRAFT, name: "Saved edit" }, null, "reply-1"));
+    h.settled = true;
+    view.refresh();
+    expect(screen.queryByRole("alert")).toBeNull();
+    expect(screen.getByLabelText("Agent name")).toHaveValue("Saved edit");
+  });
+
   it.each([unclosed, `${unclosed}</agent_draft>`])("does not recover a failed turn or replace its existing failure presentation: %s", (content) => {
     h.messages = [{ ...reply(content), failure_reason: "agent_error" }];
     mount();
@@ -188,6 +263,9 @@ describe("builder draft recovery wiring", () => {
     mount();
     expect(screen.getByRole("alert")).toHaveTextContent("Connection lost");
     expect(screen.getByRole("alert")).not.toHaveTextContent(guidance);
+    expect(screen.queryByRole("button", { name: "Close" })).toBeNull();
+    fireEvent.change(screen.getByLabelText("Agent name"), { target: { value: "Manual edit" } });
+    expect(screen.getByRole("alert")).toHaveTextContent("Connection lost");
   });
 
   it.each(["Stopped.", "No draft"])("does not warn for a reply without a draft block, including after reopening: %s", (content) => {
