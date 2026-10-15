@@ -108,6 +108,7 @@ export function ComposioTab() {
     return m;
   }, [connectionsQuery.data]);
 
+  // The reconnect branch is prepared, but the backend does not yet emit "expired".
   const expiredBySlug = useMemo(() => {
     const m = new Set<string>();
     for (const c of connectionsQuery.data ?? []) {
@@ -322,8 +323,6 @@ function ToolkitCard({
             </Button>
           </div>
         ) : expired ? (
-          // Token-expired connection: surface the failure and let the user
-          // re-run the same connect flow in one click (no disconnect step).
           <div className="flex items-center gap-2">
             <span className="inline-flex items-center gap-1 text-caption text-amber-600">
               <AlertTriangle className="h-3 w-3" />

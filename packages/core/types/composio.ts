@@ -23,6 +23,7 @@ export interface ComposioToolkit {
 export interface ComposioConnection {
   id: string;
   toolkit_slug: string;
+  /** The backend does not yet emit "expired"; the reconnect UI is prepared for it. */
   status: "active" | "expired" | "revoked" | string;
   connected_at: string;
   last_used_at?: string | null;
