@@ -379,6 +379,7 @@ export function BuilderWorkspace({
                   compact
                   draft={draft}
                   onChange={handleDraftChange}
+                  onAutomaticChange={setDraft}
                   runtimes={form.runtimes}
                   runtimesLoading={form.runtimesLoading}
                   members={form.members}

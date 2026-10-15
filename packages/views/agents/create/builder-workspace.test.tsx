@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { useState, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { cleanup, fireEvent, screen, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -17,6 +17,7 @@ const h = vi.hoisted(() => ({
   settled: true,
   error: null as string | null,
   session: undefined as AgentBuilderSessionSummary | undefined,
+  clearUnsupportedModel: false,
   save: vi.fn().mockResolvedValue(undefined),
 }));
 vi.mock("@multica/core/api", () => ({
@@ -43,17 +44,27 @@ vi.mock("./use-create-agent-submit", () => ({
   useCreateAgentSubmit: () => ({ creating: false, clearNameError: vi.fn() }),
 }));
 vi.mock("./agent-configuration-panel", () => ({
-  AgentConfigurationPanel: ({ draft, onChange, onNameChange }: {
+  AgentConfigurationPanel: ({ draft, onChange, onNameChange, onAutomaticChange }: {
     draft: AgentDraft; onChange: (draft: AgentDraft) => void;
     onNameChange: (name: string) => void;
-  }) => (
+    onAutomaticChange?: (draft: AgentDraft) => void;
+  }) => {
+    const clearUnsupportedModel = h.clearUnsupportedModel;
+    useEffect(() => {
+      if (clearUnsupportedModel && draft.model) {
+        (onAutomaticChange ?? onChange)({ ...draft, model: "" });
+      }
+    }, [clearUnsupportedModel, draft, onAutomaticChange, onChange]);
+    return (
     <>
     <input aria-label="Agent name" value={draft.name}
       onChange={(event) => onNameChange(event.target.value)} />
     <input aria-label="Agent description" value={draft.description}
       onChange={(event) => onChange({ ...draft, description: event.target.value })} />
+    <input aria-label="Agent model" value={draft.model} readOnly />
     </>
-  ),
+    );
+  },
 }));
 vi.mock("./builder-conversation", () => ({
   BuilderConversation: ({ error, onDismissError }: {
@@ -112,6 +123,7 @@ describe("builder draft recovery wiring", () => {
     h.settled = true;
     h.error = null;
     h.session = undefined;
+    h.clearUnsupportedModel = false;
     h.save.mockClear();
   });
   afterEach(cleanup);
@@ -207,6 +219,28 @@ describe("builder draft recovery wiring", () => {
     mount();
     expect(screen.queryByRole("alert")).toBeNull();
     expect(screen.getByLabelText("Agent name")).toHaveValue("");
+  });
+
+  it("keeps draft guidance after automatic model cleanup and reopening", () => {
+    h.messages = [reply('<agent_draft>{"name":"Unfinished')];
+    h.session = savedSession(toStoredAgentDraft({ ...EMPTY_AGENT_DRAFT, model: "saved-model" }, null));
+    const view = mount();
+    expect(screen.getByRole("alert")).toHaveTextContent(guidance);
+
+    h.clearUnsupportedModel = true;
+    view.refresh();
+    expect(screen.getByLabelText("Agent model")).toHaveValue("");
+    expect(screen.getByRole("alert")).toHaveTextContent(guidance);
+    view.unmount();
+    const stored = h.save.mock.lastCall?.[1];
+    expect(stored).toMatchObject({ model: "" });
+    expect(stored).not.toHaveProperty("dismissed_message_id");
+
+    h.session = savedSession(stored);
+    mount();
+    expect(screen.getByRole("alert")).toHaveTextContent(guidance);
+    fireEvent.change(screen.getByLabelText("Agent name"), { target: { value: "Manual edit" } });
+    expect(screen.queryByRole("alert")).toBeNull();
   });
 
   it("waits for stored configuration before showing draft guidance", () => {
