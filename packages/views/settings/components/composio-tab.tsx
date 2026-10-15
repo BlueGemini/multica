@@ -108,9 +108,6 @@ export function ComposioTab() {
     return m;
   }, [connectionsQuery.data]);
 
-  // Toolkits whose latest connection is expired render a Reconnect affordance
-  // instead of Connected/Connect. Backend only emits `expired` once Stage 4
-  // (MUL-3719) lands, but the branch is wired up now so it lights up for free.
   const expiredBySlug = useMemo(() => {
     const m = new Set<string>();
     for (const c of connectionsQuery.data ?? []) {
@@ -119,10 +116,6 @@ export function ComposioTab() {
     return m;
   }, [connectionsQuery.data]);
 
-  // Last-used timestamp per active connection, for the "Last used …" line on a
-  // connected card. Backend leaves this null until tool-call dispatch starts
-  // stamping it (Stage 3, MUL-3721); the card shows a "never used" placeholder
-  // until then.
   const lastUsedBySlug = useMemo(() => {
     const m = new Map<string, string | null>();
     for (const c of connectionsQuery.data ?? []) {
