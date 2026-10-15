@@ -8,6 +8,7 @@ import { useIssueWorkflows } from "@multica/core/issue-workflows";
 import {
   DropdownMenu,
   DropdownMenuContent,
+  DropdownMenuGroup,
   DropdownMenuItem,
   DropdownMenuLabel,
   DropdownMenuTrigger,
@@ -47,20 +48,22 @@ export function WorkflowPill({
         }
       />
       <DropdownMenuContent align="start" className="w-60">
-        <DropdownMenuLabel>{t(($) => $.workflows.project.picker_title)}</DropdownMenuLabel>
-        {options.map((option) => (
-          <DropdownMenuItem key={option.id ?? "default"} onClick={() => onChange(option.id)}>
-            <span className="min-w-0 flex-1">
-              <span className="block truncate">{option.name}</span>
-              {option.columns !== undefined && (
-                <span className="block text-caption text-muted-foreground">
-                  {t(($) => $.workflows.settings.statuses, { count: option.columns })}
-                </span>
-              )}
-            </span>
-            {option.id === (current?.id ?? null) && <Check className="size-3.5 shrink-0" />}
-          </DropdownMenuItem>
-        ))}
+        <DropdownMenuGroup>
+          <DropdownMenuLabel>{t(($) => $.workflows.project.picker_title)}</DropdownMenuLabel>
+          {options.map((option) => (
+            <DropdownMenuItem key={option.id ?? "default"} onClick={() => onChange(option.id)}>
+              <span className="min-w-0 flex-1">
+                <span className="block truncate">{option.name}</span>
+                {option.columns !== undefined && (
+                  <span className="block text-caption text-muted-foreground">
+                    {t(($) => $.workflows.settings.statuses, { count: option.columns })}
+                  </span>
+                )}
+              </span>
+              {option.id === (current?.id ?? null) && <Check className="size-3.5 shrink-0" />}
+            </DropdownMenuItem>
+          ))}
+        </DropdownMenuGroup>
       </DropdownMenuContent>
     </DropdownMenu>
   );
