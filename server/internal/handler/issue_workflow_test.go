@@ -35,15 +35,21 @@ func statusSteps(keys ...string) []map[string]any {
 	return out
 }
 
-// createTestWorkflow creates a workflow through the API and deletes it after
-// the test, detaching any project still using it first.
+// createTestWorkflow creates a workflow with backlog and blocked through the
+// API and deletes it after the test, detaching any project still using it
+// first.
 func createTestWorkflow(t *testing.T, name string, middle ...string) IssueWorkflowResponse {
+	t.Helper()
+	return createTestWorkflowSteps(t, name, statusSteps(append(append([]string{"backlog"}, middle...), "blocked")...))
+}
+
+func createTestWorkflowSteps(t *testing.T, name string, steps []map[string]any) IssueWorkflowResponse {
 	t.Helper()
 	withFeatureFlag(t, testHandler, featureflags.ProjectWorkflowsV1, true)
 	var created IssueWorkflowResponse
 	testutil.Call(t, testHandler.CreateIssueWorkflow, workflowRequest("POST", "/api/issue-workflows", map[string]any{
 		"name":  name,
-		"steps": statusSteps(middle...),
+		"steps": steps,
 	})).Want(http.StatusCreated).JSON(&created)
 	t.Cleanup(func() {
 		ctx := context.Background()
@@ -81,12 +87,37 @@ func setProjectWorkflow(t *testing.T, projectID string, body map[string]any) *te
 	return testutil.Call(t, testHandler.SetProjectWorkflow, req)
 }
 
-func setProjectHandoff(t *testing.T, projectID, statusKey string, body map[string]any) *testutil.Response {
+// projectWorkflowID is the workflow a project uses. For a project on Default
+// it stores Default and drops it after the test, since Default's handoffs
+// apply to every test project on it.
+func projectWorkflowID(t *testing.T, projectID string) string {
+	t.Helper()
+	var id *string
+	dbfx.QueryRow(t, `SELECT workflow_id::text FROM project WHERE id = $1`, projectID).Scan(&id)
+	if id != nil {
+		return *id
+	}
+	resetDefaultWorkflow(t)
+	withFeatureFlag(t, testHandler, featureflags.ProjectWorkflowsV1, true)
+	var list struct {
+		Workflows []IssueWorkflowResponse `json:"workflows"`
+	}
+	testutil.Call(t, testHandler.ListIssueWorkflows, workflowRequest("GET", "/api/issue-workflows", nil)).Want(http.StatusOK).JSON(&list)
+	return list.Workflows[0].ID
+}
+
+func setWorkflowHandoff(t *testing.T, workflowID, statusKey string, body map[string]any) *testutil.Response {
 	t.Helper()
 	withFeatureFlag(t, testHandler, featureflags.ProjectWorkflowsV1, true)
-	req := withURLParams(workflowRequest("PUT", "/api/projects/"+projectID+"/workflow/handoffs/"+statusKey, body),
-		"id", projectID, "status", statusKey)
-	return testutil.Call(t, testHandler.SetProjectWorkflowHandoff, req)
+	req := withURLParams(workflowRequest("PUT", "/api/issue-workflows/"+workflowID+"/handoffs/"+statusKey, body),
+		"id", workflowID, "status", statusKey)
+	return testutil.Call(t, testHandler.SetIssueWorkflowHandoff, req)
+}
+
+// setColumnHandoff sets a column's handoff on the workflow a project uses.
+func setColumnHandoff(t *testing.T, projectID, statusKey string, body map[string]any) *testutil.Response {
+	t.Helper()
+	return setWorkflowHandoff(t, projectWorkflowID(t, projectID), statusKey, body)
 }
 
 func handToAgent(agentID, instructions string) map[string]any {
@@ -112,12 +143,12 @@ func issueStatusAndAssignee(t *testing.T, issueID string) (status, assigneeType,
 	return status, assigneeType, assigneeID
 }
 
-// deliveryProject is the design's simplest case: a project on Default that
+// deliveryProject is the design's simplest case: a project on a Default that
 // hands in_progress to an agent and keeps everything else as is.
 func deliveryProject(t *testing.T, title, agentID string) string {
 	t.Helper()
 	projectID := createWorkflowTestProject(t, title)
-	setProjectHandoff(t, projectID, "in_progress", map[string]any{
+	setColumnHandoff(t, projectID, "in_progress", map[string]any{
 		"handler": map[string]any{"type": "agent", "id": agentID}, "instructions": "Implement it and open a PR.",
 	}).Want(http.StatusOK)
 	return projectID
@@ -173,9 +204,9 @@ func TestCreateIssueWorkflowCreatesNewStatusesOutsideDefault(t *testing.T) {
 		testPool.Exec(context.Background(), `DELETE FROM issue_workflow WHERE id = $1`, created.ID)
 		testPool.Exec(context.Background(), `DELETE FROM issue_status WHERE workspace_id = $1 AND name = $2`, testWorkspaceID, statusName)
 	})
-	newKey := created.Steps[2].StatusKey
+	newKey := created.Steps[1].StatusKey
 	if issuestatusName := lookupStatusName(t, newKey); issuestatusName != statusName {
-		t.Fatalf("step 3 = %q (%q), want the new status", newKey, issuestatusName)
+		t.Fatalf("step 2 = %q (%q), want the new status", newKey, issuestatusName)
 	}
 
 	var list struct {
@@ -216,7 +247,7 @@ func TestDefaultWorkflowIsEditableButNotDeletable(t *testing.T) {
 
 	var updated IssueWorkflowResponse
 	req := withURLParam(workflowRequest("PATCH", "/api/issue-workflows/"+def.ID, map[string]any{
-		"name": "Renamed", "steps": statusSteps("in_progress"),
+		"name": "Renamed", "steps": statusSteps("backlog", "in_progress", "blocked"),
 	}), "id", def.ID)
 	testutil.Call(t, testHandler.UpdateIssueWorkflow, req).Want(http.StatusOK).JSON(&updated)
 	if updated.Name != "Default" || len(updated.Steps) != 6 {
@@ -238,7 +269,7 @@ func TestSetProjectWorkflowMapsOnlyUnlistedStatuses(t *testing.T) {
 	agentID := seededReadyAgentID(t)
 	wf := createTestWorkflow(t, "Map "+workflowTestSuffix(), "in_review")
 	projectID := createWorkflowTestProject(t, "Workflow map project")
-	setProjectHandoff(t, projectID, "in_review", handToAgent(agentID, "")).Want(http.StatusOK)
+	setWorkflowHandoff(t, wf.ID, "in_review", handToAgent(agentID, "")).Want(http.StatusOK)
 	keep := dbfx.Issue(t, "stays on todo", testutil.Cols{"project_id": projectID, "status": "todo"})
 	moved := dbfx.Issue(t, "leaves in_progress", testutil.Cols{"project_id": projectID, "status": "in_progress"})
 
@@ -262,16 +293,10 @@ func TestSetProjectWorkflowMapsOnlyUnlistedStatuses(t *testing.T) {
 		"status_mapping": map[string]string{"in_progress": "code_review_nope"},
 	}).Want(http.StatusConflict)
 
-	var switched struct {
-		Project ProjectResponse `json:"project"`
-	}
 	setProjectWorkflow(t, projectID, map[string]any{
 		"workflow_id":    wf.ID,
 		"status_mapping": map[string]string{"in_progress": "in_review"},
-	}).Want(http.StatusOK).JSON(&switched)
-	if len(switched.Project.WorkflowHandoffs) != 1 || switched.Project.WorkflowHandoffs[0].StatusKey != "in_review" {
-		t.Fatalf("handoffs after the switch = %+v, want the in_review handoff kept", switched.Project.WorkflowHandoffs)
-	}
+	}).Want(http.StatusOK)
 
 	if status, _, _ := issueStatusAndAssignee(t, keep); status != "todo" {
 		t.Fatalf("an issue on a listed status moved to %q", status)
@@ -340,8 +365,9 @@ func TestStatusChangeHandsOffOnDefaultProject(t *testing.T) {
 		t.Fatalf("explicit handoff note was not kept: %+v", backTasks)
 	}
 
-	// Another project on Default hands nothing off.
+	// A project on a workflow without handoffs hands nothing off.
 	plainProject := createWorkflowTestProject(t, "Workflow no handoff project")
+	setProjectWorkflow(t, plainProject, map[string]any{"workflow_id": createTestWorkflow(t, "Plain "+workflowTestSuffix(), "in_progress").ID}).Want(http.StatusOK)
 	plain := dbfx.Issue(t, "no handoff", testutil.Cols{"project_id": plainProject, "status": "todo"})
 	updateIssueForTest(t, plain, map[string]any{"status": "in_progress"}).Want(http.StatusOK)
 	if _, at, _ := issueStatusAndAssignee(t, plain); at != "" {
@@ -349,35 +375,45 @@ func TestStatusChangeHandsOffOnDefaultProject(t *testing.T) {
 	}
 }
 
-func TestSetProjectHandoffValidatesAndClears(t *testing.T) {
+func TestSetWorkflowHandoffValidatesAndClears(t *testing.T) {
 	seedTestCatalog(t)
 	agentID := seededReadyAgentID(t)
-	projectID := createWorkflowTestProject(t, "Workflow handoff validation project")
-	setProjectHandoff(t, projectID, "done", map[string]any{"handler": map[string]any{"type": "project_lead"}}).Want(http.StatusBadRequest)
-	setProjectHandoff(t, projectID, "code_review_nope", handToAgent(agentID, "")).Want(http.StatusBadRequest)
-	setProjectHandoff(t, projectID, "in_progress", map[string]any{"handler": map[string]any{"type": "creator"}}).Want(http.StatusBadRequest)
-	setProjectHandoff(t, projectID, "in_progress", map[string]any{
+	wf := createTestWorkflow(t, "Handoff validation "+workflowTestSuffix(), "in_progress")
+	setWorkflowHandoff(t, wf.ID, "done", map[string]any{"handler": map[string]any{"type": "project_lead"}}).Want(http.StatusBadRequest)
+	setWorkflowHandoff(t, wf.ID, "code_review_nope", handToAgent(agentID, "")).Want(http.StatusBadRequest)
+	setWorkflowHandoff(t, wf.ID, "in_progress", map[string]any{"handler": map[string]any{"type": "creator"}}).Want(http.StatusBadRequest)
+	setWorkflowHandoff(t, wf.ID, "in_progress", map[string]any{
 		"handler": map[string]any{"type": "agent", "id": agentID}, "next_status_key": "in_progress",
 	}).Want(http.StatusBadRequest)
 
-	var saved ProjectResponse
-	setProjectHandoff(t, projectID, "in_progress", handToAgent(agentID, "Build it")).Want(http.StatusOK).JSON(&saved)
-	if len(saved.WorkflowHandoffs) != 1 || saved.WorkflowHandoffs[0].Instructions != "Build it" {
-		t.Fatalf("handoffs = %+v", saved.WorkflowHandoffs)
+	step := func(resp IssueWorkflowResponse) IssueWorkflowStepPayload {
+		for _, s := range resp.Steps {
+			if s.StatusKey == "in_progress" {
+				return s
+			}
+		}
+		t.Fatalf("in_progress missing from %+v", resp.Steps)
+		return IssueWorkflowStepPayload{}
 	}
-	setProjectHandoff(t, projectID, "in_progress", map[string]any{"handler": map[string]any{"type": "none"}}).Want(http.StatusOK).JSON(&saved)
-	if len(saved.WorkflowHandoffs) != 0 {
-		t.Fatalf("clearing left handoffs = %+v", saved.WorkflowHandoffs)
+	var saved IssueWorkflowResponse
+	setWorkflowHandoff(t, wf.ID, "in_progress", handToAgent(agentID, "Build it")).Want(http.StatusOK).JSON(&saved)
+	if got := step(saved); got.Handler.ID != agentID || got.Instructions != "Build it" || len(saved.Steps) != 6 {
+		t.Fatalf("saved = %+v", saved.Steps)
 	}
-	var stored *string
-	dbfx.QueryRow(t, `SELECT workflow_handoffs::text FROM project WHERE id = $1`, projectID).Scan(&stored)
-	if stored != nil {
-		t.Fatalf("cleared handoffs stored %s, want NULL", *stored)
+	setWorkflowHandoff(t, wf.ID, "in_progress", map[string]any{"handler": map[string]any{"type": "none"}}).Want(http.StatusOK).JSON(&saved)
+	if got := step(saved); got.Handler.Type != "none" || got.Instructions != "" {
+		t.Fatalf("clearing left %+v", got)
+	}
+	var stored string
+	dbfx.QueryRow(t, `SELECT steps::text FROM issue_workflow WHERE id = $1`, wf.ID).Scan(&stored)
+	if strings.Contains(stored, "handler") {
+		t.Fatalf("cleared handoff still stored: %s", stored)
 	}
 }
 
-// Only workspace admins and the project's lead change its workflow settings.
-func TestProjectWorkflowSettingsNeedAdminOrLead(t *testing.T) {
+// A workflow's handoffs apply to every project using it, so only workspace
+// admins change them; a project's lead may still switch its workflow.
+func TestWorkflowHandoffsNeedAdmin(t *testing.T) {
 	seedTestCatalog(t)
 	agentID := seededReadyAgentID(t)
 	withFeatureFlag(t, testHandler, featureflags.ProjectWorkflowsV1, true)
@@ -388,21 +424,59 @@ func TestProjectWorkflowSettingsNeedAdminOrLead(t *testing.T) {
 		testPool.Exec(context.Background(), `DELETE FROM member WHERE user_id = $1`, userID)
 		testPool.Exec(context.Background(), `DELETE FROM "user" WHERE id = $1`, userID)
 	})
+	wf := createTestWorkflow(t, "Permission "+suffix, "in_progress")
 	projectID := createWorkflowTestProject(t, "Workflow permission project")
+	dbfx.Exec(t, `UPDATE project SET lead_type = 'member', lead_id = $1 WHERE id = $2`, userID, projectID)
 	asMember := func(r *http.Request) *http.Request {
 		r.Header.Set("X-User-ID", userID)
 		return r
 	}
-	put := func() *testutil.Response {
-		req := withURLParams(asMember(workflowRequest("PUT", "/api/projects/"+projectID+"/workflow/handoffs/in_progress", handToAgent(agentID, ""))),
-			"id", projectID, "status", "in_progress")
-		return testutil.Call(t, testHandler.SetProjectWorkflowHandoff, req)
+	put := withURLParams(asMember(workflowRequest("PUT", "/api/issue-workflows/"+wf.ID+"/handoffs/in_progress", handToAgent(agentID, ""))),
+		"id", wf.ID, "status", "in_progress")
+	testutil.Call(t, testHandler.SetIssueWorkflowHandoff, put).Want(http.StatusForbidden)
+	patch := withURLParam(asMember(workflowRequest("PATCH", "/api/issue-workflows/"+wf.ID, map[string]any{"name": "Taken"})), "id", wf.ID)
+	testutil.Call(t, testHandler.UpdateIssueWorkflow, patch).Want(http.StatusForbidden)
+
+	sw := withURLParam(asMember(workflowRequest("POST", "/api/projects/"+projectID+"/workflow", map[string]any{"workflow_id": wf.ID})), "id", projectID)
+	testutil.Call(t, testHandler.SetProjectWorkflow, sw).Want(http.StatusOK)
+}
+
+// Backlog and blocked are optional: a workflow without them rejects them, and
+// dropping one maps the issues still on it.
+func TestWorkflowWithoutBacklogOrBlocked(t *testing.T) {
+	seedTestCatalog(t)
+	resetDefaultWorkflow(t)
+	lean := createTestWorkflowSteps(t, "Lean "+workflowTestSuffix(), statusSteps("in_progress"))
+	keys := make([]string, len(lean.Steps))
+	for i, s := range lean.Steps {
+		keys[i] = s.StatusKey
 	}
-	put().Want(http.StatusForbidden)
+	if got := strings.Join(keys, ","); got != "todo,in_progress,done,cancelled" {
+		t.Fatalf("lean steps = %s", got)
+	}
+	projectID := createWorkflowTestProject(t, "Workflow lean project")
+	setProjectWorkflow(t, projectID, map[string]any{"workflow_id": lean.ID}).Want(http.StatusOK)
+	issueID := dbfx.Issue(t, "lean", testutil.Cols{"project_id": projectID, "status": "todo"})
+	updateIssueForTest(t, issueID, map[string]any{"status": "blocked"}).Want(http.StatusBadRequest)
 
-	dbfx.Exec(t, `UPDATE project SET lead_type = 'member', lead_id = $1 WHERE id = $2`, userID, projectID)
-	put().Want(http.StatusOK)
-
+	full := createTestWorkflow(t, "Full "+workflowTestSuffix(), "in_progress")
+	other := createWorkflowTestProject(t, "Workflow drop blocked project")
+	setProjectWorkflow(t, other, map[string]any{"workflow_id": full.ID}).Want(http.StatusOK)
+	stuck := dbfx.Issue(t, "stuck", testutil.Cols{"project_id": other, "status": "blocked"})
+	edit := func(body map[string]any) *testutil.Response {
+		return testutil.Call(t, testHandler.UpdateIssueWorkflow, withURLParam(workflowRequest("PATCH", "/api/issue-workflows/"+full.ID, body), "id", full.ID))
+	}
+	var conflict struct {
+		Plan workflowMappingPlan `json:"plan"`
+	}
+	edit(map[string]any{"steps": statusSteps("backlog", "in_progress")}).Want(http.StatusConflict).JSON(&conflict)
+	if len(conflict.Plan.Required) != 1 || conflict.Plan.Required[0].StatusKey != "blocked" || conflict.Plan.Required[0].SuggestedStatusKey != "in_progress" {
+		t.Fatalf("plan = %+v, want blocked mapped to the same-category in_progress", conflict.Plan)
+	}
+	edit(map[string]any{"steps": statusSteps("backlog", "in_progress"), "status_mapping": map[string]string{"blocked": "in_progress"}}).Want(http.StatusOK)
+	if status, _, _ := issueStatusAndAssignee(t, stuck); status != "in_progress" {
+		t.Fatalf("issue on the dropped blocked moved to %q", status)
+	}
 }
 
 func TestExplicitAssigneeWinsOverStepHandler(t *testing.T) {
@@ -430,7 +504,7 @@ func TestMoveIntoWorkflowProjectKeepsEquivalentStatusWithoutHandoff(t *testing.T
 	wf := createTestWorkflow(t, "Move "+workflowTestSuffix(), "in_review")
 	projectID := createWorkflowTestProject(t, "Workflow move project")
 	setProjectWorkflow(t, projectID, map[string]any{"workflow_id": wf.ID}).Want(http.StatusOK)
-	setProjectHandoff(t, projectID, "in_review", handToAgent(agentID, "")).Want(http.StatusOK)
+	setColumnHandoff(t, projectID, "in_review", handToAgent(agentID, "")).Want(http.StatusOK)
 	issueID := dbfx.Issue(t, "moving in", testutil.Cols{"status": "in_progress"})
 
 	updateIssueForTest(t, issueID, map[string]any{"project_id": projectID}).Want(http.StatusOK)
@@ -448,7 +522,7 @@ func TestCreateIssueHandsOffItsStartingColumn(t *testing.T) {
 	resetDefaultWorkflow(t)
 	agentID := seededReadyAgentID(t)
 	projectID := createWorkflowTestProject(t, "Workflow create project")
-	setProjectHandoff(t, projectID, "todo", map[string]any{
+	setColumnHandoff(t, projectID, "todo", map[string]any{
 		"handler": map[string]any{"type": "agent", "id": agentID}, "instructions": "Triage it.",
 	}).Want(http.StatusOK)
 
@@ -508,6 +582,13 @@ func TestClaimCarriesProjectWorkflow(t *testing.T) {
 	seedTestCatalog(t)
 	resetDefaultWorkflow(t)
 	agentID := seededReadyAgentID(t)
+	quietProject := createWorkflowTestProject(t, "Workflow quiet project")
+	quiet := dbfx.Issue(t, "no handoffs", testutil.Cols{"project_id": quietProject, "status": "todo"})
+	quietIssue, _ := testHandler.Queries.GetIssue(context.Background(), util.MustParseUUID(quiet))
+	if testHandler.claimProjectWorkflow(context.Background(), quietIssue) != nil {
+		t.Fatal("a Default project without handoffs must not carry a workflow")
+	}
+
 	projectID := deliveryProject(t, "Workflow claim project", agentID)
 	issueID := dbfx.Issue(t, "claim context", testutil.Cols{"project_id": projectID, "status": "in_progress"})
 
@@ -531,12 +612,6 @@ func TestClaimCarriesProjectWorkflow(t *testing.T) {
 	plainIssue, _ := testHandler.Queries.GetIssue(context.Background(), util.MustParseUUID(plain))
 	if testHandler.claimProjectWorkflow(context.Background(), plainIssue) != nil {
 		t.Fatal("an issue outside a project must not carry a workflow")
-	}
-	quietProject := createWorkflowTestProject(t, "Workflow quiet project")
-	quiet := dbfx.Issue(t, "no handoffs", testutil.Cols{"project_id": quietProject, "status": "todo"})
-	quietIssue, _ := testHandler.Queries.GetIssue(context.Background(), util.MustParseUUID(quiet))
-	if testHandler.claimProjectWorkflow(context.Background(), quietIssue) != nil {
-		t.Fatal("a Default project without handoffs must not carry a workflow")
 	}
 }
 
@@ -569,19 +644,21 @@ func TestPreviewWorkflowHandoffNamesHandlerRunsAndBrief(t *testing.T) {
 	}
 }
 
-func TestPreviewProjectWorkflowBriefUsesTheDraft(t *testing.T) {
+func TestPreviewIssueWorkflowBriefUsesTheDraft(t *testing.T) {
 	seedTestCatalog(t)
 	agentID := seededReadyAgentID(t)
 	projectID := createWorkflowTestProject(t, "Workflow brief project")
+	workflowID := projectWorkflowID(t, projectID)
 	var got struct {
 		Brief string `json:"brief"`
 	}
 	preview := func(body map[string]any) *testutil.Response {
-		req := withURLParam(workflowRequest("POST", "/api/projects/"+projectID+"/workflow/brief", body), "id", projectID)
-		return testutil.Call(t, testHandler.PreviewProjectWorkflowBrief, req)
+		req := withURLParam(workflowRequest("POST", "/api/issue-workflows/"+workflowID+"/brief", body), "id", workflowID)
+		return testutil.Call(t, testHandler.PreviewIssueWorkflowBrief, req)
 	}
 	preview(map[string]any{
 		"status_key": "in_progress", "handler": map[string]any{"type": "agent", "id": agentID}, "instructions": "Draft step.",
+		"project_id": projectID,
 	}).Want(http.StatusOK).JSON(&got)
 	for _, want := range []string{"Default (Workflow brief project)", "Draft step.", "← current", "in_review\nCan't proceed"} {
 		if !strings.Contains(got.Brief, want) {
@@ -619,7 +696,7 @@ func TestSameAgentNextStepQueuesARun(t *testing.T) {
 	seedTestCatalog(t)
 	agentID := seededReadyAgentID(t)
 	projectID := deliveryProject(t, "Workflow same agent project", agentID)
-	setProjectHandoff(t, projectID, "in_review", handToAgent(agentID, "Review your own PR.")).Want(http.StatusOK)
+	setColumnHandoff(t, projectID, "in_review", handToAgent(agentID, "Review your own PR.")).Want(http.StatusOK)
 	issueID := dbfx.Issue(t, "same agent twice", testutil.Cols{"project_id": projectID, "status": "todo"})
 
 	updateIssueForTest(t, issueID, map[string]any{"status": "in_progress"}).Want(http.StatusOK)
@@ -703,8 +780,8 @@ func TestHandoffStopsPreviousSquadRuns(t *testing.T) {
 	agentID := seededReadyAgentID(t)
 	squadID := dbfx.Squad(t, "Workflow review squad "+workflowTestSuffix(), agentID)
 	projectID := createWorkflowTestProject(t, "Workflow squad stop project")
-	setProjectHandoff(t, projectID, "in_progress", map[string]any{"handler": map[string]any{"type": "member", "id": testUserID}}).Want(http.StatusOK)
-	setProjectHandoff(t, projectID, "in_review", map[string]any{"handler": map[string]any{"type": "squad", "id": squadID}}).Want(http.StatusBadRequest)
+	setColumnHandoff(t, projectID, "in_progress", map[string]any{"handler": map[string]any{"type": "member", "id": testUserID}}).Want(http.StatusOK)
+	setColumnHandoff(t, projectID, "in_review", map[string]any{"handler": map[string]any{"type": "squad", "id": squadID}}).Want(http.StatusBadRequest)
 	issueID := dbfx.Issue(t, "squad reviewing", testutil.Cols{
 		"project_id": projectID, "status": "in_review", "assignee_type": "squad", "assignee_id": squadID,
 	})

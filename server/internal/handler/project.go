@@ -47,28 +47,24 @@ type ProjectResponse struct {
 	// WorkflowID is the workflow this project uses; null means the workspace
 	// Default workflow. (MUL-7420)
 	WorkflowID *string `json:"workflow_id"`
-	// WorkflowHandoffs is what this project does when an issue enters one of
-	// its columns. (MUL-7420)
-	WorkflowHandoffs []IssueWorkflowHandoffPayload `json:"workflow_handoffs"`
 }
 
 func projectToResponse(p db.Project) ProjectResponse {
 	return ProjectResponse{
-		ID:               uuidToString(p.ID),
-		WorkspaceID:      uuidToString(p.WorkspaceID),
-		Title:            p.Title,
-		Description:      textToPtr(p.Description),
-		Icon:             textToPtr(p.Icon),
-		Status:           p.Status,
-		Priority:         p.Priority,
-		LeadType:         textToPtr(p.LeadType),
-		LeadID:           uuidToPtr(p.LeadID),
-		StartDate:        dateToPtr(p.StartDate),
-		DueDate:          dateToPtr(p.DueDate),
-		CreatedAt:        timestampToString(p.CreatedAt),
-		UpdatedAt:        timestampToString(p.UpdatedAt),
-		WorkflowID:       uuidToPtr(p.WorkflowID),
-		WorkflowHandoffs: projectHandoffsPayload(p),
+		ID:          uuidToString(p.ID),
+		WorkspaceID: uuidToString(p.WorkspaceID),
+		Title:       p.Title,
+		Description: textToPtr(p.Description),
+		Icon:        textToPtr(p.Icon),
+		Status:      p.Status,
+		Priority:    p.Priority,
+		LeadType:    textToPtr(p.LeadType),
+		LeadID:      uuidToPtr(p.LeadID),
+		StartDate:   dateToPtr(p.StartDate),
+		DueDate:     dateToPtr(p.DueDate),
+		CreatedAt:   timestampToString(p.CreatedAt),
+		UpdatedAt:   timestampToString(p.UpdatedAt),
+		WorkflowID:  uuidToPtr(p.WorkflowID),
 	}
 }
 

@@ -271,8 +271,7 @@ ORDER BY is_default DESC, lower(name), created_at, id
 // Project workflows (MUL-7420). A workflow selects and orders statuses from
 // the workspace's issue_status catalog. Projects opt in through
 // project.workflow_id; a project without one uses the workspace's Default
-// workflow row. Who a column hands an issue to lives on the project
-// (project.workflow_handoffs).
+// workflow row. Each step also stores who an issue entering it is handed to.
 func (q *Queries) ListIssueWorkflows(ctx context.Context, workspaceID pgtype.UUID) ([]IssueWorkflow, error) {
 	rows, err := q.db.Query(ctx, listIssueWorkflows, workspaceID)
 	if err != nil {
@@ -331,7 +330,7 @@ func (q *Queries) ListNamedIssueWorkflowSteps(ctx context.Context, workspaceID p
 }
 
 const listProjectsUsingDefaultIssueWorkflow = `-- name: ListProjectsUsingDefaultIssueWorkflow :many
-SELECT id, workspace_id, title, description, icon, status, lead_type, lead_id, created_at, updated_at, priority, start_date, due_date, workflow_id, workflow_handoffs FROM project
+SELECT id, workspace_id, title, description, icon, status, lead_type, lead_id, created_at, updated_at, priority, start_date, due_date, workflow_id FROM project
 WHERE workspace_id = $1::uuid
   AND workflow_id IS NULL
 ORDER BY created_at, id
@@ -361,7 +360,6 @@ func (q *Queries) ListProjectsUsingDefaultIssueWorkflow(ctx context.Context, wor
 			&i.StartDate,
 			&i.DueDate,
 			&i.WorkflowID,
-			&i.WorkflowHandoffs,
 		); err != nil {
 			return nil, err
 		}
@@ -374,7 +372,7 @@ func (q *Queries) ListProjectsUsingDefaultIssueWorkflow(ctx context.Context, wor
 }
 
 const listProjectsUsingIssueWorkflow = `-- name: ListProjectsUsingIssueWorkflow :many
-SELECT id, workspace_id, title, description, icon, status, lead_type, lead_id, created_at, updated_at, priority, start_date, due_date, workflow_id, workflow_handoffs FROM project
+SELECT id, workspace_id, title, description, icon, status, lead_type, lead_id, created_at, updated_at, priority, start_date, due_date, workflow_id FROM project
 WHERE workspace_id = $1::uuid
   AND workflow_id = $2::uuid
 ORDER BY created_at, id
@@ -409,7 +407,6 @@ func (q *Queries) ListProjectsUsingIssueWorkflow(ctx context.Context, arg ListPr
 			&i.StartDate,
 			&i.DueDate,
 			&i.WorkflowID,
-			&i.WorkflowHandoffs,
 		); err != nil {
 			return nil, err
 		}
@@ -422,7 +419,7 @@ func (q *Queries) ListProjectsUsingIssueWorkflow(ctx context.Context, arg ListPr
 }
 
 const lockProjectForWorkflowChange = `-- name: LockProjectForWorkflowChange :one
-SELECT id, workspace_id, title, description, icon, status, lead_type, lead_id, created_at, updated_at, priority, start_date, due_date, workflow_id, workflow_handoffs FROM project
+SELECT id, workspace_id, title, description, icon, status, lead_type, lead_id, created_at, updated_at, priority, start_date, due_date, workflow_id FROM project
 WHERE id = $1::uuid
   AND workspace_id = $2::uuid
 FOR UPDATE
@@ -452,7 +449,6 @@ func (q *Queries) LockProjectForWorkflowChange(ctx context.Context, arg LockProj
 		&i.StartDate,
 		&i.DueDate,
 		&i.WorkflowID,
-		&i.WorkflowHandoffs,
 	)
 	return i, err
 }
@@ -576,7 +572,7 @@ UPDATE project SET
     updated_at = now()
 WHERE id = $2::uuid
   AND workspace_id = $3::uuid
-RETURNING id, workspace_id, title, description, icon, status, lead_type, lead_id, created_at, updated_at, priority, start_date, due_date, workflow_id, workflow_handoffs
+RETURNING id, workspace_id, title, description, icon, status, lead_type, lead_id, created_at, updated_at, priority, start_date, due_date, workflow_id
 `
 
 type SetProjectWorkflowParams struct {
@@ -603,45 +599,6 @@ func (q *Queries) SetProjectWorkflow(ctx context.Context, arg SetProjectWorkflow
 		&i.StartDate,
 		&i.DueDate,
 		&i.WorkflowID,
-		&i.WorkflowHandoffs,
-	)
-	return i, err
-}
-
-const setProjectWorkflowHandoffs = `-- name: SetProjectWorkflowHandoffs :one
-UPDATE project SET
-    workflow_handoffs = $1::jsonb,
-    updated_at = now()
-WHERE id = $2::uuid
-  AND workspace_id = $3::uuid
-RETURNING id, workspace_id, title, description, icon, status, lead_type, lead_id, created_at, updated_at, priority, start_date, due_date, workflow_id, workflow_handoffs
-`
-
-type SetProjectWorkflowHandoffsParams struct {
-	WorkflowHandoffs []byte      `json:"workflow_handoffs"`
-	ID               pgtype.UUID `json:"id"`
-	WorkspaceID      pgtype.UUID `json:"workspace_id"`
-}
-
-func (q *Queries) SetProjectWorkflowHandoffs(ctx context.Context, arg SetProjectWorkflowHandoffsParams) (Project, error) {
-	row := q.db.QueryRow(ctx, setProjectWorkflowHandoffs, arg.WorkflowHandoffs, arg.ID, arg.WorkspaceID)
-	var i Project
-	err := row.Scan(
-		&i.ID,
-		&i.WorkspaceID,
-		&i.Title,
-		&i.Description,
-		&i.Icon,
-		&i.Status,
-		&i.LeadType,
-		&i.LeadID,
-		&i.CreatedAt,
-		&i.UpdatedAt,
-		&i.Priority,
-		&i.StartDate,
-		&i.DueDate,
-		&i.WorkflowID,
-		&i.WorkflowHandoffs,
 	)
 	return i, err
 }

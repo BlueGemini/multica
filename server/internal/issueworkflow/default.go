@@ -50,8 +50,8 @@ func EnsureDefault(ctx context.Context, q DefaultStore, workspaceID pgtype.UUID)
 }
 
 // DefaultSnapshotKeys lists what a new Default row holds: the built-in
-// statuses plus every active custom status no other workflow lists, in
-// catalog order.
+// statuses, backlog and blocked included, plus every active custom status no
+// other workflow lists, in catalog order.
 func DefaultSnapshotKeys(ctx context.Context, q DefaultStore, workspaceID pgtype.UUID) ([]string, error) {
 	active, err := issuestatus.ActiveKeys(ctx, q, workspaceID)
 	if err != nil {
@@ -73,10 +73,10 @@ func DefaultSnapshotKeys(ctx context.Context, q DefaultStore, workspaceID pgtype
 	}
 	middle := make([]string, 0, len(active))
 	for _, key := range active {
-		if IsFixed(key) || (claimed[key] && !issuestatus.IsBuiltIn(key)) {
+		if claimed[key] && !issuestatus.IsBuiltIn(key) {
 			continue
 		}
 		middle = append(middle, key)
 	}
-	return WithFixed(middle), nil
+	return ArrangeKeys(middle), nil
 }

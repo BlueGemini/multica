@@ -2124,7 +2124,7 @@ func NewRouterWithOptions(pool *pgxpool.Pool, hub *realtime.Hub, bus *events.Bus
 
 			// Project workflows (MUL-7420). Reads are open to any member; writes
 			// are gated inside the handlers to workspace owners/admins and, for
-			// a project's own settings, its lead.
+			// switching a project's workflow, its lead.
 			r.Route("/api/issue-workflows", func(r chi.Router) {
 				r.Get("/", h.ListIssueWorkflows)
 				r.Post("/", h.CreateIssueWorkflow)
@@ -2132,6 +2132,8 @@ func NewRouterWithOptions(pool *pgxpool.Pool, hub *realtime.Hub, bus *events.Bus
 					r.Get("/", h.GetIssueWorkflow)
 					r.Patch("/", h.UpdateIssueWorkflow)
 					r.Delete("/", h.DeleteIssueWorkflow)
+					r.Put("/handoffs/{status}", h.SetIssueWorkflowHandoff)
+					r.Post("/brief", h.PreviewIssueWorkflowBrief)
 				})
 			})
 
@@ -2145,8 +2147,6 @@ func NewRouterWithOptions(pool *pgxpool.Pool, hub *realtime.Hub, bus *events.Bus
 					r.Put("/", h.UpdateProject)
 					r.Delete("/", h.DeleteProject)
 					r.Post("/workflow", h.SetProjectWorkflow)
-					r.Put("/workflow/handoffs/{status}", h.SetProjectWorkflowHandoff)
-					r.Post("/workflow/brief", h.PreviewProjectWorkflowBrief)
 					r.Get("/resources", h.ListProjectResources)
 					r.Post("/resources", h.CreateProjectResource)
 					r.Put("/resources/{resourceId}", h.UpdateProjectResource)

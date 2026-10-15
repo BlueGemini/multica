@@ -1,8 +1,7 @@
 -- Project workflows (MUL-7420). A workflow selects and orders statuses from
 -- the workspace's issue_status catalog. Projects opt in through
 -- project.workflow_id; a project without one uses the workspace's Default
--- workflow row. Who a column hands an issue to lives on the project
--- (project.workflow_handoffs).
+-- workflow row. Each step also stores who an issue entering it is handed to.
 
 -- name: ListIssueWorkflows :many
 SELECT * FROM issue_workflow
@@ -46,14 +45,6 @@ UPDATE issue_workflow SET
 WHERE workspace_id = sqlc.arg('workspace_id')::uuid
   AND is_default
   AND steps @> jsonb_build_array(jsonb_build_object('status_key', sqlc.arg('status_key')::text));
-
--- name: SetProjectWorkflowHandoffs :one
-UPDATE project SET
-    workflow_handoffs = sqlc.narg('workflow_handoffs')::jsonb,
-    updated_at = now()
-WHERE id = sqlc.arg('id')::uuid
-  AND workspace_id = sqlc.arg('workspace_id')::uuid
-RETURNING *;
 
 -- name: ListProjectsUsingDefaultIssueWorkflow :many
 SELECT * FROM project

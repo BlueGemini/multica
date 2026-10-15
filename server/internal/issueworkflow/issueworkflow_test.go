@@ -25,22 +25,39 @@ func testCatalog() map[string]CatalogEntry {
 	}
 }
 
+// withHandoffs replaces the steps of def that handoffs name.
+func withHandoffs(def Definition, handoffs []Step) Definition {
+	for _, h := range handoffs {
+		for i, s := range def.Steps {
+			if s.StatusKey == h.StatusKey {
+				def.Steps[i] = h
+			}
+		}
+	}
+	return def
+}
+
 func devDefinition() Definition {
-	def := Definition{Name: "Delivery", Steps: stepsFor(WithFixed([]string{"implement", "code_review"}))}
-	return WithHandoffs(def, []Step{
+	def := Definition{Name: "Delivery", Steps: stepsFor(ArrangeKeys([]string{"backlog", "implement", "code_review", "blocked"}))}
+	return withHandoffs(def, []Step{
 		{StatusKey: "implement", Handler: Handler{Type: HandlerAgent, ID: testAgentID}, Instructions: "Implement it."},
 		{StatusKey: "code_review", Handler: Handler{Type: HandlerProjectLead}, NextStatusKey: "done", BackStatusKey: "implement"},
 	})
 }
 
 func TestNormalizePlacesFixedStatusesAroundOwnSteps(t *testing.T) {
-	name, _, keys := Normalize(" Delivery ", "", []string{"done", " implement ", "todo", "code_review"})
+	name, _, steps := Normalize(" Delivery ", "", stepsFor([]string{"done", " implement ", "blocked", "todo", "code_review", "backlog"}))
 	if name != "Delivery" {
 		t.Fatalf("name was not trimmed: %q", name)
 	}
 	want := []string{"backlog", "todo", "implement", "code_review", "blocked", "done", "cancelled"}
-	if !reflect.DeepEqual(keys, want) {
-		t.Fatalf("keys = %v, want %v", keys, want)
+	if got := keysOf(steps); !reflect.DeepEqual(got, want) {
+		t.Fatalf("keys = %v, want %v", got, want)
+	}
+	// Backlog and blocked are optional; the required statuses are added.
+	_, _, steps = Normalize("Lean", "", stepsFor([]string{"implement"}))
+	if got := keysOf(steps); !reflect.DeepEqual(got, []string{"todo", "implement", "done", "cancelled"}) {
+		t.Fatalf("lean keys = %v", got)
 	}
 	if got := BuiltInDefaultKeys(); !reflect.DeepEqual(got, []string{"backlog", "todo", "in_progress", "in_review", "blocked", "done", "cancelled"}) {
 		t.Fatalf("built-in Default = %v", got)
@@ -60,10 +77,16 @@ func TestValidateRejectsBrokenWorkflows(t *testing.T) {
 		"archived status":  {name: "x", middle: []string{"retired"}, want: "archived"},
 		"duplicate status": {name: "x", middle: []string{"implement", "implement"}, want: "more than once"},
 	}
+	broken := stepsFor([]string{"implement"})
+	broken[0].Handler = Handler{Type: HandlerSquad, ID: testAgentID}
+	name, desc, steps := Normalize("x", "", broken)
+	if err := Validate(name, desc, steps, false, testCatalog()); err == nil || !strings.Contains(err.Error(), "hand off to an agent") {
+		t.Fatalf("Validate must check handoffs, got %v", err)
+	}
 	for label, tc := range cases {
 		t.Run(label, func(t *testing.T) {
-			name, desc, keys := Normalize(tc.name, "", tc.middle)
-			err := Validate(name, desc, keys, tc.isDefault, testCatalog())
+			name, desc, steps := Normalize(tc.name, "", stepsFor(tc.middle))
+			err := Validate(name, desc, steps, tc.isDefault, testCatalog())
 			var verr *ValidationError
 			if !errors.As(err, &verr) {
 				t.Fatalf("Validate = %v, want a ValidationError", err)
@@ -73,8 +96,8 @@ func TestValidateRejectsBrokenWorkflows(t *testing.T) {
 			}
 		})
 	}
-	name, desc, keys := Normalize(DefaultName, "", []string{"implement"})
-	if err := Validate(name, desc, keys, true, testCatalog()); err != nil {
+	name, desc, steps = Normalize(DefaultName, "", stepsFor([]string{"implement"}))
+	if err := Validate(name, desc, steps, true, testCatalog()); err != nil {
 		t.Fatalf("Default keeps its reserved name: %v", err)
 	}
 }
@@ -120,31 +143,18 @@ func TestNormalizeHandoffDropsStaleHandlerData(t *testing.T) {
 	}
 }
 
-func TestWithHandoffsIgnoresOtherColumnsAndTerminalStatuses(t *testing.T) {
-	def := Definition{Name: "Default", IsDefault: true, Steps: stepsFor(BuiltInDefaultKeys())}
-	got := WithHandoffs(def, []Step{
-		{StatusKey: "in_progress", Handler: Handler{Type: HandlerAgent, ID: testAgentID}},
-		{StatusKey: "code_review", Handler: Handler{Type: HandlerProjectLead}},
-		{StatusKey: "done", Handler: Handler{Type: HandlerProjectLead}},
-	})
-	if step, _ := got.Step("in_progress"); !step.HandsOff() {
-		t.Fatal("in_progress should hand off")
+func TestEncodeStepsRoundTripsHandoffs(t *testing.T) {
+	def := devDefinition()
+	raw, err := EncodeSteps(def.Steps)
+	if err != nil {
+		t.Fatal(err)
 	}
-	if got.Has("code_review") {
-		t.Fatal("a handoff must not add a column")
+	if strings.Contains(string(raw), `"status_key":"todo","handler"`) {
+		t.Fatalf("a step without a handoff should store only its key: %s", raw)
 	}
-	if step, _ := got.Step("done"); step.HandsOff() {
-		t.Fatal("done must never hand off")
-	}
-	if step, _ := def.Step("in_progress"); step.HandsOff() {
-		t.Fatal("WithHandoffs must not change its input")
-	}
-}
-
-func TestEncodeHandoffsClearsWhenNothingIsLeft(t *testing.T) {
-	raw, err := EncodeHandoffs([]Step{{StatusKey: "todo", Handler: Handler{Type: HandlerNone}}})
-	if err != nil || raw != nil {
-		t.Fatalf("EncodeHandoffs = %s, %v; want nil", raw, err)
+	got, err := DecodeSteps(raw)
+	if err != nil || !reflect.DeepEqual(got, def.Steps) {
+		t.Fatalf("DecodeSteps = %+v, %v; want %+v", got, err, def.Steps)
 	}
 }
 
@@ -157,7 +167,7 @@ func TestNextStatusFallsBackToTheNextColumn(t *testing.T) {
 		t.Fatalf("code_review next = %q, want its own choice", got)
 	}
 	// The column after the last own step is blocked, which is skipped.
-	plain := Definition{Steps: stepsFor(WithFixed([]string{"implement"}))}
+	plain := Definition{Steps: stepsFor(ArrangeKeys([]string{"implement", "blocked"}))}
 	if got := plain.NextStatus("implement"); got != "done" {
 		t.Fatalf("last step next = %q, want done", got)
 	}
@@ -264,7 +274,7 @@ func TestBriefNamesStepCommandsAndHandlers(t *testing.T) {
 }
 
 func TestBriefPrintsBuiltInKeysOnce(t *testing.T) {
-	def := WithHandoffs(Definition{Name: DefaultName, IsDefault: true, Steps: stepsFor(BuiltInDefaultKeys())},
+	def := withHandoffs(Definition{Name: DefaultName, IsDefault: true, Steps: stepsFor(BuiltInDefaultKeys())},
 		[]Step{{StatusKey: "in_review", Handler: Handler{Type: HandlerProjectLead}}})
 	brief := Brief(BriefInput{
 		Workflow:        def,
@@ -278,5 +288,14 @@ func TestBriefPrintsBuiltInKeysOnce(t *testing.T) {
 	}
 	if !strings.Contains(brief, "Step done      → multica issue status MUL-1 done\n") {
 		t.Fatalf("the last own step should suggest done:\n%s", brief)
+	}
+}
+
+func TestBriefWithoutBlockedPointsAtTheBackStatus(t *testing.T) {
+	def := withHandoffs(Definition{Name: "Lean", Steps: stepsFor(ArrangeKeys([]string{"implement", "code_review"}))},
+		[]Step{{StatusKey: "code_review", Handler: Handler{Type: HandlerProjectLead}, BackStatusKey: "implement"}})
+	brief := Brief(BriefInput{Workflow: def, StatusKey: "code_review", IssueIdentifier: "MUL-2"})
+	if strings.Contains(brief, "MUL-2 blocked") || !strings.Contains(brief, "no blocked status") || !strings.Contains(brief, "Needs changes") {
+		t.Fatalf("a workflow without blocked should not suggest it:\n%s", brief)
 	}
 }

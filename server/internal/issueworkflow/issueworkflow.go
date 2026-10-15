@@ -1,17 +1,16 @@
 // Package issueworkflow owns project workflows (MUL-7420).
 //
-// A workflow selects and orders statuses from the workspace's shared
-// issue_status catalog: it decides which columns a project's board shows.
-// Every workflow starts with backlog and todo and ends with blocked, done and
-// cancelled; only the steps in between differ. Statuses stay shared and
-// peer-level, so issue.status keeps holding a catalog key.
+// A workflow is a whole pipeline: it selects and orders statuses from the
+// workspace's shared issue_status catalog, and says who each column hands an
+// issue to. Every workflow lists todo, done and cancelled; backlog and
+// blocked are optional; only their positions are fixed (backlog, todo first;
+// blocked, done, cancelled last). Statuses stay shared and peer-level, so
+// issue.status keeps holding a catalog key.
 //
-// Who a column hands an issue to belongs to the project, not the workflow
-// (project.workflow_handoffs): when an issue enters a status through an
-// ordinary issue write, it is assigned to that project's handler for the
-// status and, for an agent or squad, its run starts with the step's
-// instructions. Two projects can share a workflow and hand the same step to
-// different agents.
+// When an issue of a project enters a status through an ordinary issue write,
+// it is assigned to the workflow's handler for that status and, for an agent,
+// its run starts with the step's instructions. A relative handler (the project
+// lead) resolves per project, so projects can share a workflow.
 //
 // A project without a workflow uses the workspace Default workflow. Default
 // is a stored row once created; before that it is the built-in statuses.
@@ -54,13 +53,24 @@ const (
 // StartStatus is where a new issue lands unless its creator picks a status.
 const StartStatus = issuestatus.Todo
 
-// Every workflow lists these statuses, in this order, around its own steps.
+// These statuses sit in fixed places around a workflow's own steps. Backlog
+// and blocked are optional; the rest every workflow lists.
 var (
 	fixedHead = []string{issuestatus.Backlog, issuestatus.Todo}
 	fixedTail = []string{issuestatus.Blocked, issuestatus.Done, issuestatus.Cancelled}
 )
 
-// IsFixed reports whether every workflow lists the status in a fixed place.
+// IsRequired reports whether every workflow must list the status: new issues
+// start on todo, and done and cancelled are how work ends.
+func IsRequired(key string) bool {
+	switch key {
+	case issuestatus.Todo, issuestatus.Done, issuestatus.Cancelled:
+		return true
+	}
+	return false
+}
+
+// IsFixed reports whether the status has a fixed place when listed.
 func IsFixed(key string) bool {
 	for _, k := range fixedHead {
 		if k == key {
@@ -85,17 +95,47 @@ func AcceptsHandoff(key string) bool {
 	return true
 }
 
-// WithFixed places the fixed statuses around a workflow's own steps. Fixed
-// keys inside middle are dropped, so their position never moves.
-func WithFixed(middle []string) []string {
-	out := make([]string, 0, len(fixedHead)+len(middle)+len(fixedTail))
-	out = append(out, fixedHead...)
-	for _, key := range middle {
-		if !IsFixed(key) {
-			out = append(out, key)
+// Arrange puts a workflow's steps in board order: the fixed statuses it
+// lists in their places around its own steps, with the required ones added
+// when missing. A repeated fixed status keeps its first step.
+func Arrange(steps []Step) []Step {
+	fixed := map[string]Step{}
+	middle := make([]Step, 0, len(steps))
+	for _, s := range steps {
+		if !IsFixed(s.StatusKey) {
+			middle = append(middle, s)
+			continue
+		}
+		if _, ok := fixed[s.StatusKey]; !ok {
+			fixed[s.StatusKey] = s
 		}
 	}
-	return append(out, fixedTail...)
+	place := func(out []Step, keys []string) []Step {
+		for _, key := range keys {
+			if s, ok := fixed[key]; ok {
+				out = append(out, s)
+			} else if IsRequired(key) {
+				out = append(out, Step{StatusKey: key, Handler: Handler{Type: HandlerNone}})
+			}
+		}
+		return out
+	}
+	out := place(make([]Step, 0, len(steps)+len(fixedHead)+len(fixedTail)), fixedHead)
+	out = append(out, middle...)
+	return place(out, fixedTail)
+}
+
+// ArrangeKeys is Arrange for bare status keys.
+func ArrangeKeys(keys []string) []string {
+	return keysOf(Arrange(stepsFor(keys)))
+}
+
+func keysOf(steps []Step) []string {
+	keys := make([]string, len(steps))
+	for i, s := range steps {
+		keys[i] = s.StatusKey
+	}
+	return keys
 }
 
 // MiddleKeys returns the workflow's own steps, without the fixed statuses.
@@ -111,7 +151,7 @@ func MiddleKeys(keys []string) []string {
 
 // BuiltInDefaultKeys is Default before a workspace stores its own.
 func BuiltInDefaultKeys() []string {
-	return WithFixed([]string{issuestatus.InProgress, issuestatus.InReview})
+	return ArrangeKeys([]string{issuestatus.Backlog, issuestatus.InProgress, issuestatus.InReview, issuestatus.Blocked})
 }
 
 // Handler names who receives an issue when it enters a step. ID is set only
@@ -121,9 +161,7 @@ type Handler struct {
 	ID   string `json:"id,omitempty"`
 }
 
-// Step is one status of a project's board with that project's handoff for it.
-// A workflow row stores only StatusKey; a project's workflow_handoffs stores
-// the rest.
+// Step is one status of a workflow with its handoff.
 type Step struct {
 	StatusKey     string  `json:"status_key"`
 	Handler       Handler `json:"handler"`
@@ -132,8 +170,7 @@ type Step struct {
 	BackStatusKey string  `json:"back_status_key,omitempty"`
 }
 
-// Definition is the workflow a project uses, with that project's handoffs
-// applied to its steps.
+// Definition is a decoded workflow.
 type Definition struct {
 	ID        pgtype.UUID
 	Name      string
@@ -150,42 +187,77 @@ func (s Step) HandsOff() bool {
 	return false
 }
 
+// storedStep is a step as the workflow row stores it; a step without a
+// handoff is just its status key.
 type storedStep struct {
-	StatusKey string `json:"status_key"`
+	StatusKey     string   `json:"status_key"`
+	Handler       *Handler `json:"handler,omitempty"`
+	Instructions  string   `json:"instructions,omitempty"`
+	NextStatusKey string   `json:"next_status_key,omitempty"`
+	BackStatusKey string   `json:"back_status_key,omitempty"`
 }
 
-// Decode parses a stored workflow row. Its steps carry no handoffs.
+// Decode parses a stored workflow row.
 func Decode(row db.IssueWorkflow) (Definition, error) {
-	keys, err := DecodeKeys(row.Steps)
+	steps, err := DecodeSteps(row.Steps)
 	if err != nil {
 		return Definition{}, err
 	}
-	return Definition{ID: row.ID, Name: row.Name, IsDefault: row.IsDefault, Steps: stepsFor(keys)}, nil
+	return Definition{ID: row.ID, Name: row.Name, IsDefault: row.IsDefault, Steps: steps}, nil
 }
 
-// DecodeKeys parses a stored steps array into its status keys, in order.
-func DecodeKeys(raw []byte) ([]string, error) {
+// DecodeSteps parses a stored steps array, normalizing a missing handler to
+// "none".
+func DecodeSteps(raw []byte) ([]Step, error) {
 	if len(raw) == 0 {
-		return []string{}, nil
+		return []Step{}, nil
 	}
 	var stored []storedStep
 	if err := json.Unmarshal(raw, &stored); err != nil {
 		return nil, fmt.Errorf("decode workflow steps: %w", err)
 	}
-	keys := make([]string, len(stored))
+	steps := make([]Step, len(stored))
 	for i, s := range stored {
-		keys[i] = s.StatusKey
+		steps[i] = Step{
+			StatusKey:     s.StatusKey,
+			Handler:       Handler{Type: HandlerNone},
+			Instructions:  s.Instructions,
+			NextStatusKey: s.NextStatusKey,
+			BackStatusKey: s.BackStatusKey,
+		}
+		if s.Handler != nil && s.Handler.Type != "" {
+			steps[i].Handler = *s.Handler
+		}
 	}
-	return keys, nil
+	return steps, nil
 }
 
-// EncodeKeys serializes a workflow's statuses for storage.
-func EncodeKeys(keys []string) ([]byte, error) {
-	stored := make([]storedStep, len(keys))
-	for i, key := range keys {
-		stored[i] = storedStep{StatusKey: key}
+// DecodeKeys parses a stored steps array into its status keys, in order.
+func DecodeKeys(raw []byte) ([]string, error) {
+	steps, err := DecodeSteps(raw)
+	if err != nil {
+		return nil, err
+	}
+	return keysOf(steps), nil
+}
+
+// EncodeSteps serializes a workflow's steps for storage.
+func EncodeSteps(steps []Step) ([]byte, error) {
+	stored := make([]storedStep, len(steps))
+	for i, s := range steps {
+		stored[i] = storedStep{StatusKey: s.StatusKey, NextStatusKey: s.NextStatusKey, BackStatusKey: s.BackStatusKey}
+		if s.HandsOff() {
+			h := s.Handler
+			stored[i].Handler = &h
+			stored[i].Instructions = s.Instructions
+		}
 	}
 	return json.Marshal(stored)
+}
+
+// EncodeKeys serializes statuses without handoffs for storage.
+func EncodeKeys(keys []string) ([]byte, error) {
+	return EncodeSteps(stepsFor(keys))
 }
 
 func stepsFor(keys []string) []Step {
@@ -194,58 +266,6 @@ func stepsFor(keys []string) []Step {
 		steps[i] = Step{StatusKey: key, Handler: Handler{Type: HandlerNone}}
 	}
 	return steps
-}
-
-// DecodeHandoffs parses a project's stored handoffs, normalizing an empty
-// handler to "none".
-func DecodeHandoffs(raw []byte) ([]Step, error) {
-	if len(raw) == 0 {
-		return []Step{}, nil
-	}
-	var steps []Step
-	if err := json.Unmarshal(raw, &steps); err != nil {
-		return nil, fmt.Errorf("decode project handoffs: %w", err)
-	}
-	for i := range steps {
-		if steps[i].Handler.Type == "" {
-			steps[i].Handler.Type = HandlerNone
-		}
-	}
-	return steps, nil
-}
-
-// EncodeHandoffs serializes a project's handoffs, dropping empty entries.
-// It returns nil when nothing is left, which clears the column.
-func EncodeHandoffs(steps []Step) ([]byte, error) {
-	kept := make([]Step, 0, len(steps))
-	for _, s := range steps {
-		if s.HandsOff() || s.Instructions != "" || s.NextStatusKey != "" || s.BackStatusKey != "" {
-			kept = append(kept, s)
-		}
-	}
-	if len(kept) == 0 {
-		return nil, nil
-	}
-	return json.Marshal(kept)
-}
-
-// WithHandoffs returns def with a project's handoffs applied to its steps.
-// Handoffs for statuses the workflow does not list are ignored.
-func WithHandoffs(def Definition, handoffs []Step) Definition {
-	byKey := make(map[string]Step, len(handoffs))
-	for _, h := range handoffs {
-		byKey[h.StatusKey] = h
-	}
-	out := def
-	out.Steps = make([]Step, len(def.Steps))
-	for i, s := range def.Steps {
-		if h, ok := byKey[s.StatusKey]; ok && AcceptsHandoff(s.StatusKey) {
-			out.Steps[i] = h
-			continue
-		}
-		out.Steps[i] = Step{StatusKey: s.StatusKey, Handler: Handler{Type: HandlerNone}}
-	}
-	return out
 }
 
 // Has reports whether the workflow lists the status key.
@@ -266,11 +286,7 @@ func (d Definition) Step(key string) (Step, bool) {
 
 // StatusKeys lists the workflow's statuses in board order.
 func (d Definition) StatusKeys() []string {
-	keys := make([]string, len(d.Steps))
-	for i, s := range d.Steps {
-		keys[i] = s.StatusKey
-	}
-	return keys
+	return keysOf(d.Steps)
 }
 
 // HandsOffAnywhere reports whether any step hands an issue off.
@@ -314,13 +330,13 @@ type CatalogEntry struct {
 	Archived bool
 }
 
-// Normalize trims free text and places the fixed statuses around keys.
-func Normalize(name, description string, keys []string) (string, string, []string) {
-	middle := make([]string, 0, len(keys))
-	for _, key := range keys {
-		middle = append(middle, strings.TrimSpace(key))
+// Normalize trims free text and handoffs and puts the steps in board order.
+func Normalize(name, description string, steps []Step) (string, string, []Step) {
+	normalized := make([]Step, len(steps))
+	for i, s := range steps {
+		normalized[i] = NormalizeHandoff(s)
 	}
-	return strings.TrimSpace(name), strings.TrimSpace(description), WithFixed(middle)
+	return strings.TrimSpace(name), strings.TrimSpace(description), Arrange(normalized)
 }
 
 // ValidationError is a user-correctable problem with a workflow definition.
@@ -332,9 +348,10 @@ func invalid(format string, args ...any) error {
 	return &ValidationError{Message: fmt.Sprintf(format, args...)}
 }
 
-// Validate checks a normalized workflow against the status catalog. The
-// Default workflow keeps its reserved name.
-func Validate(name, description string, keys []string, isDefault bool, catalog map[string]CatalogEntry) error {
+// Validate checks a normalized workflow and its handoffs against the status
+// catalog. The Default workflow keeps its reserved name. Handler ids are
+// checked by the caller, which owns the workspace lookups.
+func Validate(name, description string, steps []Step, isDefault bool, catalog map[string]CatalogEntry) error {
 	if !isDefault {
 		if name == "" || utf8.RuneCountInString(name) > MaxNameRunes {
 			return invalid("name must be 1-%d characters", MaxNameRunes)
@@ -346,11 +363,11 @@ func Validate(name, description string, keys []string, isDefault bool, catalog m
 	if utf8.RuneCountInString(description) > MaxDescriptionRunes {
 		return invalid("description must be at most %d characters", MaxDescriptionRunes)
 	}
-	if len(keys) > MaxSteps {
+	if len(steps) > MaxSteps {
 		return invalid("a workflow can have at most %d statuses", MaxSteps)
 	}
-	seen := make(map[string]bool, len(keys))
-	for _, key := range keys {
+	seen := make(map[string]bool, len(steps))
+	for _, key := range keysOf(steps) {
 		entry, ok := catalog[key]
 		if !ok && !issuestatus.IsBuiltIn(key) {
 			return invalid("status %q does not exist", key)
@@ -362,6 +379,12 @@ func Validate(name, description string, keys []string, isDefault bool, catalog m
 			return invalid("status %q appears more than once", key)
 		}
 		seen[key] = true
+	}
+	def := Definition{Steps: steps}
+	for _, s := range steps {
+		if err := ValidateHandoff(s, def); err != nil {
+			return err
+		}
 	}
 	return nil
 }
@@ -391,12 +414,11 @@ func NormalizeHandoff(s Step) Step {
 	return s
 }
 
-// ValidateHandoff checks one normalized handoff against the project's
-// workflow. Handler ids are checked by the caller, which owns the workspace
-// lookups.
+// ValidateHandoff checks one normalized handoff against its workflow.
+// Handler ids are checked by the caller, which owns the workspace lookups.
 func ValidateHandoff(s Step, def Definition) error {
 	if !def.Has(s.StatusKey) {
-		return invalid("status %q is not part of this project's workflow", s.StatusKey)
+		return invalid("status %q is not part of this workflow", s.StatusKey)
 	}
 	switch s.Handler.Type {
 	case HandlerNone, HandlerProjectLead:
@@ -419,7 +441,7 @@ func ValidateHandoff(s Step, def Definition) error {
 	}
 	for _, ref := range []string{s.NextStatusKey, s.BackStatusKey} {
 		if ref != "" && (ref == s.StatusKey || !def.Has(ref)) {
-			return invalid("%q is not another status of this project's workflow", ref)
+			return invalid("%q is not another status of this workflow", ref)
 		}
 	}
 	return nil
@@ -445,8 +467,8 @@ func DefaultFor(ctx context.Context, q Querier, workspaceID pgtype.UUID) (Defini
 	return Decode(row)
 }
 
-// ForProject loads the workflow a project uses with the project's handoffs
-// applied. def is nil only for an issue outside any project.
+// ForProject loads the workflow a project uses. def is nil only for an issue
+// outside any project.
 func ForProject(ctx context.Context, q Querier, workspaceID, projectID pgtype.UUID) (*Definition, db.Project, error) {
 	if !projectID.Valid {
 		return nil, db.Project{}, nil
@@ -465,29 +487,24 @@ func ForProject(ctx context.Context, q Querier, workspaceID, projectID pgtype.UU
 // ForProjectRow loads the workflow of an already-loaded project. A dangling
 // workflow reference falls back to Default.
 func ForProjectRow(ctx context.Context, q Querier, project db.Project) (*Definition, error) {
-	def, err := structureFor(ctx, q, project)
-	if err != nil {
-		return nil, err
-	}
-	handoffs, err := DecodeHandoffs(project.WorkflowHandoffs)
-	if err != nil {
-		return nil, err
-	}
-	out := WithHandoffs(def, handoffs)
-	return &out, nil
-}
-
-func structureFor(ctx context.Context, q Querier, project db.Project) (Definition, error) {
+	var def Definition
+	var err error
 	if project.WorkflowID.Valid {
-		row, err := q.GetIssueWorkflow(ctx, db.GetIssueWorkflowParams{ID: project.WorkflowID, WorkspaceID: project.WorkspaceID})
+		var row db.IssueWorkflow
+		row, err = q.GetIssueWorkflow(ctx, db.GetIssueWorkflowParams{ID: project.WorkflowID, WorkspaceID: project.WorkspaceID})
 		if err == nil {
-			return Decode(row)
+			def, err = Decode(row)
+			return &def, err
 		}
 		if !errors.Is(err, pgx.ErrNoRows) {
-			return Definition{}, err
+			return nil, err
 		}
 	}
-	return DefaultFor(ctx, q, project.WorkspaceID)
+	def, err = DefaultFor(ctx, q, project.WorkspaceID)
+	if err != nil {
+		return nil, err
+	}
+	return &def, nil
 }
 
 // ResolveHandler turns a step's handler into a concrete assignee for one
@@ -599,7 +616,7 @@ type BriefInput struct {
 	HandlerName func(step Step) string
 }
 
-// Brief renders the handoff note an agent or squad leader receives when an
+// Brief renders the handoff note an agent receives when an
 // issue enters a step that hands off to it. The runtime brief's built-in
 // status rules (for example in_review on delivery) name statuses this project
 // may not use, so the note spells out the workflow's own statuses and the
@@ -655,8 +672,13 @@ func Brief(in BriefInput) string {
 	if step.BackStatusKey != "" {
 		fmt.Fprintf(&b, "Needs changes  → multica issue status %s %s\n", in.IssueIdentifier, step.BackStatusKey)
 	}
-	if in.Workflow.Has(issuestatus.Blocked) {
+	switch {
+	case in.Workflow.Has(issuestatus.Blocked):
 		fmt.Fprintf(&b, "Can't proceed  → multica issue status %s blocked, then comment why\n", in.IssueIdentifier)
+	case step.BackStatusKey != "":
+		b.WriteString("Can't proceed  → this workflow has no blocked status: comment why, then use the \"Needs changes\" command above\n")
+	default:
+		b.WriteString("Can't proceed  → this workflow has no blocked status: comment why and leave the status as it is\n")
 	}
 	b.WriteString("The system does not advance the status when your run ends. Where your runtime instructions name a status this list does not include, use the commands above instead.\n")
 	b.WriteString("Each step's handler gets a run when the issue enters that step, so do not use `multica issue wakeup` to watch this issue's status, assignee or runs; use wakeups only to wait for a time or for something outside this issue.\n")
