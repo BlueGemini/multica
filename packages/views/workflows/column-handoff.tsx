@@ -10,14 +10,14 @@ import { Popover, PopoverContent, PopoverTrigger } from "@multica/ui/components/
 import { ActorAvatar } from "../common/actor-avatar";
 import { useStatusLabel } from "../issues/utils/status-label";
 import { useT } from "../i18n";
-import { ProjectHandoffForm } from "./handoff-form";
+import { WorkflowHandoffForm } from "./handoff-form";
 import { useWorkflowPermissions } from "./permissions";
 import { stepHandlerActor, useStepHandlerLabel } from "./step-handler";
 
 /**
  * A project board column's handoff (MUL-7420): the handler badge, or a
- * "Hand to…" affordance for whoever may set one. Either opens the column's
- * handoff form; what it saves applies to this project only.
+ * "Hand to…" affordance for admins. Either opens the column's handoff form;
+ * it edits the workflow, so it says how many projects the change reaches.
  */
 export function ColumnHandoff({
   status,
@@ -33,12 +33,12 @@ export function ColumnHandoff({
   const labelOf = useStatusLabel(wsId);
   const handlerLabel = useStepHandlerLabel(project);
   const { getActorName } = useActorName();
-  const { canManageProject } = useWorkflowPermissions(project);
+  const { isAdmin } = useWorkflowPermissions(project);
   const [open, setOpen] = useState(false);
   const step = workflowStep(workflow, status);
   if (!step || !statusAcceptsHandoff(status)) return null;
   const label = handlerLabel(step);
-  if (!label && !canManageProject) return null;
+  if (!label && !isAdmin) return null;
   const actor = stepHandlerActor(step, project);
 
   return (
@@ -70,14 +70,14 @@ export function ColumnHandoff({
         <div className="mb-3 space-y-0.5">
           <p className="text-body font-medium">{t(($) => $.workflows.handoff.title, { status: labelOf(status) })}</p>
           <p className="text-caption text-muted-foreground">
-            {t(($) => $.workflows.handoff.scope_note, { project: project.title })}
+            {t(($) => $.workflows.handoff.scope_note, { workflow: workflow.name, count: Math.max(workflow.project_ids.length, 1) })}
           </p>
         </div>
-        <ProjectHandoffForm
-          project={project}
+        <WorkflowHandoffForm
           workflow={workflow}
           statusKey={status}
-          canEdit={canManageProject}
+          canEdit={isAdmin}
+          projectId={project.id}
           onSaved={() => setOpen(false)}
         />
       </PopoverContent>

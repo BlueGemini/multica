@@ -6,9 +6,9 @@ import { toast } from "sonner";
 import { api, clientErrorMessage } from "@multica/core/api";
 import { useWorkspaceId } from "@multica/core/hooks";
 import { useIssueStatuses } from "@multica/core/issue-statuses/hooks";
-import { useSetProjectWorkflowHandoff, workflowNextStatus } from "@multica/core/issue-workflows";
+import { useSetWorkflowHandoff, workflowNextStatus } from "@multica/core/issue-workflows";
 import { agentListOptions, memberListOptions } from "@multica/core/workspace/queries";
-import type { IssueWorkflow, IssueWorkflowStep, Project } from "@multica/core/types";
+import type { IssueWorkflow, IssueWorkflowStep } from "@multica/core/types";
 import { Button } from "@multica/ui/components/ui/button";
 import {
   Dialog,
@@ -46,21 +46,23 @@ function sameStep(a: IssueWorkflowStep, b: IssueWorkflowStep): boolean {
 }
 
 /**
- * One column's handoff for one project (MUL-7420): who entering the column
- * hands the issue to, what they are told, and where it goes next. The board's
- * column popover and the full-flow panel both render this form.
+ * One column's handoff (MUL-7420): who entering the column hands the issue
+ * to, what they are told, and where it goes next. It belongs to the workflow,
+ * so saving applies to every project using it. The board's column popover and
+ * the full-flow panel both render this form.
  */
-export function ProjectHandoffForm({
-  project,
+export function WorkflowHandoffForm({
   workflow,
   statusKey,
   canEdit,
+  projectId,
   onSaved,
 }: {
-  project: Project;
   workflow: IssueWorkflow;
   statusKey: string;
   canEdit: boolean;
+  /** The project the brief preview is for. */
+  projectId?: string;
   onSaved?: () => void;
 }) {
   const { t } = useT("issues");
@@ -75,7 +77,7 @@ export function ProjectHandoffForm({
   );
   const [draft, setDraft] = useState<IssueWorkflowStep>(saved);
   const [previewOpen, setPreviewOpen] = useState(false);
-  const setHandoff = useSetProjectWorkflowHandoff();
+  const setHandoff = useSetWorkflowHandoff();
   useEffect(() => setDraft(saved), [saved]);
 
   const handler = draft.handler;
@@ -85,7 +87,7 @@ export function ProjectHandoffForm({
   const save = async () => {
     try {
       await setHandoff.mutateAsync({
-        projectId: project.id,
+        workflowId: workflow.id,
         statusKey,
         handler: draft.handler,
         instructions: draft.handler.type === "none" ? "" : draft.instructions,
@@ -126,7 +128,8 @@ export function ProjectHandoffForm({
       <BriefPreviewDialog
         open={previewOpen}
         onOpenChange={setPreviewOpen}
-        project={project}
+        workflowId={workflow.id}
+        projectId={projectId}
         step={draft}
       />
     </div>
@@ -413,26 +416,32 @@ function Field({
   );
 }
 
-/** The brief a column's handler receives, rendered by the server from the unsaved handoff. */
-function BriefPreviewDialog({
+/**
+ * The brief a column's handler receives, rendered by the server from the
+ * unsaved handoff on the saved workflow.
+ */
+export function BriefPreviewDialog({
   open,
   onOpenChange,
-  project,
+  workflowId,
+  projectId,
   step,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  project: Project;
+  workflowId: string;
+  projectId?: string;
   step: IssueWorkflowStep;
 }) {
   const { t } = useT("issues");
   const wsId = useWorkspaceId();
   const labelOf = useStatusLabel(wsId);
   const { data: brief, isPending } = useQuery({
-    queryKey: ["issue-workflows", wsId, "brief-preview", project.id, JSON.stringify(step)],
+    queryKey: ["issue-workflows", wsId, "brief-preview", workflowId, projectId ?? "", JSON.stringify(step)],
     queryFn: () =>
-      api.previewProjectWorkflowBrief(project.id, {
+      api.previewWorkflowBrief(workflowId, {
         status_key: step.status_key,
+        ...(projectId ? { project_id: projectId } : {}),
         handler: step.handler,
         instructions: step.instructions,
         next_status_key: step.next_status_key,

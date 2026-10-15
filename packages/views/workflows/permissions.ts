@@ -8,8 +8,8 @@ import type { Project } from "@multica/core/types";
 
 /**
  * Who may change what in project workflows (MUL-7420), mirroring the server:
- * admins and a project's member lead set its handoffs, switch its workflow and
- * add columns for it; only admins change a workflow other projects share.
+ * only admins edit workflows and their handoffs; admins and a project's member
+ * lead switch the workflow the project uses.
  */
 export function useWorkflowPermissions(project?: Pick<Project, "lead_type" | "lead_id"> | null): {
   isAdmin: boolean;

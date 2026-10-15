@@ -5,10 +5,9 @@ import { issueKeys } from "../issues/queries";
 import { projectKeys } from "../projects/queries";
 import type {
   IssueWorkflowWriteRequest,
-  ListProjectsResponse,
-  Project,
-  SetProjectWorkflowHandoffRequest,
+  ListIssueWorkflowsResponse,
   SetProjectWorkflowRequest,
+  SetWorkflowHandoffRequest,
 } from "../types";
 import { issueWorkflowKeys } from "./queries";
 
@@ -73,26 +72,21 @@ export function useSetProjectWorkflow() {
   });
 }
 
-function useProjectWorkflowWriteSettled() {
+/** Saves a workflow's handoff for one column, for every project using it. */
+export function useSetWorkflowHandoff() {
   const qc = useQueryClient();
   const wsId = useWorkspaceId();
-  return (project: Project | undefined, projectId: string) => {
-    if (project) {
-      qc.setQueryData<ListProjectsResponse>(projectKeys.list(wsId), (old) =>
-        old && { ...old, projects: old.projects.map((p) => (p.id === project.id ? { ...p, ...project } : p)) },
-      );
-    }
-    qc.invalidateQueries({ queryKey: projectKeys.list(wsId) });
-    qc.invalidateQueries({ queryKey: projectKeys.detail(wsId, projectId) });
-  };
-}
-
-/** Saves this project's handoff for one column. */
-export function useSetProjectWorkflowHandoff() {
-  const settled = useProjectWorkflowWriteSettled();
   return useMutation({
-    mutationFn: ({ projectId, statusKey, ...data }: { projectId: string; statusKey: string } & SetProjectWorkflowHandoffRequest) =>
-      api.setProjectWorkflowHandoff(projectId, statusKey, data),
-    onSettled: (project, _error, { projectId }) => settled(project, projectId),
+    mutationFn: ({ workflowId, statusKey, ...data }: { workflowId: string; statusKey: string } & SetWorkflowHandoffRequest) =>
+      api.setWorkflowHandoff(workflowId, statusKey, data),
+    onSuccess: (saved) => {
+      if (!saved.id) return;
+      qc.setQueryData<ListIssueWorkflowsResponse>(issueWorkflowKeys.list(wsId), (old) =>
+        old && { ...old, workflows: old.workflows.map((w) => (w.id === saved.id ? saved : w)) },
+      );
+    },
+    onError: () => {
+      qc.invalidateQueries({ queryKey: issueWorkflowKeys.all(wsId) });
+    },
   });
 }

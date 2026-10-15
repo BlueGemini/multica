@@ -25,7 +25,7 @@ export type {
   WorkflowHandoffRun,
   NewWorkflowStatus,
   IssueWorkflowStepInput,
-  SetProjectWorkflowHandoffRequest,
+  SetWorkflowHandoffRequest,
 } from "./issue-workflow";
 export type {
   Agent,

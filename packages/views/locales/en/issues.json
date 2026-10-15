@@ -1462,7 +1462,7 @@
     },
     "settings": {
       "title": "Workflows",
-      "description": "A workflow is a board’s columns: every workflow starts with Backlog and Todo and ends with Blocked, Done and Cancelled, and arranges what sits between. Projects pick a workflow; each project sets its own handoffs on its board.",
+      "description": "A workflow is a whole pipeline: its columns, and who each column hands an issue to. Every workflow has Todo, Done and Cancelled; Backlog and Blocked are optional. Projects pick a workflow.",
       "new": "New workflow",
       "projects_one": "{{count}} project",
       "projects_other": "{{count}} projects",
@@ -1525,7 +1525,7 @@
       "duplicate": "Duplicate as new workflow",
       "copy_name": "{{name}} copy",
       "more": "More actions",
-      "steps_hint": "Drag to reorder the middle columns. Statuses come from the library below; a new status is created when you save.",
+      "steps_hint": "Drag to reorder the middle columns. Backlog and Blocked are optional. A new status is created when you save.",
       "reorder": "Reorder {{name}}",
       "card_hand_to": "Hand to",
       "card_then": "then → {{status}}",
@@ -1544,16 +1544,13 @@
       "preview_title": "Brief for the “{{status}}” step",
       "preview_description": "What the handler’s run receives when an issue enters this step. Saved changes are not required to preview.",
       "description_placeholder": "Add a description",
-      "select_step": "Select a step to configure it.",
+      "select_step": "Select a column to set who it hands issues to.",
       "unsaved": "Unsaved changes",
       "not_found": "This workflow no longer exists.",
       "default_note": "Default is the board of every project that doesn’t pick a workflow, and of views outside a project.",
-      "handoffs_title": "Handoffs are set per project",
-      "handoffs_hint": "A workflow only decides a board’s columns. Who an issue goes to when it enters a column is set on each project’s board, from the column header — so projects can share columns and still hand off to different people.",
       "new_badge": "New",
-      "fixed_start": "Starts with",
-      "fixed_end": "Ends with",
-      "columns": "Columns"
+      "columns": "Columns",
+      "include_status": "Include {{status}}"
     },
     "mapping": {
       "title": "Move issues into {{name}}",
@@ -1634,17 +1631,16 @@
     "detail": {
       "follows_project": "(from project)",
       "card_title": "{{workflow}} · from {{project}}",
-      "card_hint": "The project’s board decides these columns and handoffs."
+      "card_hint": "The project’s workflow decides these columns and handoffs."
     },
     "list_separator": ", ",
     "handoff": {
       "add": "Hand to…",
       "title": "When an issue enters “{{status}}”",
-      "scope_note": "Applies to {{project}} only.",
       "next_default": "Next column ({{status}})",
       "saved": "Handoff saved",
       "error": "Couldn't save the handoff",
-      "read_only": "Workspace admins and the project lead can change handoffs.",
+      "read_only": "Handoffs belong to the workflow; workspace admins change them.",
       "to": "Hand to",
       "none": "No handoff (assignee stays)",
       "search": "Search agents or members",
@@ -1654,7 +1650,9 @@
       "hint_off": "Entering this column keeps the current assignee.",
       "then": "When done, moves to {{status}}",
       "then_none": "When done, the handler picks the next status",
-      "more": "More options"
+      "more": "More options",
+      "scope_note_one": "Part of the {{workflow}} workflow: applies to the {{count}} project using it.",
+      "scope_note_other": "Part of the {{workflow}} workflow: applies to all {{count}} projects using it."
     },
     "columns": {
       "new_status": "New status…",
@@ -1667,10 +1665,10 @@
     },
     "flow": {
       "title": "{{workflow}} workflow",
-      "scope_shared_one": "Columns are shared with {{count}} other project using {{workflow}}. Handoffs here apply to this project only.",
-      "scope_shared_other": "Columns are shared with {{count}} other projects using {{workflow}}. Handoffs here apply to this project only.",
-      "scope_own": "Only this project uses these columns. Handoffs apply to this project only.",
-      "no_handoff_here": "No handoff"
+      "scope_own": "Only this project uses this workflow.",
+      "no_handoff_here": "No handoff",
+      "scope_shared_one": "{{count}} project uses this workflow. Its handoffs apply to every project using it.",
+      "scope_shared_other": "{{count}} projects use this workflow. Its handoffs apply to all of them."
     },
     "templates": {
       "delivery": {

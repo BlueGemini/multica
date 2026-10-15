@@ -621,18 +621,6 @@ export const EMPTY_ISSUE_WORKFLOW_DRY_RUN: IssueWorkflowDryRunResponse = {
   plan: { required: [], unchanged: [], total_issues: 0, affected_issues: 0 },
 };
 
-// One bad handoff drops itself, not the project: the column then shows no
-// handler, which is what the server does with a handoff it cannot use.
-export const ProjectWorkflowHandoffsSchema = z
-  .array(z.unknown())
-  .default([])
-  .transform((items) =>
-    items.flatMap((item) => {
-      const parsed = IssueWorkflowStepSchema.safeParse(item);
-      return parsed.success ? [parsed.data] : [];
-    }),
-  );
-
 export const IssueWorkflowBriefPreviewSchema = z.object({
   brief: z.string().default(""),
 }).loose();
@@ -1555,7 +1543,6 @@ const ProjectSchema = z.object({
   done_count: z.number().default(0),
   resource_count: z.number().default(0),
   workflow_id: z.string().nullable().default(null),
-  workflow_handoffs: ProjectWorkflowHandoffsSchema,
 }).loose();
 
 const SearchProjectResultSchema = ProjectSchema.extend({

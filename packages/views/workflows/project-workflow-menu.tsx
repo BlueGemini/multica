@@ -35,7 +35,7 @@ import { StatusIcon } from "../issues/components/status-icon";
 import { useStatusLabel } from "../issues/utils/status-label";
 import { useNavigation } from "../navigation";
 import { useT } from "../i18n";
-import { ProjectHandoffForm } from "./handoff-form";
+import { WorkflowHandoffForm } from "./handoff-form";
 import { useWorkflowPermissions } from "./permissions";
 import { useProjectWorkflowSwitch, WorkflowChoiceItems } from "./project-workflow-row";
 import { stepHandlerActor, useStepHandlerLabel } from "./step-handler";
@@ -110,7 +110,8 @@ export function ProjectWorkflowMenu({ project }: { project: Project }) {
 
 /**
  * The project's whole flow in one panel (MUL-7420): every column, who it
- * hands to, and the same handoff form the column header opens.
+ * hands to, and the same handoff form the column header opens. Handoffs
+ * belong to the workflow, so only admins edit them here.
  */
 export function WorkflowFlowSheet({
   open,
@@ -126,11 +127,11 @@ export function WorkflowFlowSheet({
   const { t } = useT("issues");
   const wsId = useWorkspaceId();
   const { data: projects = [] } = useQuery(projectListOptions(wsId));
-  const { canManageProject } = useWorkflowPermissions(project);
+  const { isAdmin } = useWorkflowPermissions(project);
   const [expanded, setExpanded] = useState<string | null>(null);
-  const sharedWith = workflow.is_default
-    ? projects.filter((p) => !p.workflow_id && p.id !== project.id).length
-    : workflow.project_ids.filter((id) => id !== project.id).length;
+  const usedBy = workflow.is_default
+    ? projects.filter((p) => !p.workflow_id).length
+    : workflow.project_ids.length;
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
@@ -138,8 +139,8 @@ export function WorkflowFlowSheet({
         <SheetHeader className="p-0">
           <SheetTitle>{t(($) => $.workflows.flow.title, { workflow: workflow.name })}</SheetTitle>
           <SheetDescription>
-            {sharedWith > 0
-              ? t(($) => $.workflows.flow.scope_shared, { count: sharedWith, workflow: workflow.name })
+            {usedBy > 1
+              ? t(($) => $.workflows.flow.scope_shared, { count: usedBy })
               : t(($) => $.workflows.flow.scope_own)}
           </SheetDescription>
         </SheetHeader>
@@ -150,7 +151,7 @@ export function WorkflowFlowSheet({
               project={project}
               workflow={workflow}
               statusKey={step.status_key}
-              canEdit={canManageProject}
+              canEdit={isAdmin}
               expanded={expanded === step.status_key}
               onToggle={() => setExpanded((current) => (current === step.status_key ? null : step.status_key))}
             />
@@ -222,7 +223,7 @@ function FlowRow({
       </button>
       {expanded && accepts && (
         <div className="border-t border-surface-border px-3 py-3">
-          <ProjectHandoffForm project={project} workflow={workflow} statusKey={statusKey} canEdit={canEdit} />
+          <WorkflowHandoffForm workflow={workflow} statusKey={statusKey} canEdit={canEdit} projectId={project.id} />
         </div>
       )}
     </li>

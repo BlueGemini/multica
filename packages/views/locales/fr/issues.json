@@ -1462,7 +1462,7 @@
     },
     "settings": {
       "title": "Workflows",
-      "description": "Un workflow, ce sont les colonnes d’un tableau : chacun commence par Backlog et Todo, finit par Blocked, Done et Cancelled, et organise ce qui se trouve entre les deux. Les projets choisissent un workflow et règlent leurs passages de relais sur leur tableau.",
+      "description": "Un workflow est un processus complet : ses colonnes, et à qui chaque colonne transmet un ticket. Chaque workflow a Todo, Done et Cancelled ; Backlog et Blocked sont facultatives. Les projets choisissent un workflow.",
       "new": "Nouveau workflow",
       "projects_one": "{{count}} projet",
       "projects_other": "{{count}} projets",
@@ -1525,7 +1525,7 @@
       "duplicate": "Dupliquer en nouveau workflow",
       "copy_name": "Copie de {{name}}",
       "more": "Plus d’actions",
-      "steps_hint": "Faites glisser pour réordonner les colonnes du milieu. Les états viennent de la bibliothèque ci-dessous ; un nouvel état est créé à l’enregistrement.",
+      "steps_hint": "Faites glisser pour réordonner les colonnes du milieu. Backlog et Blocked sont facultatives. Un nouveau statut est créé à l’enregistrement.",
       "reorder": "Réordonner {{name}}",
       "card_hand_to": "Confier à",
       "card_then": "puis → {{status}}",
@@ -1544,16 +1544,13 @@
       "preview_title": "Consignes de l’étape « {{status}} »",
       "preview_description": "Ce que reçoit l’exécution du responsable quand une tâche entre dans cette étape. Pas besoin d’enregistrer pour prévisualiser.",
       "description_placeholder": "Ajouter une description",
-      "select_step": "Sélectionnez une étape pour la configurer.",
+      "select_step": "Sélectionnez une colonne pour choisir à qui elle transmet les tickets.",
       "unsaved": "Modifications non enregistrées",
       "not_found": "Ce workflow n’existe plus.",
       "default_note": "Default est le tableau de tout projet sans workflow choisi, et des vues hors projet.",
-      "handoffs_title": "Les passages de relais se règlent par projet",
-      "handoffs_hint": "Un workflow ne décide que des colonnes d’un tableau. À qui revient une tâche en entrant dans une colonne se règle sur le tableau de chaque projet, depuis l’en-tête de colonne : des projets peuvent ainsi partager des colonnes et confier le travail à des personnes différentes.",
       "new_badge": "Nouveau",
-      "fixed_start": "Commence par",
-      "fixed_end": "Se termine par",
-      "columns": "Colonnes"
+      "columns": "Colonnes",
+      "include_status": "Inclure {{status}}"
     },
     "mapping": {
       "title": "Déplacer les tâches vers {{name}}",
@@ -1634,17 +1631,16 @@
     "detail": {
       "follows_project": "(selon le projet)",
       "card_title": "{{workflow}} · selon {{project}}",
-      "card_hint": "Le tableau du projet décide de ces colonnes et relais."
+      "card_hint": "Le workflow du projet décide de ces colonnes et transferts."
     },
     "list_separator": ", ",
     "handoff": {
       "add": "Confier à…",
       "title": "Quand une tâche entre dans « {{status}} »",
-      "scope_note": "S’applique uniquement à {{project}}.",
       "next_default": "Colonne suivante ({{status}})",
       "saved": "Passage de relais enregistré",
       "error": "Impossible d’enregistrer le passage de relais",
-      "read_only": "Les admins de l’espace et le responsable du projet peuvent modifier les passages de relais.",
+      "read_only": "Les transferts appartiennent au workflow ; les administrateurs de l’espace les modifient.",
       "to": "Confier à",
       "none": "Pas de relais (l’assigné reste)",
       "search": "Rechercher un agent ou un membre",
@@ -1654,7 +1650,9 @@
       "hint_off": "En entrant dans cette colonne, l’assigné ne change pas.",
       "then": "Une fois terminé, passe à « {{status}} »",
       "then_none": "Une fois terminé, le responsable choisit la suite",
-      "more": "Plus d’options"
+      "more": "Plus d’options",
+      "scope_note_one": "Fait partie du workflow {{workflow}} : s’applique au {{count}} projet qui l’utilise.",
+      "scope_note_other": "Fait partie du workflow {{workflow}} : s’applique aux {{count}} projets qui l’utilisent."
     },
     "columns": {
       "new_status": "Nouvel état…",
@@ -1667,10 +1665,10 @@
     },
     "flow": {
       "title": "Workflow {{workflow}}",
-      "scope_shared_one": "Les colonnes sont partagées avec {{count}} autre projet qui utilise {{workflow}}. Les passages de relais ici ne concernent que ce projet.",
-      "scope_shared_other": "Les colonnes sont partagées avec {{count}} autres projets qui utilisent {{workflow}}. Les passages de relais ici ne concernent que ce projet.",
-      "scope_own": "Seul ce projet utilise ces colonnes. Les passages de relais ne concernent que ce projet.",
-      "no_handoff_here": "Pas de relais"
+      "scope_own": "Seul ce projet utilise ce workflow.",
+      "no_handoff_here": "Pas de relais",
+      "scope_shared_one": "{{count}} projet utilise ce workflow. Ses transferts s’appliquent à chaque projet qui l’utilise.",
+      "scope_shared_other": "{{count}} projets utilisent ce workflow. Ses transferts s’appliquent à tous."
     },
     "templates": {
       "delivery": {

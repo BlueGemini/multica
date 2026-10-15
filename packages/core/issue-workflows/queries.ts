@@ -6,7 +6,7 @@ import type { IssueWorkflow, IssueWorkflowStep, Project } from "../types";
  * Workspace workflows (MUL-7420).
  *
  * A project's board is its workflow's columns — the named one it picked, or
- * the workspace Default — with the project's own handoffs on them. Helpers
+ * the workspace Default — with that workflow's handoffs on them. Helpers
  * return null only while workflows are unknown (still loading, or a server
  * without workflows), and callers then keep their pre-workflow behavior.
  */
@@ -47,31 +47,23 @@ export function defaultWorkflow(workflows: readonly IssueWorkflow[] | undefined)
   return workflows?.find((w) => w.is_default) ?? null;
 }
 
-/** A workflow's columns with a project's handoffs on them. */
-export function withProjectHandoffs(
-  workflow: IssueWorkflow,
-  handoffs: readonly IssueWorkflowStep[] | undefined,
-): IssueWorkflow {
-  if (!handoffs || handoffs.length === 0) return workflow;
-  const byStatus = new Map(handoffs.map((h) => [h.status_key, h]));
-  return {
-    ...workflow,
-    steps: workflow.steps.map((s) => {
-      const handoff = byStatus.get(s.status_key);
-      return handoff && statusAcceptsHandoff(s.status_key) ? { ...handoff, status_key: s.status_key } : s;
-    }),
-  };
-}
-
-/** Statuses at the ends of every workflow, in the order they sit. */
+/** Statuses with fixed places at the ends of a workflow, in the order they sit. */
 export const WORKFLOW_HEAD_STATUSES = ["backlog", "todo"] as const;
 export const WORKFLOW_TAIL_STATUSES = ["blocked", "done", "cancelled"] as const;
+/** Fixed statuses a workflow may leave out; the others every workflow lists. */
+export const WORKFLOW_OPTIONAL_STATUSES = ["backlog", "blocked"] as const;
 const FIXED_STATUSES = new Set<string>([...WORKFLOW_HEAD_STATUSES, ...WORKFLOW_TAIL_STATUSES]);
+const OPTIONAL_STATUSES = new Set<string>(WORKFLOW_OPTIONAL_STATUSES);
 const NO_HANDOFF_STATUSES = new Set(["backlog", "done", "cancelled"]);
 
-/** Whether a status is one of the columns every workflow keeps. */
+/** Whether a status has a fixed place when a workflow lists it. */
 export function isFixedWorkflowStatus(statusKey: string): boolean {
   return FIXED_STATUSES.has(statusKey);
+}
+
+/** Whether a fixed status may be left out of a workflow. */
+export function isOptionalWorkflowStatus(statusKey: string): boolean {
+  return OPTIONAL_STATUSES.has(statusKey);
 }
 
 /** Whether a column can have a handler: parking and closing columns cannot. */
@@ -100,17 +92,16 @@ export function workflowNextStatus(workflow: Pick<IssueWorkflow, "steps">, statu
 }
 
 /**
- * The workflow a project uses — its named one, else Default — with the
- * project's handoffs overlaid; null while workflows are unknown.
+ * The workflow a project uses — its named one, else Default; null while
+ * workflows are unknown.
  */
 export function resolveProjectWorkflow(
   workflows: readonly IssueWorkflow[] | undefined,
-  project: Pick<Project, "workflow_id" | "workflow_handoffs"> | null | undefined,
+  project: Pick<Project, "workflow_id"> | null | undefined,
 ): IssueWorkflow | null {
   if (!project || !workflows) return null;
   const named = project.workflow_id ? workflows.find((w) => w.id === project.workflow_id) : undefined;
-  const workflow = named ?? defaultWorkflow(workflows);
-  return workflow ? withProjectHandoffs(workflow, project.workflow_handoffs) : null;
+  return named ?? defaultWorkflow(workflows);
 }
 
 export function workflowStep(

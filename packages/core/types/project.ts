@@ -1,4 +1,3 @@
-import type { IssueWorkflowStep } from "./issue-workflow";
 
 export type ProjectStatus = "planned" | "in_progress" | "paused" | "completed" | "cancelled";
 
@@ -28,8 +27,6 @@ export interface Project {
    * Optional because older servers do not send it. (MUL-7420)
    */
   workflow_id?: string | null;
-  /** This project's handoffs, one per column that has a handler. (MUL-7420) */
-  workflow_handoffs?: IssueWorkflowStep[];
 }
 
 export interface CreateProjectRequest {

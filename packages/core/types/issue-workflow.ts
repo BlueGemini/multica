@@ -1,12 +1,13 @@
 /**
  * Workspace workflows (MUL-7420).
  *
- * A workflow is a board's columns: an ordered pick from the shared status
- * catalog, always opening with backlog and todo and closing with blocked, done
- * and cancelled. Handoffs belong to the project: entering a column through a
- * status change assigns the issue to the column's handler and, for an agent or
- * squad, starts its run with the column's instructions. Projects that name no
- * workflow use the workspace's Default workflow.
+ * A workflow is a whole pipeline: an ordered pick from the shared status
+ * catalog plus who each column hands an issue to. Every workflow lists todo,
+ * done and cancelled; backlog and blocked are optional, and the five keep fixed
+ * places at the ends. Entering a column through a status change assigns the
+ * issue to the column's handler and, for an agent, starts its run with the
+ * column's instructions. A project only picks a workflow; projects that name
+ * none use the workspace's Default workflow.
  */
 
 export type IssueWorkflowHandlerType =
@@ -23,10 +24,7 @@ export interface IssueWorkflowHandler {
   id?: string;
 }
 
-/**
- * A column with its project's handoff. Workflow rows carry only the status
- * key, so their handler is "none" until a project's handoffs are overlaid.
- */
+/** A column with its handoff; handler "none" keeps the assignee. */
 export interface IssueWorkflowStep {
   status_key: string;
   handler: IssueWorkflowHandler;
@@ -63,13 +61,18 @@ export interface NewWorkflowStatus {
   color?: string;
 }
 
-/** A column of a workflow write: an existing status or a new one. */
-export type IssueWorkflowStepInput = { status_key: string } | { new_status: NewWorkflowStatus };
+/** A column of a workflow write: an existing status or a new one, with its handoff. */
+export type IssueWorkflowStepInput = ({ status_key: string } | { new_status: NewWorkflowStatus }) &
+  Partial<SetWorkflowHandoffRequest>;
 
 export interface IssueWorkflowWriteRequest {
   name?: string;
   description?: string;
-  /** The middle columns; the fixed head and tail are placed by the server. */
+  /**
+   * Every column with its handoff. The server adds todo, done and cancelled
+   * when missing and places the fixed columns; backlog and blocked are listed
+   * only when included.
+   */
   steps?: IssueWorkflowStepInput[];
   /** Destination for issues on statuses an edit removes, keyed by removed status. */
   status_mapping?: Record<string, string>;
@@ -135,8 +138,8 @@ export interface WorkflowHandoffPreview {
   brief: string;
 }
 
-/** A project's handoff for one column; handler "none" clears it. */
-export interface SetProjectWorkflowHandoffRequest {
+/** A workflow's handoff for one column; handler "none" clears it. */
+export interface SetWorkflowHandoffRequest {
   handler: IssueWorkflowHandler;
   instructions?: string;
   next_status_key?: string;

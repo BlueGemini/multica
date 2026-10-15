@@ -52,17 +52,12 @@ describe("project workflow resolution (MUL-7420)", () => {
     expect(resolveProjectWorkflow([], { workflow_id: null })).toBeNull();
   });
 
-  it("puts the project's handoffs on its columns", () => {
-    const resolved = resolveProjectWorkflow([defaultWorkflow], {
-      workflow_id: null,
-      workflow_handoffs: [lead, { ...lead, status_key: "done" }, { ...lead, status_key: "gone" }],
-    });
-    expect(stepHandsOff(workflowStep(resolved, "in_review"))).toBe(true);
-    expect(workflowStep(resolved, "in_review")?.instructions).toBe("Review it.");
-    // Closing columns never hand off, and handoffs on statuses the board lacks are ignored.
-    expect(stepHandsOff(workflowStep(resolved, "done"))).toBe(false);
-    expect(resolved?.steps).toHaveLength(7);
-    expect(defaultWorkflow.steps[3]?.handler.type).toBe("none");
+  it("carries the workflow's own handoffs", () => {
+    const reviewed = { ...content, steps: content.steps.map((s) => (s.status_key === "editing" ? { ...lead, status_key: "editing" } : s)) };
+    const resolved = resolveProjectWorkflow([defaultWorkflow, reviewed], { workflow_id: "wf-content" });
+    expect(stepHandsOff(workflowStep(resolved, "editing"))).toBe(true);
+    expect(workflowStep(resolved, "editing")?.instructions).toBe("Review it.");
+    expect(stepHandsOff(workflowStep(resolved, "drafting"))).toBe(false);
   });
 });
 

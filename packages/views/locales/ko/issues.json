@@ -1415,7 +1415,7 @@
     },
     "settings": {
       "title": "워크플로",
-      "description": "워크플로는 보드의 열입니다. 모든 워크플로는 Backlog와 Todo로 시작해 Blocked, Done, Cancelled로 끝나고, 그 사이 열을 정합니다. 프로젝트는 워크플로를 고르고, 인계는 각 프로젝트 보드에서 설정합니다.",
+      "description": "워크플로는 하나의 전체 흐름입니다. 어떤 열이 있는지, 각 열이 이슈를 누구에게 넘기는지를 정합니다. 모든 워크플로에는 Todo, Done, Cancelled가 있고 Backlog와 Blocked는 선택 사항입니다. 프로젝트는 워크플로를 고르기만 합니다.",
       "new": "새 워크플로",
       "projects_other": "프로젝트 {{count}}개",
       "default_projects": "워크플로가 없는 프로젝트",
@@ -1472,7 +1472,7 @@
       "duplicate": "새 워크플로로 복제",
       "copy_name": "{{name}} 사본",
       "more": "더 보기",
-      "steps_hint": "가운데 열은 끌어서 순서를 바꿉니다. 상태는 아래 라이브러리에서 고르며, 새 상태는 저장할 때 만들어집니다.",
+      "steps_hint": "드래그해 가운데 열의 순서를 바꿉니다. Backlog와 Blocked는 선택 사항입니다. 새 상태는 저장할 때 만들어집니다.",
       "reorder": "{{name}} 순서 변경",
       "card_hand_to": "인계 대상",
       "card_then": "완료 후 → {{status}}",
@@ -1491,16 +1491,13 @@
       "preview_title": "“{{status}}” 단계 설명",
       "preview_description": "태스크가 이 단계에 들어오면 처리자의 실행이 받는 내용입니다. 미리 보기에는 저장이 필요 없습니다.",
       "description_placeholder": "설명 추가",
-      "select_step": "단계를 선택해 설정하세요.",
+      "select_step": "열을 선택해 이슈를 누구에게 넘길지 설정하세요.",
       "unsaved": "저장하지 않은 변경 사항",
       "not_found": "이 워크플로는 더 이상 없습니다.",
       "default_note": "Default는 워크플로를 고르지 않은 프로젝트와 프로젝트 밖 보기에서 쓰는 보드입니다.",
-      "handoffs_title": "인계는 프로젝트마다 설정합니다",
-      "handoffs_hint": "워크플로는 보드의 열만 정합니다. 태스크가 열에 들어올 때 누구에게 넘길지는 각 프로젝트 보드의 열 머리글에서 설정하므로, 열을 공유하면서도 다른 사람에게 넘길 수 있습니다.",
       "new_badge": "새로 만듦",
-      "fixed_start": "시작",
-      "fixed_end": "끝",
-      "columns": "열"
+      "columns": "열",
+      "include_status": "{{status}} 포함"
     },
     "mapping": {
       "title": "{{name}}(으)로 태스크 이동",
@@ -1572,17 +1569,16 @@
     "detail": {
       "follows_project": "(프로젝트 기준)",
       "card_title": "“{{workflow}}” · “{{project}}” 기준",
-      "card_hint": "이 열과 인계는 프로젝트 보드에서 정합니다."
+      "card_hint": "이 열과 인계는 프로젝트의 워크플로가 정합니다."
     },
     "list_separator": ", ",
     "handoff": {
       "add": "넘기기…",
       "title": "태스크가 “{{status}}”에 들어오면",
-      "scope_note": "“{{project}}”에만 적용됩니다.",
       "next_default": "다음 열 ({{status}})",
       "saved": "인계를 저장했습니다",
       "error": "인계를 저장하지 못했습니다",
-      "read_only": "워크스페이스 관리자와 프로젝트 리드가 인계를 바꿀 수 있습니다.",
+      "read_only": "인계는 워크플로에 속하며 워크스페이스 관리자가 변경합니다.",
       "to": "넘길 대상",
       "none": "넘기지 않음 (담당자 유지)",
       "search": "에이전트 또는 멤버 검색",
@@ -1592,7 +1588,8 @@
       "hint_off": "이 열에 들어와도 담당자는 바뀌지 않습니다.",
       "then": "완료 후 “{{status}}”(으)로 이동",
       "then_none": "완료 후 다음 상태는 담당자가 정합니다",
-      "more": "추가 옵션"
+      "more": "추가 옵션",
+      "scope_note_other": "「{{workflow}}」 워크플로의 일부로, 이를 사용하는 프로젝트 {{count}}개 모두에 적용됩니다."
     },
     "columns": {
       "new_status": "새 상태…",
@@ -1605,9 +1602,9 @@
     },
     "flow": {
       "title": "“{{workflow}}” 워크플로",
-      "scope_shared_other": "열은 “{{workflow}}”를 쓰는 다른 프로젝트 {{count}}개와 공유됩니다. 여기의 인계는 이 프로젝트에만 적용됩니다.",
-      "scope_own": "이 열은 이 프로젝트만 씁니다. 인계는 이 프로젝트에만 적용됩니다.",
-      "no_handoff_here": "인계 없음"
+      "scope_own": "이 워크플로는 이 프로젝트만 사용합니다.",
+      "no_handoff_here": "인계 없음",
+      "scope_shared_other": "프로젝트 {{count}}개가 이 워크플로를 사용합니다. 인계는 모두에 적용됩니다."
     },
     "templates": {
       "delivery": {

@@ -137,7 +137,7 @@ import type {
   IssueWorkflowDryRunResponse,
   ListIssueWorkflowsResponse,
   SetProjectWorkflowRequest,
-  SetProjectWorkflowHandoffRequest,
+  SetWorkflowHandoffRequest,
   WorkflowHandoffPreview,
   IssueLabelsResponse,
   LabelResourceType,
@@ -4178,31 +4178,40 @@ export class ApiClient {
     await this.fetch(`/api/issue-workflows/${id}`, { method: "DELETE" });
   }
 
-  /** Renders the brief a column's handler would receive, from an unsaved handoff. */
-  async previewProjectWorkflowBrief(
-    projectId: string,
-    data: SetProjectWorkflowHandoffRequest & { status_key: string },
+  /**
+   * Renders the brief a column's handler would receive, from an unsaved
+   * handoff. `project_id` names the project the preview is for, if any.
+   */
+  async previewWorkflowBrief(
+    workflowId: string,
+    data: SetWorkflowHandoffRequest & { status_key: string; project_id?: string },
   ): Promise<string> {
-    const raw = await this.fetch<unknown>(`/api/projects/${projectId}/workflow/brief`, {
+    const raw = await this.fetch<unknown>(`/api/issue-workflows/${workflowId}/brief`, {
       method: "POST",
       body: JSON.stringify(data),
     });
     const parsed = parseWithFallback(raw, IssueWorkflowBriefPreviewSchema, { brief: "" }, {
-      endpoint: "POST /api/projects/{id}/workflow/brief",
+      endpoint: "POST /api/issue-workflows/{id}/brief",
     });
     return parsed.brief;
   }
 
-  /** Saves this project's handoff for one column; handler "none" clears it. */
-  async setProjectWorkflowHandoff(
-    projectId: string,
+  /**
+   * Saves a workflow's handoff for one column, for every project using it;
+   * handler "none" clears it. Admin only.
+   */
+  async setWorkflowHandoff(
+    workflowId: string,
     statusKey: string,
-    data: SetProjectWorkflowHandoffRequest,
-  ): Promise<Project> {
-    return this.fetch(
-      `/api/projects/${projectId}/workflow/handoffs/${encodeURIComponent(statusKey)}`,
+    data: SetWorkflowHandoffRequest,
+  ): Promise<IssueWorkflow> {
+    const raw = await this.fetch<unknown>(
+      `/api/issue-workflows/${workflowId}/handoffs/${encodeURIComponent(statusKey)}`,
       { method: "PUT", body: JSON.stringify(data) },
     );
+    return parseWithFallback(raw, IssueWorkflowSchema, EMPTY_ISSUE_WORKFLOW, {
+      endpoint: "PUT /api/issue-workflows/{id}/handoffs/{status}",
+    });
   }
 
   /**

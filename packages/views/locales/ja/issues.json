@@ -1415,7 +1415,7 @@
     },
     "settings": {
       "title": "ワークフロー",
-      "description": "ワークフローはボードの列です。どのワークフローも Backlog と Todo で始まり、Blocked・Done・Cancelled で終わり、その間の列を自由に並べます。プロジェクトはワークフローを選び、引き継ぎは各プロジェクトのボードで設定します。",
+      "description": "ワークフローは一連の流れです。どの列があり、各列が課題を誰に引き継ぐかを決めます。すべてのワークフローに Todo・Done・Cancelled があり、Backlog と Blocked は任意です。プロジェクトはワークフローを選ぶだけです。",
       "new": "新規ワークフロー",
       "projects_other": "{{count}} 件のプロジェクト",
       "default_projects": "ワークフロー未設定のプロジェクト",
@@ -1472,7 +1472,7 @@
       "duplicate": "新しいワークフローとして複製",
       "copy_name": "{{name}} のコピー",
       "more": "その他の操作",
-      "steps_hint": "ドラッグで中間の列を並べ替えます。ステータスは下のライブラリから選びます。新しいステータスは保存時に作成されます。",
+      "steps_hint": "ドラッグで中間の列を並べ替えます。Backlog と Blocked は任意です。新しいステータスは保存時に作成されます。",
       "reorder": "「{{name}}」を並べ替え",
       "card_hand_to": "引き継ぎ先",
       "card_then": "完了後 → {{status}}",
@@ -1491,16 +1491,13 @@
       "preview_title": "「{{status}}」ステップの説明",
       "preview_description": "タスクがこのステップに入ったとき、処理者の実行が受け取る内容です。プレビューに保存は不要です。",
       "description_placeholder": "説明を追加",
-      "select_step": "ステップを選んで設定します。",
+      "select_step": "列を選択して、課題の引き継ぎ先を設定します。",
       "unsaved": "未保存の変更があります",
       "not_found": "このワークフローはもう存在しません。",
       "default_note": "Default は、ワークフローを選んでいないプロジェクトと、プロジェクト外のビューで使うボードです。",
-      "handoffs_title": "引き継ぎはプロジェクトごとに設定します",
-      "handoffs_hint": "ワークフローが決めるのはボードの列だけです。列に入ったタスクを誰に渡すかは、各プロジェクトのボードの列ヘッダーで設定します。列を共有しながら、引き継ぎ先はプロジェクトごとに変えられます。",
       "new_badge": "新規",
-      "fixed_start": "開始",
-      "fixed_end": "終了",
-      "columns": "列"
+      "columns": "列",
+      "include_status": "{{status}} を含める"
     },
     "mapping": {
       "title": "タスクを「{{name}}」に移動",
@@ -1572,17 +1569,16 @@
     "detail": {
       "follows_project": "（プロジェクトに従う）",
       "card_title": "「{{workflow}}」· プロジェクト「{{project}}」に従う",
-      "card_hint": "これらの列と引き継ぎはプロジェクトのボードで決まります。"
+      "card_hint": "これらの列と引き継ぎはプロジェクトのワークフローで決まります。"
     },
     "list_separator": "、",
     "handoff": {
       "add": "引き継ぐ…",
       "title": "タスクが「{{status}}」に入ったとき",
-      "scope_note": "「{{project}}」にのみ適用されます。",
       "next_default": "次の列（{{status}}）",
       "saved": "引き継ぎを保存しました",
       "error": "引き継ぎを保存できませんでした",
-      "read_only": "引き継ぎはワークスペース管理者とプロジェクトリードが変更できます。",
+      "read_only": "引き継ぎはワークフローに属し、ワークスペース管理者が変更します。",
       "to": "引き継ぎ先",
       "none": "引き継がない（担当者はそのまま）",
       "search": "エージェントまたはメンバーを検索",
@@ -1592,7 +1588,8 @@
       "hint_off": "この列に入っても担当者は変わりません。",
       "then": "完了後は「{{status}}」へ",
       "then_none": "完了後の行き先は担当者が決めます",
-      "more": "その他のオプション"
+      "more": "その他のオプション",
+      "scope_note_other": "「{{workflow}}」ワークフローの一部です。使用している {{count}} 件のプロジェクトすべてに適用されます。"
     },
     "columns": {
       "new_status": "新しいステータス…",
@@ -1605,9 +1602,9 @@
     },
     "flow": {
       "title": "ワークフロー「{{workflow}}」",
-      "scope_shared_other": "列は「{{workflow}}」を使うほかの {{count}} 件のプロジェクトと共有されています。ここでの引き継ぎはこのプロジェクトにだけ適用されます。",
-      "scope_own": "この列を使っているのはこのプロジェクトだけです。引き継ぎはこのプロジェクトにだけ適用されます。",
-      "no_handoff_here": "引き継ぎなし"
+      "scope_own": "このワークフローを使用しているのはこのプロジェクトだけです。",
+      "no_handoff_here": "引き継ぎなし",
+      "scope_shared_other": "{{count}} 件のプロジェクトがこのワークフローを使用しています。引き継ぎはそのすべてに適用されます。"
     },
     "templates": {
       "delivery": {

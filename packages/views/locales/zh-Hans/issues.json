@@ -1415,7 +1415,7 @@
     },
     "settings": {
       "title": "工作流",
-      "description": "工作流就是看板的列：每个工作流都以 Backlog、Todo 开头，以 Blocked、Done、Cancelled 结尾，中间的列由你安排。项目选择工作流，各项目在自己的看板上设置交接。",
+      "description": "工作流是一条完整的流程：有哪些列，以及每一列交给谁。每个工作流都有 Todo、Done、Cancelled；Backlog 和 Blocked 可选。项目只需选择工作流。",
       "new": "新建工作流",
       "projects_other": "{{count}} 个项目",
       "default_projects": "未选用工作流的项目",
@@ -1472,7 +1472,7 @@
       "duplicate": "复制为新工作流",
       "copy_name": "{{name}} 副本",
       "more": "更多操作",
-      "steps_hint": "拖动调整中间列的顺序。状态来自下方的状态库；新建的状态会在保存时创建。",
+      "steps_hint": "拖动调整中间列的顺序。Backlog 和 Blocked 可以关闭。新建的状态会在保存时创建。",
       "reorder": "调整「{{name}}」的顺序",
       "card_hand_to": "交给",
       "card_then": "完成后 → {{status}}",
@@ -1491,16 +1491,13 @@
       "preview_title": "「{{status}}」这一步的说明",
       "preview_description": "任务进入这一步时，处理人的运行会收到这段说明。预览不需要先保存。",
       "description_placeholder": "添加描述",
-      "select_step": "选择一个步骤进行配置。",
+      "select_step": "选择一列，设置任务进入时交给谁。",
       "unsaved": "有未保存的修改",
       "not_found": "这个工作流已不存在。",
       "default_note": "Default 是所有未选择工作流的项目、以及项目之外视图使用的看板。",
-      "handoffs_title": "交接按项目设置",
-      "handoffs_hint": "工作流只决定看板有哪些列。任务进入某一列时交给谁，在各项目看板的列头设置——所以多个项目可以共用列，却交给不同的人。",
       "new_badge": "新建",
-      "fixed_start": "开始",
-      "fixed_end": "结束",
-      "columns": "列"
+      "columns": "列",
+      "include_status": "包含「{{status}}」"
     },
     "mapping": {
       "title": "将任务移入「{{name}}」",
@@ -1572,17 +1569,16 @@
     "detail": {
       "follows_project": "（跟随项目）",
       "card_title": "「{{workflow}}」· 跟随项目「{{project}}」",
-      "card_hint": "这些列和交接由项目看板决定。"
+      "card_hint": "这些列和交接由项目的工作流决定。"
     },
     "list_separator": "、",
     "handoff": {
       "add": "交给…",
       "title": "任务进入「{{status}}」时",
-      "scope_note": "只对「{{project}}」生效。",
       "next_default": "下一列（{{status}}）",
       "saved": "交接已保存",
       "error": "无法保存交接",
-      "read_only": "工作区管理员和项目负责人可以修改交接。",
+      "read_only": "交接属于工作流，由工作区管理员修改。",
       "to": "交给谁",
       "none": "不交接（负责人不变）",
       "search": "搜索智能体或成员",
@@ -1592,7 +1588,8 @@
       "hint_off": "任务进入这一列时，负责人不变。",
       "then": "完成后进入「{{status}}」",
       "then_none": "完成后由处理人决定下一步",
-      "more": "更多选项"
+      "more": "更多选项",
+      "scope_note_other": "属于「{{workflow}}」工作流，对使用它的 {{count}} 个项目生效。"
     },
     "columns": {
       "new_status": "新建状态…",
@@ -1605,9 +1602,9 @@
     },
     "flow": {
       "title": "「{{workflow}}」工作流",
-      "scope_shared_other": "列与另外 {{count}} 个使用「{{workflow}}」的项目共用；这里的交接只对本项目生效。",
-      "scope_own": "只有这个项目使用这些列；交接只对本项目生效。",
-      "no_handoff_here": "不交接"
+      "scope_own": "只有这个项目使用这个工作流。",
+      "no_handoff_here": "不交接",
+      "scope_shared_other": "{{count}} 个项目使用这个工作流，它的交接对这些项目都生效。"
     },
     "templates": {
       "delivery": {

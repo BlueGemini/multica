@@ -9,7 +9,6 @@ import {
   ListIssueWorkflowsResponseSchema,
   WorkflowHandoffPreviewSchema,
   EMPTY_WORKFLOW_HANDOFF_PREVIEW,
-  ProjectWorkflowHandoffsSchema,
 } from "../api/schemas";
 
 const baseWorkflow = {
@@ -71,17 +70,6 @@ describe("workflow schemas (MUL-7420)", () => {
     const parsed = IssueWorkflowSchema.parse({ ...baseWorkflow, is_default: true, steps: [{ status_key: "todo" }] });
     expect(parsed.is_default).toBe(true);
     expect(parsed.steps[0]).toEqual({ status_key: "todo", handler: { type: "none" }, instructions: "" });
-  });
-
-  it("drops only the malformed entries of a project's handoffs", () => {
-    expect(ProjectWorkflowHandoffsSchema.parse(undefined)).toEqual([]);
-    const parsed = ProjectWorkflowHandoffsSchema.parse([
-      { status_key: "in_progress", handler: { type: "agent", id: "agent-1" }, instructions: "Build it." },
-      { handler: { type: "agent" } },
-      "nope",
-    ]);
-    expect(parsed).toHaveLength(1);
-    expect(parsed[0]?.status_key).toBe("in_progress");
   });
 
   it("falls back to an empty plan on a malformed dry run", () => {
