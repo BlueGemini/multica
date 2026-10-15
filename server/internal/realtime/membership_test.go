@@ -431,6 +431,7 @@ func TestMembershipRemovalCandidateFilter(t *testing.T) {
 		{"marker in content", `{"type":"comment:created","payload":{"body":"member:removed"}}`, "", false},
 		{"removal", `{"type":"member:removed","payload":{"workspace_id":"test-workspace","user_id":"test-user"}}`, testUserID, true},
 		{"escaped type", `{"type":"member:\u0072emoved","payload":{"workspace_id":"test-workspace","user_id":"test-user"}}`, testUserID, true},
+		{"escaped separator", `{"type":"member\u003aremoved","payload":{"workspace_id":"test-workspace","user_id":"test-user"}}`, testUserID, true},
 		{"escaped prefix", `{"type":"m\u0065mber:removed","payload":{"workspace_id":"test-workspace","user_id":"test-user"}}`, testUserID, true},
 		{"fully escaped prefix", `{"type":"\u006d\u0065\u006d\u0062\u0065\u0072:removed","payload":{"workspace_id":"test-workspace","user_id":"test-user"}}`, testUserID, true},
 		{"wrong workspace", `{"type":"member:removed","payload":{"workspace_id":"other-workspace","user_id":"test-user"}}`, "", true},

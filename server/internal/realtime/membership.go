@@ -119,9 +119,11 @@ func parseMemberRemoval(workspaceID string, raw []byte) (string, bool) {
 }
 
 func memberRemovalCandidate(raw []byte) bool {
+	// Require an event prefix, not the actor_type value "member" attached to
+	// ordinary comments and issue updates. A separator escape starts with '\'.
 	// An escaped "member" prefix must contain \u006* (m/e/b) or \u0072
 	// (r). HTML and line-separator escapes in ordinary content do not qualify.
-	return bytes.Contains(raw, []byte("member")) ||
+	return bytes.Contains(raw, []byte("member:")) || bytes.Contains(raw, []byte(`member\`)) ||
 		bytes.Contains(raw, []byte(`\u006`)) || bytes.Contains(raw, []byte(`\u0072`))
 }
 
