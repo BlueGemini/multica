@@ -6,7 +6,6 @@ import type { IssueStatus, UpdateIssueRequest } from "@multica/core/types";
 import { STATUS_CONFIG } from "@multica/core/issues/config";
 import { useIssueStatuses } from "@multica/core/issue-statuses/hooks";
 import { useWorkspaceId } from "@multica/core/hooks";
-import { useActorName } from "@multica/core/workspace/hooks";
 import { stepHandsOff, workflowStep } from "@multica/core/issue-workflows";
 import type { IssueWorkflowStep, Project } from "@multica/core/types";
 import { StatusIcon } from "../status-icon";
@@ -122,8 +121,7 @@ export function StatusPicker({
         if (!v) setQuery("");
         setOpen(v);
       }}
-      // Handoff hints need room beside the status name. (MUL-7420)
-      width={workflow ? "w-72" : "w-52"}
+      width={workflow ? "w-60" : "w-52"}
       align={align}
       triggerRender={triggerRender}
       searchable={searchable}
@@ -138,18 +136,7 @@ export function StatusPicker({
           </div>
         ) : undefined
       }
-      footer={
-        workflow ? (
-          <>
-            {markDuplicate}
-            <p className="px-2 pb-1 pt-1.5 text-caption leading-5 text-muted-foreground">
-              {t(($) => $.workflows.picker.footer)}
-            </p>
-          </>
-        ) : (
-          markDuplicate ?? undefined
-        )
-      }
+      footer={markDuplicate ?? undefined}
       trigger={
         customTrigger ??
         (status != null ? (
@@ -212,29 +199,26 @@ export function StatusPicker({
 }
 
 /**
- * Who entering a workflow step hands the issue to, or that the assignee
- * stays — the right-hand column of a workflow status picker. (MUL-7420)
+ * The avatar of whoever entering a workflow column hands the issue to; the
+ * name is in the tooltip. Nothing for a column that keeps the assignee.
+ * (MUL-7420)
  */
 function StepHandoffHint({ step, project }: { step: IssueWorkflowStep | undefined; project: Project | null }) {
   const { t } = useT("issues");
   const handlerLabel = useStepHandlerLabel(project);
-  const { getActorName } = useActorName();
   const handler = handlerLabel(step);
-  if (!handler) {
-    return (
-      <span className="ml-auto shrink-0 pl-2 text-caption text-muted-foreground">
-        {t(($) => $.workflows.handler.none)}
-      </span>
-    );
-  }
+  if (!handler) return null;
   const actor = stepHandlerActor(step, project);
-  const name = actor ? getActorName(actor.type, actor.id) : handler;
+  const text = t(($) => $.workflows.hands_off_to, { name: handler });
   return (
-    <span className="ml-auto flex min-w-0 max-w-[55%] items-center gap-1 pl-2 text-caption text-muted-foreground">
-      <span className="sr-only">{t(($) => $.workflows.hands_off_to, { name: handler })}</span>
+    <span className="ml-auto flex shrink-0 items-center gap-1 pl-2 text-caption text-muted-foreground" title={text}>
+      <span className="sr-only">{text}</span>
       <CornerDownRight aria-hidden className="size-3 shrink-0" />
-      {actor && <ActorAvatar actorType={actor.type} actorId={actor.id} size="xs" profileLink={false} />}
-      <span aria-hidden className="truncate">{name}</span>
+      {actor ? (
+        <ActorAvatar actorType={actor.type} actorId={actor.id} size="xs" profileLink={false} />
+      ) : (
+        <span aria-hidden className="max-w-20 truncate">{handler}</span>
+      )}
     </span>
   );
 }

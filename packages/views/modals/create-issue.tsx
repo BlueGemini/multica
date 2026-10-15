@@ -412,12 +412,12 @@ export function ManualCreatePanel({
     setManual({ assigneeType: type, assigneeId: id });
   };
   const updateProject = (id?: string) => { setProjectId(id); setShared({ projectId: id }); };
-  // A project using a workflow only accepts its steps: a status it does not
-  // list moves to the workflow's starting step. (MUL-7420)
+  // A project using a named workflow only accepts its columns: a status it
+  // does not list moves to todo, which every workflow keeps. (MUL-7420)
   const createWorkflow = useProjectWorkflow(wsId, projectId);
   useEffect(() => {
     if (createWorkflow && !workflowAllowsStatus(createWorkflow, status)) {
-      setStatus(createWorkflow.initial_status_key as IssueStatus);
+      setStatus("todo");
     }
   }, [createWorkflow, status]);
   const updateStartDate = (v: string | null) => { setStartDate(v); setManual({ startDate: v }); };

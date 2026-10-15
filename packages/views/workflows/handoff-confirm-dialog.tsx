@@ -22,7 +22,7 @@ import { ActorAvatar } from "../common/actor-avatar";
 import { StatusIcon } from "../issues/components/status-icon";
 import { useStatusLabel } from "../issues/utils/status-label";
 import { useT } from "../i18n";
-import { BriefBlock } from "./workflow-editor-page";
+import { BriefBlock } from "./handoff-form";
 
 const FROM = "⁣from⁣";
 const TO = "⁣to⁣";

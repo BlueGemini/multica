@@ -1,6 +1,6 @@
 "use client";
 
-import { Eye, MoreHorizontal } from "lucide-react";
+import { Eye, Filter, MoreHorizontal } from "lucide-react";
 import type { IssueStatus } from "@multica/core/types";
 import { Button } from "@multica/ui/components/ui/button";
 import {
@@ -9,7 +9,7 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
 } from "@multica/ui/components/ui/dropdown-menu";
-import { useViewStoreApi } from "@multica/core/issues/stores/view-store-context";
+import { useViewStore, useViewStoreApi } from "@multica/core/issues/stores/view-store-context";
 import { StatusIcon } from "./status-icon";
 import { useT } from "../../i18n";
 import { useWorkspaceId } from "@multica/core/hooks";
@@ -64,11 +64,19 @@ export function HiddenColumnRow({
   const labelOf = useStatusLabel(wsId);
   const { categoryOf, colorOf, iconOf } = useIssueStatuses(wsId);
   const viewStoreApi = useViewStoreApi();
+  // Not hidden by the viewer: the column is outside the workflow this view
+  // follows (MUL-7420), so filtering by the status is how to see it.
+  const outsideWorkflow = !useViewStore((s) => s.hiddenStatuses.includes(status));
   return (
     <div className="flex items-center justify-between rounded-lg px-2.5 py-2 hover:bg-muted/50">
-      <div className="flex items-center gap-2">
-        <StatusIcon category={categoryOf(status)} color={colorOf(status)} icon={iconOf(status)} status={status} className="h-3.5 w-3.5" />
-        <span className="text-body">{labelOf(status)}</span>
+      <div className="flex min-w-0 items-center gap-2">
+        <StatusIcon category={categoryOf(status)} color={colorOf(status)} icon={iconOf(status)} status={status} className="h-3.5 w-3.5 shrink-0" />
+        <span className="min-w-0">
+          <span className="block truncate text-body">{labelOf(status)}</span>
+          {outsideWorkflow && (
+            <span className="block truncate text-caption text-muted-foreground">{t(($) => $.board.outside_workflow)}</span>
+          )}
+        </span>
       </div>
       <div className="flex items-center gap-1.5">
         {total !== undefined && (
@@ -89,12 +97,19 @@ export function HiddenColumnRow({
             }
           />
           <DropdownMenuContent align="end">
-            <DropdownMenuItem
-              onClick={() => viewStoreApi.getState().showStatus(status)}
-            >
-              <Eye className="size-3.5" />
-              {t(($) => $.board.show_column)}
-            </DropdownMenuItem>
+            {outsideWorkflow ? (
+              <DropdownMenuItem onClick={() => viewStoreApi.getState().toggleStatusFilter(status)}>
+                <Filter className="size-3.5" />
+                {t(($) => $.board.filter_to_status)}
+              </DropdownMenuItem>
+            ) : (
+              <DropdownMenuItem
+                onClick={() => viewStoreApi.getState().showStatus(status)}
+              >
+                <Eye className="size-3.5" />
+                {t(($) => $.board.show_column)}
+              </DropdownMenuItem>
+            )}
           </DropdownMenuContent>
         </DropdownMenu>
       </div>

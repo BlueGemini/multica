@@ -1,0 +1,86 @@
+"use client";
+
+import { useState } from "react";
+import { Plus } from "lucide-react";
+import { useWorkspaceId } from "@multica/core/hooks";
+import { statusAcceptsHandoff, workflowStep } from "@multica/core/issue-workflows";
+import { useActorName } from "@multica/core/workspace/hooks";
+import type { IssueWorkflow, Project } from "@multica/core/types";
+import { Popover, PopoverContent, PopoverTrigger } from "@multica/ui/components/ui/popover";
+import { ActorAvatar } from "../common/actor-avatar";
+import { useStatusLabel } from "../issues/utils/status-label";
+import { useT } from "../i18n";
+import { ProjectHandoffForm } from "./handoff-form";
+import { useWorkflowPermissions } from "./permissions";
+import { stepHandlerActor, useStepHandlerLabel } from "./step-handler";
+
+/**
+ * A project board column's handoff (MUL-7420): the handler badge, or a
+ * "Hand to…" affordance for whoever may set one. Either opens the column's
+ * handoff form; what it saves applies to this project only.
+ */
+export function ColumnHandoff({
+  status,
+  workflow,
+  project,
+}: {
+  status: string;
+  workflow: IssueWorkflow;
+  project: Project;
+}) {
+  const { t } = useT("issues");
+  const wsId = useWorkspaceId();
+  const labelOf = useStatusLabel(wsId);
+  const handlerLabel = useStepHandlerLabel(project);
+  const { getActorName } = useActorName();
+  const { canManageProject } = useWorkflowPermissions(project);
+  const [open, setOpen] = useState(false);
+  const step = workflowStep(workflow, status);
+  if (!step || !statusAcceptsHandoff(status)) return null;
+  const label = handlerLabel(step);
+  if (!label && !canManageProject) return null;
+  const actor = stepHandlerActor(step, project);
+
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger
+        render={
+          label ? (
+            <button
+              type="button"
+              className="inline-flex min-w-0 max-w-32 items-center gap-1 rounded-full border border-surface-border bg-background/70 py-0.5 pl-0.5 pr-2 text-caption transition-colors hover:bg-accent"
+              aria-label={t(($) => $.workflows.hands_off_to, { name: label })}
+              title={t(($) => $.workflows.hands_off_to, { name: label })}
+            >
+              {actor && <ActorAvatar actorType={actor.type} actorId={actor.id} size="xs" profileLink={false} />}
+              <span className="truncate">{actor ? getActorName(actor.type, actor.id) : label}</span>
+            </button>
+          ) : (
+            <button
+              type="button"
+              className="inline-flex items-center gap-0.5 rounded-full px-1.5 py-0.5 text-caption text-muted-foreground opacity-0 transition-opacity hover:bg-accent hover:text-foreground focus-visible:opacity-100 group-hover/column:opacity-100 data-popup-open:opacity-100"
+            >
+              <Plus aria-hidden className="size-3" />
+              {t(($) => $.workflows.handoff.add)}
+            </button>
+          )
+        }
+      />
+      <PopoverContent align="end" className="w-[26rem] max-w-[calc(100vw-2rem)] p-4">
+        <div className="mb-3 space-y-0.5">
+          <p className="text-body font-medium">{t(($) => $.workflows.handoff.title, { status: labelOf(status) })}</p>
+          <p className="text-caption text-muted-foreground">
+            {t(($) => $.workflows.handoff.scope_note, { project: project.title })}
+          </p>
+        </div>
+        <ProjectHandoffForm
+          project={project}
+          workflow={workflow}
+          statusKey={status}
+          canEdit={canManageProject}
+          onSaved={() => setOpen(false)}
+        />
+      </PopoverContent>
+    </Popover>
+  );
+}

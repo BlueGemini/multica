@@ -19,9 +19,7 @@ import {
   DropdownMenuItem,
 } from "@multica/ui/components/ui/dropdown-menu";
 import { useWorkspaceId } from "@multica/core/hooks";
-import { useActorName } from "@multica/core/workspace/hooks";
 import { useIssueStatuses } from "@multica/core/issue-statuses/hooks";
-import { STATUS_CONFIG } from "@multica/core/issues/config";
 import { useViewStoreApi } from "@multica/core/issues/stores/view-store-context";
 import { useViewBaseline } from "../surface/view-baseline-context";
 import { StatusHeading } from "./status-heading";
@@ -35,8 +33,7 @@ import { DeferredPopup } from "../../common/deferred-popup";
 import { DeferredTooltip } from "../../common/deferred-tooltip";
 import { VirtuosoSeed } from "../../common/virtuoso-seed";
 import { useBoardWorkflow } from "./board-workflow-context";
-import { stepHandlerActor, useStepHandlerLabel } from "../../workflows/step-handler";
-import { workflowStep } from "@multica/core/issue-workflows";
+import { ColumnHandoff } from "../../workflows/column-handoff";
 import type { IssueCreateDefaults } from "../surface/types";
 
 // Insertion-position prediction intentionally omitted. The server's
@@ -126,9 +123,8 @@ export const BoardColumn = memo(function BoardColumn({
 }) {
   const status = group.status;
   const wsId = useWorkspaceId();
-  const { categoryOf, entryOf } = useIssueStatuses(wsId);
+  const { entryOf } = useIssueStatuses(wsId);
   const archived = !!status && !!entryOf(status)?.archived_at;
-  const cfg = status ? STATUS_CONFIG[categoryOf(status)] : null;
   const { setNodeRef, isOver: droppableIsOver } = useDroppable({ id: group.id });
   // A dragged card whose project workflow does not list this status cannot
   // land here; the column dims and says why. (MUL-7420)
@@ -203,7 +199,7 @@ export const BoardColumn = memo(function BoardColumn({
   return (
     <div
       style={{ width: BOARD_COL_WIDTH }}
-      className={`relative flex shrink-0 flex-col rounded-xl ${cfg?.columnBg ?? "bg-muted/40"} p-2 ${
+      className={`group/column relative flex shrink-0 flex-col rounded-xl bg-muted/40 p-2 ${
         hint ? "ring-2 ring-brand/30" : ""
       }`}
     >
@@ -379,34 +375,11 @@ export const BoardColumn = memo(function BoardColumn({
   );
 });
 
-/**
- * On a project board whose project uses a workflow, names who entering this
- * column hands the issue to. (MUL-7420)
- */
+/** On a project board, the column's handoff for that project. (MUL-7420) */
 function WorkflowStepHandlerBadge({ status }: { status: string }) {
   const { scopeWorkflow, scopeProject } = useBoardWorkflow();
-  const handlerLabel = useStepHandlerLabel(scopeProject);
-  const { getActorName } = useActorName();
-  const { t } = useT("issues");
-  const step = workflowStep(scopeWorkflow, status);
-  const label = handlerLabel(step);
-  if (!step || !label) return null;
-  const actor = stepHandlerActor(step, scopeProject);
-  const text = t(($) => $.workflows.hands_off_to, { name: label });
-  return (
-    <DeferredTooltip
-      trigger={
-        <span
-          className="inline-flex min-w-0 max-w-32 items-center gap-1 rounded-full border border-surface-border bg-background/70 py-0.5 pl-0.5 pr-2 text-caption"
-          aria-label={text}
-        >
-          {actor && <ActorAvatar actorType={actor.type} actorId={actor.id} size="xs" profileLink={false} />}
-          <span className="truncate">{actor ? getActorName(actor.type, actor.id) : label}</span>
-        </span>
-      }
-      content={text}
-    />
-  );
+  if (!scopeWorkflow || !scopeProject) return null;
+  return <ColumnHandoff status={status} workflow={scopeWorkflow} project={scopeProject} />;
 }
 
 function BoardGroupHeading({

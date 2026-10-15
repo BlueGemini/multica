@@ -5,7 +5,7 @@ import { CornerDownRight } from "lucide-react";
 import { useActorName } from "@multica/core/workspace/hooks";
 import { ActorAvatar } from "../common/actor-avatar";
 import { useT } from "../i18n";
-import { BriefBlock } from "./workflow-editor-page";
+import { BriefBlock } from "./handoff-form";
 
 /**
  * The handoff half of a status-change timeline entry (MUL-7420): who the

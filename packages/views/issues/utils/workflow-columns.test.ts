@@ -8,7 +8,7 @@ const workflow: IssueWorkflow = {
   workspace_id: "ws-1",
   name: "Delivery",
   description: "",
-  initial_status_key: "todo",
+  is_default: false,
   steps: ["todo", "code_review", "in_progress", "done"].map((status_key) => ({
     status_key,
     handler: { type: "none" as const },

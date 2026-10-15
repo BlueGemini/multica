@@ -371,7 +371,9 @@
     "empty_grouping": "Aucune tâche correspondante",
     "no_value": "Aucune valeur",
     "ordered_by": "Tableau trié par {{field}}",
-    "manual_reorder_hint": "Passez au tri Manuel pour réorganiser les tâches dans une colonne."
+    "manual_reorder_hint": "Passez au tri Manuel pour réorganiser les tâches dans une colonne.",
+    "filter_to_status": "Filtrer sur cet état",
+    "outside_workflow": "Hors du workflow de ce tableau"
   },
   "peek": {
     "panel_label": "Aperçu de la tâche",
@@ -1460,7 +1462,7 @@
     },
     "settings": {
       "title": "Workflows",
-      "description": "Un workflow définit les états d’un projet, leur ordre et à qui une tâche est confiée quand elle entre dans un état. Les états vivent dans la bibliothèque ci-dessous et sont partagés par tous les workflows ; chaque projet choisit son workflow dans ses propriétés.",
+      "description": "Un workflow, ce sont les colonnes d’un tableau : chacun commence par Backlog et Todo, finit par Blocked, Done et Cancelled, et organise ce qui se trouve entre les deux. Les projets choisissent un workflow et règlent leurs passages de relais sur leur tableau.",
       "new": "Nouveau workflow",
       "projects_one": "{{count}} projet",
       "projects_other": "{{count}} projets",
@@ -1496,12 +1498,12 @@
       "name_placeholder": "ex. Livraison",
       "description": "Description",
       "steps": "Étapes",
-      "add_step": "Ajouter une étape",
+      "add_step": "Ajouter une colonne",
       "start": "Début",
       "set_start": "Définir comme étape de départ",
       "move_up": "Monter",
       "move_down": "Descendre",
-      "remove": "Retirer l’étape",
+      "remove": "Retirer la colonne",
       "on_enter": "À l’entrée, confier à",
       "choose_target": "Choisir…",
       "instructions": "Instructions de passage",
@@ -1521,7 +1523,7 @@
       "duplicate": "Dupliquer en nouveau workflow",
       "copy_name": "Copie de {{name}}",
       "more": "Plus d’actions",
-      "steps_hint": "Les étapes viennent de la bibliothèque d’états. Faites-les glisser pour les réordonner ; l’ordre n’affecte que les tableaux de projet.",
+      "steps_hint": "Faites glisser pour réordonner les colonnes du milieu. Les états viennent de la bibliothèque ci-dessous ; un nouvel état est créé à l’enregistrement.",
       "reorder": "Réordonner {{name}}",
       "card_hand_to": "Confier à",
       "card_then": "puis → {{status}}",
@@ -1542,7 +1544,12 @@
       "description_placeholder": "Ajouter une description",
       "select_step": "Sélectionnez une étape pour la configurer.",
       "unsaved": "Modifications non enregistrées",
-      "not_found": "Ce workflow n’existe plus."
+      "not_found": "Ce workflow n’existe plus.",
+      "fixed": "Tous les workflows",
+      "default_note": "Default est le tableau de tout projet sans workflow choisi, et des vues hors projet.",
+      "handoffs_title": "Les passages de relais se règlent par projet",
+      "handoffs_hint": "Un workflow ne décide que des colonnes d’un tableau. À qui revient une tâche en entrant dans une colonne se règle sur le tableau de chaque projet, depuis l’en-tête de colonne : des projets peuvent ainsi partager des colonnes et confier le travail à des personnes différentes.",
+      "new_badge": "Nouveau"
     },
     "mapping": {
       "title": "Déplacer les tâches vers {{name}}",
@@ -1621,8 +1628,74 @@
       "brief_header": "Les consignes de workflow reçues par cette exécution"
     },
     "detail": {
-      "follows_project": "(selon le projet)"
+      "follows_project": "(selon le projet)",
+      "card_title": "{{workflow}} · selon {{project}}",
+      "card_hint": "Le tableau du projet décide de ces colonnes et relais."
     },
-    "list_separator": ", "
+    "list_separator": ", ",
+    "handoff": {
+      "add": "Confier à…",
+      "title": "Quand une tâche entre dans « {{status}} »",
+      "scope_note": "S’applique uniquement à {{project}}.",
+      "next_default": "Colonne suivante ({{status}})",
+      "saved": "Passage de relais enregistré",
+      "error": "Impossible d’enregistrer le passage de relais",
+      "read_only": "Les admins de l’espace et le responsable du projet peuvent modifier les passages de relais."
+    },
+    "columns": {
+      "title": "Ajouter une colonne",
+      "status": "État",
+      "new_status": "Nouvel état…",
+      "name_placeholder": "Nom de l’état",
+      "scope": "Où l’ajouter",
+      "scope_project": "Uniquement {{project}}",
+      "scope_project_hint": "Ce projet reçoit sa propre copie du workflow ; les autres projets gardent la leur.",
+      "scope_workflow": "Tous les projets qui utilisent {{workflow}}",
+      "scope_workflow_hint": "Modifie le workflow partagé.",
+      "scope_workflow_admin": "Seuls les admins de l’espace peuvent modifier un workflow partagé.",
+      "add": "Ajouter",
+      "add_column": "Ajouter une colonne",
+      "added": "Colonne ajoutée",
+      "error": "Impossible d’ajouter la colonne"
+    },
+    "menu": {
+      "view_flow": "Voir tout le flux",
+      "switch": "Changer de workflow",
+      "from_template": "Nouveau depuis un modèle"
+    },
+    "flow": {
+      "title": "Workflow {{workflow}}",
+      "scope_shared_one": "Les colonnes sont partagées avec {{count}} autre projet qui utilise {{workflow}}. Les passages de relais ici ne concernent que ce projet.",
+      "scope_shared_other": "Les colonnes sont partagées avec {{count}} autres projets qui utilisent {{workflow}}. Les passages de relais ici ne concernent que ce projet.",
+      "scope_own": "Seul ce projet utilise ces colonnes. Les passages de relais ne concernent que ce projet.",
+      "no_handoff_here": "Pas de relais"
+    },
+    "templates": {
+      "delivery": {
+        "name": "Livraison",
+        "summary": "Développer, relire, puis QA avant la fin",
+        "statuses": {
+          "qa": "QA"
+        }
+      },
+      "content": {
+        "name": "Contenu",
+        "summary": "Rédiger, relire et planifier",
+        "statuses": {
+          "drafting": "Rédaction",
+          "editing": "Relecture",
+          "scheduled": "Planifié"
+        }
+      },
+      "community": {
+        "name": "Communauté",
+        "summary": "Trier, répondre, attendre le retour",
+        "statuses": {
+          "triage": "Tri",
+          "replying": "Réponse en cours",
+          "waiting": "En attente du retour"
+        }
+      }
+    }
   }
 }

@@ -367,7 +367,9 @@
     "empty_grouping": "没有匹配的任务",
     "no_value": "未设置",
     "ordered_by": "按{{field}}排序",
-    "manual_reorder_hint": "切换到“手动”排序后，才能调整同一列内的顺序。"
+    "manual_reorder_hint": "切换到“手动”排序后，才能调整同一列内的顺序。",
+    "filter_to_status": "按此状态筛选",
+    "outside_workflow": "不在当前看板的工作流里"
   },
   "peek": {
     "panel_label": "任务预览",
@@ -1413,7 +1415,7 @@
     },
     "settings": {
       "title": "工作流",
-      "description": "工作流决定一个项目用哪些状态、按什么顺序，以及任务进入某个状态时交给谁。状态在下方的状态库里统一管理，所有工作流共用；项目在自己的属性里选择工作流。",
+      "description": "工作流就是看板的列：每个工作流都以 Backlog、Todo 开头，以 Blocked、Done、Cancelled 结尾，中间的列由你安排。项目选择工作流，各项目在自己的看板上设置交接。",
       "new": "新建工作流",
       "projects_other": "{{count}} 个项目",
       "default_projects": "未选用工作流的项目",
@@ -1444,12 +1446,12 @@
       "name_placeholder": "例如：研发流程",
       "description": "描述",
       "steps": "步骤",
-      "add_step": "添加步骤",
+      "add_step": "添加列",
       "start": "起始",
       "set_start": "设为起始步骤",
       "move_up": "上移",
       "move_down": "下移",
-      "remove": "移除步骤",
+      "remove": "移除列",
       "on_enter": "进入时交给",
       "choose_target": "请选择…",
       "instructions": "交接说明",
@@ -1468,7 +1470,7 @@
       "duplicate": "复制为新工作流",
       "copy_name": "{{name}} 副本",
       "more": "更多操作",
-      "steps_hint": "步骤从状态库里挑选；拖动调整这个工作流里的顺序（只影响项目看板）。",
+      "steps_hint": "拖动调整中间列的顺序。状态来自下方的状态库；新建的状态会在保存时创建。",
       "reorder": "调整「{{name}}」的顺序",
       "card_hand_to": "交给",
       "card_then": "完成后 → {{status}}",
@@ -1489,7 +1491,12 @@
       "description_placeholder": "添加描述",
       "select_step": "选择一个步骤进行配置。",
       "unsaved": "有未保存的修改",
-      "not_found": "这个工作流已不存在。"
+      "not_found": "这个工作流已不存在。",
+      "fixed": "所有工作流都有",
+      "default_note": "Default 是所有未选择工作流的项目、以及项目之外视图使用的看板。",
+      "handoffs_title": "交接按项目设置",
+      "handoffs_hint": "工作流只决定看板有哪些列。任务进入某一列时交给谁，在各项目看板的列头设置——所以多个项目可以共用列，却交给不同的人。",
+      "new_badge": "新建"
     },
     "mapping": {
       "title": "将任务移入「{{name}}」",
@@ -1559,8 +1566,73 @@
       "brief_header": "这次运行收到的工作流说明"
     },
     "detail": {
-      "follows_project": "（跟随项目）"
+      "follows_project": "（跟随项目）",
+      "card_title": "「{{workflow}}」· 跟随项目「{{project}}」",
+      "card_hint": "这些列和交接由项目看板决定。"
     },
-    "list_separator": "、"
+    "list_separator": "、",
+    "handoff": {
+      "add": "交给…",
+      "title": "任务进入「{{status}}」时",
+      "scope_note": "只对「{{project}}」生效。",
+      "next_default": "下一列（{{status}}）",
+      "saved": "交接已保存",
+      "error": "无法保存交接",
+      "read_only": "工作区管理员和项目负责人可以修改交接。"
+    },
+    "columns": {
+      "title": "添加列",
+      "status": "状态",
+      "new_status": "新建状态…",
+      "name_placeholder": "状态名称",
+      "scope": "添加到哪里",
+      "scope_project": "只给「{{project}}」",
+      "scope_project_hint": "这个项目会得到一份自己的工作流副本，其他项目不受影响。",
+      "scope_workflow": "所有使用「{{workflow}}」的项目",
+      "scope_workflow_hint": "修改共用的工作流。",
+      "scope_workflow_admin": "只有工作区管理员可以修改共用的工作流。",
+      "add": "添加",
+      "add_column": "添加列",
+      "added": "已添加列",
+      "error": "无法添加列"
+    },
+    "menu": {
+      "view_flow": "查看完整流程",
+      "switch": "切换工作流",
+      "from_template": "从模板新建"
+    },
+    "flow": {
+      "title": "「{{workflow}}」工作流",
+      "scope_shared_other": "列与另外 {{count}} 个使用「{{workflow}}」的项目共用；这里的交接只对本项目生效。",
+      "scope_own": "只有这个项目使用这些列；交接只对本项目生效。",
+      "no_handoff_here": "不交接"
+    },
+    "templates": {
+      "delivery": {
+        "name": "研发交付",
+        "summary": "开发、评审，再经过 QA 完成",
+        "statuses": {
+          "qa": "QA"
+        }
+      },
+      "content": {
+        "name": "内容生产",
+        "summary": "撰写、编辑、排期发布",
+        "statuses": {
+          "drafting": "撰写中",
+          "editing": "编辑中",
+          "scheduled": "已排期"
+        }
+      },
+      "community": {
+        "name": "社区维护",
+        "summary": "分诊、回复、等待反馈",
+        "statuses": {
+          "triage": "待分诊",
+          "replying": "回复中",
+          "waiting": "等待反馈"
+        }
+      }
+    }
   }
 }

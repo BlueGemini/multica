@@ -371,7 +371,9 @@
     "empty_grouping": "No matching issues",
     "no_value": "No value",
     "ordered_by": "Board ordered by {{field}}",
-    "manual_reorder_hint": "Switch to Manual ordering to rearrange issues within a column."
+    "manual_reorder_hint": "Switch to Manual ordering to rearrange issues within a column.",
+    "filter_to_status": "Filter to this status",
+    "outside_workflow": "Not in this board’s workflow"
   },
   "peek": {
     "panel_label": "Issue preview",
@@ -1460,7 +1462,7 @@
     },
     "settings": {
       "title": "Workflows",
-      "description": "A workflow decides which statuses a project uses, in what order, and who an issue goes to when it enters a status. Statuses live in the library below and are shared by every workflow; each project picks its workflow in its properties.",
+      "description": "A workflow is a board’s columns: every workflow starts with Backlog and Todo and ends with Blocked, Done and Cancelled, and arranges what sits between. Projects pick a workflow; each project sets its own handoffs on its board.",
       "new": "New workflow",
       "projects_one": "{{count}} project",
       "projects_other": "{{count}} projects",
@@ -1496,12 +1498,12 @@
       "name_placeholder": "e.g. Delivery",
       "description": "Description",
       "steps": "Steps",
-      "add_step": "Add step",
+      "add_step": "Add column",
       "start": "Start",
       "set_start": "Make starting step",
       "move_up": "Move up",
       "move_down": "Move down",
-      "remove": "Remove step",
+      "remove": "Remove column",
       "on_enter": "On entering, hand to",
       "choose_target": "Choose…",
       "instructions": "Handoff instructions",
@@ -1521,7 +1523,7 @@
       "duplicate": "Duplicate as new workflow",
       "copy_name": "{{name}} copy",
       "more": "More actions",
-      "steps_hint": "Steps come from the status library. Drag to reorder them in this workflow; the order only affects project boards.",
+      "steps_hint": "Drag to reorder the middle columns. Statuses come from the library below; a new status is created when you save.",
       "reorder": "Reorder {{name}}",
       "card_hand_to": "Hand to",
       "card_then": "then → {{status}}",
@@ -1542,7 +1544,12 @@
       "description_placeholder": "Add a description",
       "select_step": "Select a step to configure it.",
       "unsaved": "Unsaved changes",
-      "not_found": "This workflow no longer exists."
+      "not_found": "This workflow no longer exists.",
+      "fixed": "Every workflow",
+      "default_note": "Default is the board of every project that doesn’t pick a workflow, and of views outside a project.",
+      "handoffs_title": "Handoffs are set per project",
+      "handoffs_hint": "A workflow only decides a board’s columns. Who an issue goes to when it enters a column is set on each project’s board, from the column header — so projects can share columns and still hand off to different people.",
+      "new_badge": "New"
     },
     "mapping": {
       "title": "Move issues into {{name}}",
@@ -1621,8 +1628,74 @@
       "brief_header": "The workflow brief this run received"
     },
     "detail": {
-      "follows_project": "(from project)"
+      "follows_project": "(from project)",
+      "card_title": "{{workflow}} · from {{project}}",
+      "card_hint": "The project’s board decides these columns and handoffs."
     },
-    "list_separator": ", "
+    "list_separator": ", ",
+    "handoff": {
+      "add": "Hand to…",
+      "title": "When an issue enters “{{status}}”",
+      "scope_note": "Applies to {{project}} only.",
+      "next_default": "Next column ({{status}})",
+      "saved": "Handoff saved",
+      "error": "Couldn't save the handoff",
+      "read_only": "Workspace admins and the project lead can change handoffs."
+    },
+    "columns": {
+      "title": "Add a column",
+      "status": "Status",
+      "new_status": "New status…",
+      "name_placeholder": "Status name",
+      "scope": "Where to add it",
+      "scope_project": "Only {{project}}",
+      "scope_project_hint": "This project gets its own copy of the workflow; other projects keep theirs.",
+      "scope_workflow": "Every project using {{workflow}}",
+      "scope_workflow_hint": "Changes the shared workflow.",
+      "scope_workflow_admin": "Only workspace admins can change a shared workflow.",
+      "add": "Add",
+      "add_column": "Add column",
+      "added": "Column added",
+      "error": "Couldn't add the column"
+    },
+    "menu": {
+      "view_flow": "View full flow",
+      "switch": "Switch workflow",
+      "from_template": "New from template"
+    },
+    "flow": {
+      "title": "{{workflow}} workflow",
+      "scope_shared_one": "Columns are shared with {{count}} other project using {{workflow}}. Handoffs here apply to this project only.",
+      "scope_shared_other": "Columns are shared with {{count}} other projects using {{workflow}}. Handoffs here apply to this project only.",
+      "scope_own": "Only this project uses these columns. Handoffs apply to this project only.",
+      "no_handoff_here": "No handoff"
+    },
+    "templates": {
+      "delivery": {
+        "name": "Delivery",
+        "summary": "Build, review, then QA before done",
+        "statuses": {
+          "qa": "QA"
+        }
+      },
+      "content": {
+        "name": "Content",
+        "summary": "Draft, edit and schedule",
+        "statuses": {
+          "drafting": "Drafting",
+          "editing": "Editing",
+          "scheduled": "Scheduled"
+        }
+      },
+      "community": {
+        "name": "Community",
+        "summary": "Triage, reply, wait on the reporter",
+        "statuses": {
+          "triage": "Triage",
+          "replying": "Replying",
+          "waiting": "Waiting on reporter"
+        }
+      }
+    }
   }
 }

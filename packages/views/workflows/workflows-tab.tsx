@@ -7,7 +7,7 @@ import { useAuthStore } from "@multica/core/auth";
 import { useWorkspaceId } from "@multica/core/hooks";
 import { useIssueStatuses } from "@multica/core/issue-statuses/hooks";
 import { statusColumnKeys } from "@multica/core/issues";
-import { handoffStepCount, useIssueWorkflows } from "@multica/core/issue-workflows";
+import { useIssueWorkflows } from "@multica/core/issue-workflows";
 import { projectListOptions } from "@multica/core/projects/queries";
 import { memberListOptions } from "@multica/core/workspace/queries";
 import type { IssueWorkflow, IssueWorkflowStep, Project } from "@multica/core/types";
@@ -57,6 +57,7 @@ export function WorkflowsTab() {
   const usage = useMemo(() => {
     const counts = new Map<string, number>();
     for (const workflow of workflows) {
+      if (workflow.is_default) continue;
       for (const step of workflow.steps) counts.set(step.status_key, (counts.get(step.status_key) ?? 0) + 1);
     }
     return (key: string) => counts.get(key) ?? 0;
@@ -81,6 +82,7 @@ export function WorkflowsTab() {
   }
 
   const defaultProjects = projects.filter((p) => !p.workflow_id);
+  const defaultRow = workflows.find((w) => w.is_default);
 
   return (
     <SettingsTab title={t(($) => $.workflows.settings.title)} description={t(($) => $.workflows.settings.description)}>
@@ -98,9 +100,13 @@ export function WorkflowsTab() {
           )}
         </header>
         <div className="divide-y divide-surface-border overflow-hidden rounded-lg border border-surface-border bg-card">
-          <DefaultWorkflowRow projects={defaultProjects} />
+          {defaultRow ? (
+            <WorkflowRow workflow={defaultRow} projects={defaultProjects} onOpen={() => openEditor(defaultRow.id)} />
+          ) : (
+            <DefaultWorkflowRow projects={defaultProjects} />
+          )}
           {isLoaded &&
-            workflows.map((workflow) => (
+            workflows.filter((w) => !w.is_default).map((workflow) => (
               <WorkflowRow
                 key={workflow.id}
                 workflow={workflow}
@@ -122,15 +128,11 @@ export function WorkflowsTab() {
   );
 }
 
-function RowMeta({ statuses, handoffs }: { statuses: number; handoffs: number }) {
+function RowMeta({ statuses }: { statuses: number }) {
   const { t } = useT("issues");
   return (
     <span className="text-caption text-muted-foreground">
       {t(($) => $.workflows.settings.statuses, { count: statuses })}
-      {" · "}
-      {handoffs > 0
-        ? t(($) => $.workflows.settings.handoffs, { count: handoffs })
-        : t(($) => $.workflows.settings.no_handoffs)}
     </span>
   );
 }
@@ -154,7 +156,7 @@ function DefaultWorkflowRow({ projects }: { projects: Project[] }) {
           <span className="rounded-xs bg-muted px-1.5 py-0.5 text-micro text-muted-foreground">
             {t(($) => $.workflows.settings.workspace_default)}
           </span>
-          <RowMeta statuses={keys.length} handoffs={0} />
+          <RowMeta statuses={keys.length} />
         </div>
         <StepChain steps={keys.map((key) => ({ status_key: key, handler: { type: "none" }, instructions: "" }))} />
         <p className="text-caption text-muted-foreground">
@@ -191,19 +193,31 @@ function WorkflowRow({
       <div className="min-w-0 flex-1 space-y-2">
         <div className="flex flex-wrap items-center gap-2">
           <span className="text-body font-semibold">{workflow.name}</span>
-          <RowMeta statuses={workflow.steps.length} handoffs={handoffStepCount(workflow)} />
+          {workflow.is_default && (
+            <span className="rounded-xs bg-muted px-1.5 py-0.5 text-micro text-muted-foreground">
+              {t(($) => $.workflows.settings.workspace_default)}
+            </span>
+          )}
+          <RowMeta statuses={workflow.steps.length} />
           {workflow.description && (
             <span className="truncate text-caption text-muted-foreground">· {workflow.description}</span>
           )}
         </div>
         <StepChain steps={workflow.steps} />
         <p className="text-caption text-muted-foreground">
-          {projects.length > 0
-            ? t(($) => $.workflows.settings.used_by, {
-                count: projects.length,
-                names: projects.map((p) => p.title).join(separator),
-              })
-            : t(($) => $.workflows.settings.no_projects)}
+          {workflow.is_default
+            ? projects.length > 0
+              ? t(($) => $.workflows.settings.used_by_default, {
+                  count: projects.length,
+                  names: projects.map((p) => p.title).join(separator),
+                })
+              : t(($) => $.workflows.settings.used_by_default_none)
+            : projects.length > 0
+              ? t(($) => $.workflows.settings.used_by, {
+                  count: projects.length,
+                  names: projects.map((p) => p.title).join(separator),
+                })
+              : t(($) => $.workflows.settings.no_projects)}
         </p>
       </div>
       <ChevronRight aria-hidden className="size-4 shrink-0 text-muted-foreground" />

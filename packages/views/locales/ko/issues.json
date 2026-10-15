@@ -367,7 +367,9 @@
     "empty_grouping": "일치하는 태스크가 없습니다",
     "no_value": "값 없음",
     "ordered_by": "{{field}} 기준으로 정렬된 보드",
-    "manual_reorder_hint": "열 안의 순서를 바꾸려면 정렬을 '수동'으로 전환하세요."
+    "manual_reorder_hint": "열 안의 순서를 바꾸려면 정렬을 '수동'으로 전환하세요.",
+    "filter_to_status": "이 상태로 필터",
+    "outside_workflow": "이 보드의 워크플로에 없음"
   },
   "peek": {
     "panel_label": "태스크 미리보기",
@@ -1413,7 +1415,7 @@
     },
     "settings": {
       "title": "워크플로",
-      "description": "워크플로는 프로젝트가 사용할 상태와 순서, 태스크가 상태에 들어갈 때 넘길 대상을 정합니다. 상태는 아래 라이브러리에서 관리하며 모든 워크플로가 공유합니다. 각 프로젝트는 속성에서 워크플로를 선택합니다.",
+      "description": "워크플로는 보드의 열입니다. 모든 워크플로는 Backlog와 Todo로 시작해 Blocked, Done, Cancelled로 끝나고, 그 사이 열을 정합니다. 프로젝트는 워크플로를 고르고, 인계는 각 프로젝트 보드에서 설정합니다.",
       "new": "새 워크플로",
       "projects_other": "프로젝트 {{count}}개",
       "default_projects": "워크플로가 없는 프로젝트",
@@ -1444,12 +1446,12 @@
       "name_placeholder": "예: 개발 흐름",
       "description": "설명",
       "steps": "단계",
-      "add_step": "단계 추가",
+      "add_step": "열 추가",
       "start": "시작",
       "set_start": "시작 단계로 지정",
       "move_up": "위로 이동",
       "move_down": "아래로 이동",
-      "remove": "단계 제거",
+      "remove": "열 제거",
       "on_enter": "진입 시 인계 대상",
       "choose_target": "선택…",
       "instructions": "인계 지침",
@@ -1468,7 +1470,7 @@
       "duplicate": "새 워크플로로 복제",
       "copy_name": "{{name}} 사본",
       "more": "더 보기",
-      "steps_hint": "단계는 상태 라이브러리에서 고릅니다. 끌어서 이 워크플로 안의 순서를 바꿀 수 있습니다(프로젝트 보드에만 영향).",
+      "steps_hint": "가운데 열은 끌어서 순서를 바꿉니다. 상태는 아래 라이브러리에서 고르며, 새 상태는 저장할 때 만들어집니다.",
       "reorder": "{{name}} 순서 변경",
       "card_hand_to": "인계 대상",
       "card_then": "완료 후 → {{status}}",
@@ -1489,7 +1491,12 @@
       "description_placeholder": "설명 추가",
       "select_step": "단계를 선택해 설정하세요.",
       "unsaved": "저장하지 않은 변경 사항",
-      "not_found": "이 워크플로는 더 이상 없습니다."
+      "not_found": "이 워크플로는 더 이상 없습니다.",
+      "fixed": "모든 워크플로 공통",
+      "default_note": "Default는 워크플로를 고르지 않은 프로젝트와 프로젝트 밖 보기에서 쓰는 보드입니다.",
+      "handoffs_title": "인계는 프로젝트마다 설정합니다",
+      "handoffs_hint": "워크플로는 보드의 열만 정합니다. 태스크가 열에 들어올 때 누구에게 넘길지는 각 프로젝트 보드의 열 머리글에서 설정하므로, 열을 공유하면서도 다른 사람에게 넘길 수 있습니다.",
+      "new_badge": "새로 만듦"
     },
     "mapping": {
       "title": "{{name}}(으)로 태스크 이동",
@@ -1559,8 +1566,73 @@
       "brief_header": "이번 실행이 받은 워크플로 설명"
     },
     "detail": {
-      "follows_project": "(프로젝트 기준)"
+      "follows_project": "(프로젝트 기준)",
+      "card_title": "“{{workflow}}” · “{{project}}” 기준",
+      "card_hint": "이 열과 인계는 프로젝트 보드에서 정합니다."
     },
-    "list_separator": ", "
+    "list_separator": ", ",
+    "handoff": {
+      "add": "넘기기…",
+      "title": "태스크가 “{{status}}”에 들어오면",
+      "scope_note": "“{{project}}”에만 적용됩니다.",
+      "next_default": "다음 열 ({{status}})",
+      "saved": "인계를 저장했습니다",
+      "error": "인계를 저장하지 못했습니다",
+      "read_only": "워크스페이스 관리자와 프로젝트 리드가 인계를 바꿀 수 있습니다."
+    },
+    "columns": {
+      "title": "열 추가",
+      "status": "상태",
+      "new_status": "새 상태…",
+      "name_placeholder": "상태 이름",
+      "scope": "추가할 곳",
+      "scope_project": "“{{project}}”만",
+      "scope_project_hint": "이 프로젝트만의 워크플로 사본을 만듭니다. 다른 프로젝트는 그대로입니다.",
+      "scope_workflow": "“{{workflow}}”를 쓰는 모든 프로젝트",
+      "scope_workflow_hint": "공유 워크플로를 바꿉니다.",
+      "scope_workflow_admin": "공유 워크플로는 워크스페이스 관리자만 바꿀 수 있습니다.",
+      "add": "추가",
+      "add_column": "열 추가",
+      "added": "열을 추가했습니다",
+      "error": "열을 추가하지 못했습니다"
+    },
+    "menu": {
+      "view_flow": "전체 흐름 보기",
+      "switch": "워크플로 전환",
+      "from_template": "템플릿으로 만들기"
+    },
+    "flow": {
+      "title": "“{{workflow}}” 워크플로",
+      "scope_shared_other": "열은 “{{workflow}}”를 쓰는 다른 프로젝트 {{count}}개와 공유됩니다. 여기의 인계는 이 프로젝트에만 적용됩니다.",
+      "scope_own": "이 열은 이 프로젝트만 씁니다. 인계는 이 프로젝트에만 적용됩니다.",
+      "no_handoff_here": "인계 없음"
+    },
+    "templates": {
+      "delivery": {
+        "name": "개발 딜리버리",
+        "summary": "개발·리뷰 후 QA를 거쳐 완료",
+        "statuses": {
+          "qa": "QA"
+        }
+      },
+      "content": {
+        "name": "콘텐츠 제작",
+        "summary": "작성·편집·예약 발행",
+        "statuses": {
+          "drafting": "작성 중",
+          "editing": "편집 중",
+          "scheduled": "예약됨"
+        }
+      },
+      "community": {
+        "name": "커뮤니티 운영",
+        "summary": "분류·답변·회신 대기",
+        "statuses": {
+          "triage": "분류",
+          "replying": "답변 중",
+          "waiting": "회신 대기"
+        }
+      }
+    }
   }
 }

@@ -5,6 +5,7 @@ import {
   issueBehavesAsAny,
   issueStatusCategory,
 } from "@multica/core/issues";
+import { IssueFlowCard } from "../../workflows/issue-flow-card";
 import { useStatusLabel } from "../utils/status-label";
 import { priorityLabel } from "../utils/priority-label";
 import { useIssueStatuses } from "@multica/core/issue-statuses/hooks";
@@ -32,7 +33,6 @@ import {
   Tag,
   Unlink,
   Users,
-  Workflow,
 } from "lucide-react";
 import { BreadcrumbHeader, type BreadcrumbSegment } from "../../layout/breadcrumb-header";
 import { Skeleton } from "@multica/ui/components/ui/skeleton";
@@ -132,9 +132,6 @@ import { useActorName } from "@multica/core/workspace/hooks";
 import { useWorkspaceId } from "@multica/core/hooks";
 import {
   useProjectWorkflow,
-  workflowAllowsStatus,
-  workflowDoneStatus,
-  workflowReopenStatus,
 } from "@multica/core/issue-workflows";
 import { useRecentContextStore } from "@multica/core/chat";
 import { useModalStore } from "@multica/core/modals";
@@ -2443,12 +2440,6 @@ export function IssueDetail({ issueId, onDelete, onDone, defaultSidebarOpen = tr
   // Called before the `if (!issue)` early return so hook order stays stable.
   const actions = useIssueActions(issue);
   const handleUpdateField = actions.updateField;
-  // One-click status actions land on statuses the issue's workflow allows
-  // (MUL-7420): done may be a custom done step, and marking a duplicate
-  // cancels, which a workflow may not list.
-  const issueWorkflow = useProjectWorkflow(wsId, issue?.project_id);
-  const doneStatus = workflowDoneStatus(issueWorkflow, resolveStatusCategory);
-  const canMarkDuplicate = workflowAllowsStatus(issueWorkflow, "cancelled");
 
   // Labels live in their own query (not on the issue body) — fetch the count
   // here so seeding can decide whether the "Labels" optional row should be
@@ -2692,7 +2683,7 @@ export function IssueDetail({ issueId, onDelete, onDone, defaultSidebarOpen = tr
               align="start"
               projectId={issue.project_id}
               issue={issue}
-              onMarkDuplicate={canMarkDuplicate ? actions.openMarkDuplicate : undefined}
+              onMarkDuplicate={actions.openMarkDuplicate}
               isDuplicate={isDuplicateIssue(issue)}
             />
           </PropRow>
@@ -2705,7 +2696,7 @@ export function IssueDetail({ issueId, onDelete, onDone, defaultSidebarOpen = tr
               onUpdate={handleUpdateField}
             />
           </PropRow>
-          <IssueWorkflowPropRow projectId={issue.project_id} label={t(($) => $.workflows.project.label)} />
+          <IssueWorkflowPropRow projectId={issue.project_id} status={issue.status} label={t(($) => $.workflows.project.label)} />
 
           {/* Optional props — rendered only when set on the issue OR added
               via "+ Add property" in this session. Row order follows the
@@ -3177,7 +3168,7 @@ export function IssueDetail({ issueId, onDelete, onDone, defaultSidebarOpen = tr
                 It self-hides when no agent is active. */}
             <IssueAgentHeaderChip issueId={id} />
             <IssueWakeupHeaderChip issueId={id} onOpen={openWakeups} />
-            {onDone && doneStatus && !issueBehavesAsAny(issue, ["done", "closed"]) && (
+            {onDone && !issueBehavesAsAny(issue, ["done", "closed"]) && (
               <Tooltip>
                 <TooltipTrigger
                   render={
@@ -3185,7 +3176,7 @@ export function IssueDetail({ issueId, onDelete, onDone, defaultSidebarOpen = tr
                       variant="ghost"
                       size="icon-sm"
                       className="text-muted-foreground"
-                      onClick={() => { handleUpdateField({ status: doneStatus }); onDone?.(); }}
+                      onClick={() => { handleUpdateField({ status: "done" }); onDone?.(); }}
                     >
                       <CircleCheck />
                     </Button>
@@ -3291,7 +3282,7 @@ export function IssueDetail({ issueId, onDelete, onDone, defaultSidebarOpen = tr
             issue={issue}
             onUnmark={() =>
               handleUpdateField(
-                { status: workflowReopenStatus(issueWorkflow) },
+                { status: "todo" },
                 { onSuccess: () => toast.success(t(($) => $.duplicates.unmark_toast)) },
               )
             }
@@ -3984,23 +3975,22 @@ export function IssueDetail({ issueId, onDelete, onDone, defaultSidebarOpen = tr
   );
 }
 
-/**
- * The workflow the issue follows through its project (MUL-7420). Read-only:
- * a workflow belongs to the project, so it changes there. Shown only when
- * the project uses one.
- */
-function IssueWorkflowPropRow({ projectId, label }: { projectId: string | null; label: string }) {
-  const { t } = useT("issues");
+/** The workflow the issue follows through its project (MUL-7420). */
+function IssueWorkflowPropRow({
+  projectId,
+  status,
+  label,
+}: {
+  projectId: string | null;
+  status: string;
+  label: string;
+}) {
   const wsId = useWorkspaceId();
   const workflow = useProjectWorkflow(wsId, projectId);
   if (!workflow) return null;
   return (
     <PropRow label={label}>
-      <span className="flex min-w-0 items-center gap-1.5 px-1 text-muted-foreground">
-        <Workflow aria-hidden className="size-3.5 shrink-0" />
-        <span className="truncate text-foreground">{workflow.name}</span>
-        <span className="shrink-0 text-caption">{t(($) => $.workflows.detail.follows_project)}</span>
-      </span>
+      <IssueFlowCard projectId={projectId} currentStatus={status} />
     </PropRow>
   );
 }

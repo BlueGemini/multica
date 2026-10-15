@@ -453,7 +453,7 @@ describe("Status in a workflow project (MUL-7420)", () => {
           id: "wf-1",
           name: "Delivery",
           description: "",
-          initial_status_key: "todo",
+          is_default: false,
           project_ids: ["proj-1"],
           steps: [
             { status_key: "todo", handler: { type: "none" }, instructions: "" },

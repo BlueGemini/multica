@@ -367,7 +367,9 @@
     "empty_grouping": "一致するタスクがありません",
     "no_value": "値なし",
     "ordered_by": "{{field}} 順に並べたボード",
-    "manual_reorder_hint": "列内の順序を変更するには、並び順を「手動」に切り替えてください。"
+    "manual_reorder_hint": "列内の順序を変更するには、並び順を「手動」に切り替えてください。",
+    "filter_to_status": "このステータスで絞り込む",
+    "outside_workflow": "このボードのワークフローにはありません"
   },
   "peek": {
     "panel_label": "タスクのプレビュー",
@@ -1413,7 +1415,7 @@
     },
     "settings": {
       "title": "ワークフロー",
-      "description": "ワークフローは、プロジェクトが使うステータスとその順序、タスクがステータスに入ったときの引き継ぎ先を決めます。ステータスは下のライブラリで管理し、すべてのワークフローで共有します。各プロジェクトはプロパティでワークフローを選びます。",
+      "description": "ワークフローはボードの列です。どのワークフローも Backlog と Todo で始まり、Blocked・Done・Cancelled で終わり、その間の列を自由に並べます。プロジェクトはワークフローを選び、引き継ぎは各プロジェクトのボードで設定します。",
       "new": "新規ワークフロー",
       "projects_other": "{{count}} 件のプロジェクト",
       "default_projects": "ワークフロー未設定のプロジェクト",
@@ -1444,12 +1446,12 @@
       "name_placeholder": "例：開発フロー",
       "description": "説明",
       "steps": "ステップ",
-      "add_step": "ステップを追加",
+      "add_step": "列を追加",
       "start": "開始",
       "set_start": "開始ステップにする",
       "move_up": "上へ移動",
       "move_down": "下へ移動",
-      "remove": "ステップを削除",
+      "remove": "列を削除",
       "on_enter": "このステップに入ったら引き継ぐ相手",
       "choose_target": "選択…",
       "instructions": "引き継ぎの指示",
@@ -1468,7 +1470,7 @@
       "duplicate": "新しいワークフローとして複製",
       "copy_name": "{{name}} のコピー",
       "more": "その他の操作",
-      "steps_hint": "ステップはステータスライブラリから選びます。ドラッグでこのワークフロー内の順序を変えられます（プロジェクトボードにのみ影響）。",
+      "steps_hint": "ドラッグで中間の列を並べ替えます。ステータスは下のライブラリから選びます。新しいステータスは保存時に作成されます。",
       "reorder": "「{{name}}」を並べ替え",
       "card_hand_to": "引き継ぎ先",
       "card_then": "完了後 → {{status}}",
@@ -1489,7 +1491,12 @@
       "description_placeholder": "説明を追加",
       "select_step": "ステップを選んで設定します。",
       "unsaved": "未保存の変更があります",
-      "not_found": "このワークフローはもう存在しません。"
+      "not_found": "このワークフローはもう存在しません。",
+      "fixed": "全ワークフロー共通",
+      "default_note": "Default は、ワークフローを選んでいないプロジェクトと、プロジェクト外のビューで使うボードです。",
+      "handoffs_title": "引き継ぎはプロジェクトごとに設定します",
+      "handoffs_hint": "ワークフローが決めるのはボードの列だけです。列に入ったタスクを誰に渡すかは、各プロジェクトのボードの列ヘッダーで設定します。列を共有しながら、引き継ぎ先はプロジェクトごとに変えられます。",
+      "new_badge": "新規"
     },
     "mapping": {
       "title": "タスクを「{{name}}」に移動",
@@ -1559,8 +1566,73 @@
       "brief_header": "この実行が受け取ったワークフローの説明"
     },
     "detail": {
-      "follows_project": "（プロジェクトに従う）"
+      "follows_project": "（プロジェクトに従う）",
+      "card_title": "「{{workflow}}」· プロジェクト「{{project}}」に従う",
+      "card_hint": "これらの列と引き継ぎはプロジェクトのボードで決まります。"
     },
-    "list_separator": "、"
+    "list_separator": "、",
+    "handoff": {
+      "add": "引き継ぐ…",
+      "title": "タスクが「{{status}}」に入ったとき",
+      "scope_note": "「{{project}}」にのみ適用されます。",
+      "next_default": "次の列（{{status}}）",
+      "saved": "引き継ぎを保存しました",
+      "error": "引き継ぎを保存できませんでした",
+      "read_only": "引き継ぎはワークスペース管理者とプロジェクトリードが変更できます。"
+    },
+    "columns": {
+      "title": "列を追加",
+      "status": "ステータス",
+      "new_status": "新しいステータス…",
+      "name_placeholder": "ステータス名",
+      "scope": "追加先",
+      "scope_project": "「{{project}}」だけ",
+      "scope_project_hint": "このプロジェクト専用のワークフローのコピーを作ります。ほかのプロジェクトは変わりません。",
+      "scope_workflow": "「{{workflow}}」を使うすべてのプロジェクト",
+      "scope_workflow_hint": "共有ワークフローを変更します。",
+      "scope_workflow_admin": "共有ワークフローを変更できるのはワークスペース管理者だけです。",
+      "add": "追加",
+      "add_column": "列を追加",
+      "added": "列を追加しました",
+      "error": "列を追加できませんでした"
+    },
+    "menu": {
+      "view_flow": "フロー全体を見る",
+      "switch": "ワークフローを切り替え",
+      "from_template": "テンプレートから作成"
+    },
+    "flow": {
+      "title": "ワークフロー「{{workflow}}」",
+      "scope_shared_other": "列は「{{workflow}}」を使うほかの {{count}} 件のプロジェクトと共有されています。ここでの引き継ぎはこのプロジェクトにだけ適用されます。",
+      "scope_own": "この列を使っているのはこのプロジェクトだけです。引き継ぎはこのプロジェクトにだけ適用されます。",
+      "no_handoff_here": "引き継ぎなし"
+    },
+    "templates": {
+      "delivery": {
+        "name": "開発デリバリー",
+        "summary": "開発・レビューのあと QA を経て完了",
+        "statuses": {
+          "qa": "QA"
+        }
+      },
+      "content": {
+        "name": "コンテンツ制作",
+        "summary": "執筆・編集・公開予約",
+        "statuses": {
+          "drafting": "執筆中",
+          "editing": "編集中",
+          "scheduled": "公開予約済み"
+        }
+      },
+      "community": {
+        "name": "コミュニティ運営",
+        "summary": "振り分け・返信・返答待ち",
+        "statuses": {
+          "triage": "振り分け",
+          "replying": "返信中",
+          "waiting": "返答待ち"
+        }
+      }
+    }
   }
 }
