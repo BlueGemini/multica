@@ -818,6 +818,8 @@
     "update_success_one": "{{count}} tâche mise à jour",
     "update_success_other": "{{count}} tâches mises à jour",
     "update_failed": "Échec de la mise à jour des tâches",
+    "update_partial_one": "{{updated}} tâche sur {{count}} mise à jour. Les autres n'acceptent pas cette modification et n'ont pas changé.",
+    "update_partial_other": "{{updated}} tâches sur {{count}} mises à jour. Les autres n'acceptent pas cette modification et n'ont pas changé.",
     "delete_success_one": "{{count}} tâche supprimée",
     "delete_success_other": "{{count}} tâches supprimées",
     "delete_failed": "Échec de la suppression des tâches",

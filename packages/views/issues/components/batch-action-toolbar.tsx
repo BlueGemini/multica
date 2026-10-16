@@ -15,8 +15,12 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@multica/ui/components/ui/alert-dialog";
+import { useQuery } from "@tanstack/react-query";
 import type { Issue, UpdateIssueRequest } from "@multica/core/types";
+import { useWorkspaceId } from "@multica/core/hooks";
 import { commonIssueFields } from "@multica/core/issues/batch";
+import { sharedWorkflowStatusKeys, useIssueWorkflows } from "@multica/core/issue-workflows";
+import { projectListOptions } from "@multica/core/projects/queries";
 import { useBatchUpdateIssues, useBatchDeleteIssues } from "@multica/core/issues/mutations";
 import { useModalStore } from "@multica/core/modals";
 import { StatusPicker, PriorityPicker, AssigneePicker } from "./pickers";
@@ -74,11 +78,19 @@ export function BatchActionToolbar({
   );
 
   // A selection inside one project offers that project's workflow statuses;
-  // one spanning projects offers the catalog. (MUL-7420)
+  // one spanning projects offers the statuses every selected issue's
+  // workflow allows. (MUL-7420)
   const sharedProjectId = useMemo(() => {
     const first = selectedIssues[0]?.project_id ?? null;
     return first && selectedIssues.every((i) => i.project_id === first) ? first : null;
   }, [selectedIssues]);
+  const wsId = useWorkspaceId();
+  const { workflows } = useIssueWorkflows(wsId);
+  const { data: projects } = useQuery({ ...projectListOptions(wsId), enabled: count > 0 && !sharedProjectId });
+  const allowedStatuses = useMemo(
+    () => (sharedProjectId ? null : sharedWorkflowStatusKeys(workflows, projects, selectedIssues)),
+    [sharedProjectId, workflows, projects, selectedIssues],
+  );
 
   const [statusOpen, setStatusOpen] = useState(false);
   const [priorityOpen, setPriorityOpen] = useState(false);
@@ -102,12 +114,14 @@ export function BatchActionToolbar({
 
   const handleBatchUpdate = async (updates: Partial<UpdateIssueRequest>) => {
     try {
-      if (surfaceActions) {
-        await surfaceActions.batchUpdate(ids, updates);
+      const { updated } = surfaceActions
+        ? await surfaceActions.batchUpdate(ids, updates)
+        : await batchUpdate.mutateAsync({ ids, updates });
+      if (updated < count) {
+        toast.warning(t(($) => $.batch.update_partial, { updated, count }));
       } else {
-        await batchUpdate.mutateAsync({ ids, updates });
+        toast.success(t(($) => $.batch.update_success, { count }));
       }
-      toast.success(t(($) => $.batch.update_success, { count }));
     } catch (err) {
       toast.error(
         err instanceof Error && err.message
@@ -230,6 +244,7 @@ export function BatchActionToolbar({
         <StatusPicker
           status={common.status}
           projectId={sharedProjectId}
+          allowedStatuses={allowedStatuses}
           onUpdate={handleBatchStatus}
           open={statusOpen}
           onOpenChange={setStatusOpen}

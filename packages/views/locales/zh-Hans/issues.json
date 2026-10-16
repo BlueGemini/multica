@@ -782,6 +782,7 @@
     "delete": "删除",
     "update_success_other": "已更新 {{count}} 个任务",
     "update_failed": "更新任务失败",
+    "update_partial_other": "已更新 {{updated}}/{{count}} 个任务，其余任务不支持这项修改，保持不变。",
     "delete_success_other": "已删除 {{count}} 个任务",
     "delete_failed": "删除任务失败",
     "delete_dialog_title_other": "删除 {{count}} 个任务？",

@@ -105,6 +105,28 @@ export function resolveProjectWorkflow(
   return named ?? defaultWorkflow(workflows);
 }
 
+/**
+ * The statuses every one of `issues` may take, or null when none is limited.
+ * Only a named workflow limits an issue's statuses; Default and issues outside
+ * a project accept the whole catalog, as the server does. A batch status
+ * change offers this set, so it never shows a status the server would skip.
+ */
+export function sharedWorkflowStatusKeys(
+  workflows: readonly IssueWorkflow[] | undefined,
+  projects: readonly Pick<Project, "id" | "workflow_id">[] | undefined,
+  issues: readonly { project_id: string | null }[],
+): Set<string> | null {
+  let shared = null as Set<string> | null;
+  for (const issue of issues) {
+    const project = issue.project_id ? projects?.find((p) => p.id === issue.project_id) : undefined;
+    const workflow = resolveProjectWorkflow(workflows, project);
+    if (!workflow || workflow.is_default) continue;
+    const keys = new Set(workflow.steps.map((s) => s.status_key));
+    shared = shared ? new Set([...shared].filter((key) => keys.has(key))) : keys;
+  }
+  return shared;
+}
+
 export function workflowStep(
   workflow: IssueWorkflow | null | undefined,
   statusKey: string,

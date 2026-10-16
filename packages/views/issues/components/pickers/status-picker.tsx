@@ -31,6 +31,7 @@ export function StatusPicker({
   onMarkDuplicate,
   isDuplicate,
   projectId,
+  allowedStatuses,
   issue,
 }: {
   /**
@@ -61,6 +62,11 @@ export function StatusPicker({
    */
   projectId?: string | null;
   /**
+   * Narrows the options to these keys — for a selection spanning projects,
+   * the statuses every selected issue's workflow allows. Null offers all.
+   */
+  allowedStatuses?: ReadonlySet<string> | null;
+  /**
    * The single issue being edited. With a workflow, choosing a step that
    * hands the issue off first shows the handoff confirmation for it; the
    * write carries the choice to stop the previous agent's run. (MUL-7420)
@@ -81,7 +87,11 @@ export function StatusPicker({
 
   // The project workflow's steps, or the catalog in canonical category order
   // without archived statuses (MUL-6243).
-  const { options: allOptions, workflow, project } = useIssueStatusOptions(wsId, projectId);
+  const { options: projectOptions, workflow, project } = useIssueStatusOptions(wsId, projectId);
+  const allOptions = useMemo(
+    () => (allowedStatuses ? projectOptions.filter((o) => allowedStatuses.has(o.key)) : projectOptions),
+    [projectOptions, allowedStatuses],
+  );
 
   const options = useMemo(() => {
     const q = query.trim().toLowerCase();

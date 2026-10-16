@@ -4236,9 +4236,12 @@ export class ApiClient {
     });
   }
 
-  /** Switches a project's workflow; issues on unlisted statuses need a mapping. */
-  async setProjectWorkflow(projectId: string, data: SetProjectWorkflowRequest): Promise<{ project: Project }> {
-    return this.fetch(`/api/projects/${projectId}/workflow`, {
+  /**
+   * Switches a project's workflow; issues on unlisted statuses need a mapping.
+   * Callers refetch the project and its issues, so the response is not read.
+   */
+  async setProjectWorkflow(projectId: string, data: SetProjectWorkflowRequest): Promise<void> {
+    await this.fetch<unknown>(`/api/projects/${projectId}/workflow`, {
       method: "POST",
       body: JSON.stringify({ ...data, dry_run: false }),
     });
