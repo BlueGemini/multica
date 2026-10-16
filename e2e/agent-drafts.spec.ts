@@ -60,16 +60,16 @@ test("agent drafts: form autosave, finish later, and confirm from a comment card
     await dialog.getByRole("button", { name: "Finish later" }).click();
     await expect(dialog).toBeHidden();
 
-    // It now waits in the pending list; Continue reopens it with the name kept.
+    // It now waits in the pending list; its row reopens it with the name kept.
     const pending = page.getByRole("region", { name: "Waiting for you to confirm" });
     await expect(pending.getByText(formName)).toBeVisible({ timeout: 15_000 });
-    await pending.getByRole("button", { name: "Continue" }).click();
+    await pending.getByRole("button", { name: new RegExp(formName) }).click();
     await expect(page.getByRole("dialog").getByRole("textbox", { name: "Name" })).toHaveValue(formName);
     await page.keyboard.press("Escape");
     await expect(page.getByRole("dialog")).toBeHidden();
 
-    // An agent-authored draft posted in a comment renders as a card the owner
-    // can confirm in place.
+    // A draft posted in a comment renders as a card the owner edits and
+    // confirms in place.
     const cardName = `Card Draft ${Date.now().toString(36)}`;
     const created = await apiFetch(api, workspace.slug, "/api/agent-drafts", {
       method: "POST",
@@ -83,11 +83,16 @@ test("agent drafts: form autosave, finish later, and confirm from a comment card
     await page.goto(`/${workspace.slug}/issues/${issue.id}`, { waitUntil: "domcontentloaded" });
     const card = page.locator("[data-agent-draft-card]");
     await expect(card.getByText(cardName)).toBeVisible({ timeout: 30_000 });
-    await card.getByRole("button", { name: "Review & create" }).click();
-    const reviewDialog = page.getByRole("dialog");
-    await expect(reviewDialog.getByRole("textbox", { name: "Name" })).toHaveValue(cardName);
-    await reviewDialog.getByRole("button", { name: "Create", exact: true }).click();
-    await expect(reviewDialog).toBeHidden({ timeout: 15_000 });
+    await card.getByRole("button", { name: "Expand to review" }).click();
+    const description = card.getByRole("textbox", { name: "Description" });
+    await description.fill("Edited inside the card");
+    await expect
+      .poll(async () => {
+        const res = await apiFetch(api, workspace.slug, `/api/agent-drafts/${draft.id}`);
+        return ((await res.json()) as { config: { description: string } }).config.description;
+      }, { timeout: 15_000 })
+      .toBe("Edited inside the card");
+    await card.getByRole("button", { name: "Create agent" }).click();
     await expect(page).toHaveURL(/\/issues\//);
     await expect(card.getByRole("link", { name: "Open agent" })).toBeVisible({ timeout: 15_000 });
   } finally {
