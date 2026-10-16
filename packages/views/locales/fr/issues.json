@@ -373,7 +373,8 @@
     "ordered_by": "Tableau trié par {{field}}",
     "manual_reorder_hint": "Passez au tri Manuel pour réorganiser les tâches dans une colonne.",
     "filter_to_status": "Filtrer sur cet état",
-    "outside_workflow": "Hors du workflow de ce tableau"
+    "outside_workflow": "Hors du workflow de ce tableau",
+    "workflow_columns_note": "Les colonnes viennent du workflow du tableau ; hors projet, les vues utilisent Default."
   },
   "peek": {
     "panel_label": "Aperçu de la tâche",
@@ -1588,7 +1589,8 @@
       "default_badge": "Par défaut",
       "used_by_short": "Utilisé par : {{names}}",
       "used_by_nobody": "Aucun projet pour l’instant",
-      "manage": "Gérer les workflows…"
+      "manage": "Gérer les workflows…",
+      "picker_more": "Créez d’autres workflows dans Paramètres → Workflows."
     },
     "picker": {
       "header": "{{workflow}} · selon le projet « {{project}} »",
@@ -1642,17 +1644,24 @@
       "error": "Impossible d’enregistrer le passage de relais",
       "read_only": "Les transferts appartiennent au workflow ; les administrateurs de l’espace les modifient.",
       "to": "Confier à",
-      "none": "Pas de relais (l’assigné reste)",
-      "search": "Rechercher un agent ou un membre",
-      "agents": "Agents",
       "members": "Membres",
-      "hint_on": "En entrant dans cette colonne, la tâche lui est assignée ; un agent démarre aussitôt.",
-      "hint_off": "En entrant dans cette colonne, l’assigné ne change pas.",
       "then": "Une fois terminé, passe à « {{status}} »",
       "then_none": "Une fois terminé, le responsable choisit la suite",
       "more": "Plus d’options",
       "scope_note_one": "Fait partie du workflow {{workflow}} : s’applique au {{count}} projet qui l’utilise.",
-      "scope_note_other": "Fait partie du workflow {{workflow}} : s’applique aux {{count}} projets qui l’utilisent."
+      "scope_note_other": "Fait partie du workflow {{workflow}} : s’applique aux {{count}} projets qui l’utilisent.",
+      "mode_none": "Pas de relais",
+      "mode_none_hint": "L’assigné reste le même",
+      "mode_agent": "Confier à un agent",
+      "mode_agent_hint": "Démarre une exécution aussitôt",
+      "mode_member": "Confier à un membre",
+      "mode_member_hint": "Change l’assigné ; rien ne s’exécute",
+      "project_lead_hint": "Si le responsable du projet est un agent, il démarre une exécution.",
+      "pick_agent": "Choisir un agent",
+      "pick_member": "Choisir un membre",
+      "search_agents": "Rechercher des agents",
+      "search_members": "Rechercher des membres",
+      "instructions": "Ce que fait cette étape"
     },
     "columns": {
       "new_status": "Nouvel état…",

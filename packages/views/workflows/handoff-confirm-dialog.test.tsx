@@ -71,6 +71,8 @@ describe("WorkflowHandoffConfirmDialog (MUL-7420)", () => {
     expect(screen.getByTestId("avatar-forge")).toBeTruthy();
     expect(screen.getByTestId("avatar-sentinel")).toBeTruthy();
     expect(screen.getByText(/Forge is still running \(for 6 minutes\)/)).toBeTruthy();
+    expect(screen.queryByText(/Review the PR\./)).toBeNull();
+    fireEvent.click(screen.getByRole("button", { expanded: false }));
     expect(screen.getByText(/Review the PR\./)).toBeTruthy();
     expect(previewWorkflowHandoff).toHaveBeenCalledWith("issue-1", "code_review");
 

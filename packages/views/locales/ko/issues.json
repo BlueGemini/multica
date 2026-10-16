@@ -369,7 +369,8 @@
     "ordered_by": "{{field}} 기준으로 정렬된 보드",
     "manual_reorder_hint": "열 안의 순서를 바꾸려면 정렬을 '수동'으로 전환하세요.",
     "filter_to_status": "이 상태로 필터",
-    "outside_workflow": "이 보드의 워크플로에 없음"
+    "outside_workflow": "이 보드의 워크플로에 없음",
+    "workflow_columns_note": "보드의 열은 워크플로가 정합니다. 프로젝트 밖의 보기는 Default를 사용합니다."
   },
   "peek": {
     "panel_label": "태스크 미리보기",
@@ -1528,7 +1529,8 @@
       "default_badge": "기본",
       "used_by_short": "사용 중: {{names}}",
       "used_by_nobody": "아직 프로젝트 없음",
-      "manage": "워크플로 관리…"
+      "manage": "워크플로 관리…",
+      "picker_more": "설정 → 워크플로에서 워크플로를 더 만들 수 있습니다."
     },
     "picker": {
       "header": "{{workflow}} · 프로젝트 “{{project}}” 기준",
@@ -1580,16 +1582,23 @@
       "error": "인계를 저장하지 못했습니다",
       "read_only": "인계는 워크플로에 속하며 워크스페이스 관리자가 변경합니다.",
       "to": "넘길 대상",
-      "none": "넘기지 않음 (담당자 유지)",
-      "search": "에이전트 또는 멤버 검색",
-      "agents": "에이전트",
       "members": "멤버",
-      "hint_on": "이 열에 들어오면 여기서 고른 대상이 담당자가 되고, 에이전트라면 바로 실행을 시작합니다.",
-      "hint_off": "이 열에 들어와도 담당자는 바뀌지 않습니다.",
       "then": "완료 후 “{{status}}”(으)로 이동",
       "then_none": "완료 후 다음 상태는 담당자가 정합니다",
       "more": "추가 옵션",
-      "scope_note_other": "「{{workflow}}」 워크플로의 일부로, 이를 사용하는 프로젝트 {{count}}개 모두에 적용됩니다."
+      "scope_note_other": "「{{workflow}}」 워크플로의 일부로, 이를 사용하는 프로젝트 {{count}}개 모두에 적용됩니다.",
+      "mode_none": "넘기지 않음",
+      "mode_none_hint": "담당자 유지",
+      "mode_agent": "에이전트에게 넘기기",
+      "mode_agent_hint": "바로 실행을 시작합니다",
+      "mode_member": "멤버에게 넘기기",
+      "mode_member_hint": "담당자만 바뀌고 자동으로 실행되지 않습니다",
+      "project_lead_hint": "프로젝트 리드가 에이전트라면 실행을 시작합니다.",
+      "pick_agent": "에이전트 선택",
+      "pick_member": "멤버 선택",
+      "search_agents": "에이전트 검색",
+      "search_members": "멤버 검색",
+      "instructions": "이 단계에서 할 일"
     },
     "columns": {
       "new_status": "새 상태…",

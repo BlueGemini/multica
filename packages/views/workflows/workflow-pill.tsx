@@ -18,7 +18,8 @@ import { useT } from "../i18n";
 
 /**
  * The workflow a new project starts on (MUL-7420); null is Default. Shown
- * only while workflows are on and the workspace has more than Default.
+ * while workflows are on, so the choice is visible even before the workspace
+ * has more than Default.
  */
 export function WorkflowPill({
   value,
@@ -32,7 +33,7 @@ export function WorkflowPill({
   const enabled = useFeatureEnabled(PROJECT_WORKFLOWS_V1_FLAG, false);
   const { workflows } = useIssueWorkflows(wsId);
   const named = workflows.filter((w) => !w.is_default);
-  if (!enabled || named.length === 0) return null;
+  if (!enabled) return null;
   const defaultName = workflows.find((w) => w.is_default)?.name ?? t(($) => $.workflows.default_name);
   const current = named.find((w) => w.id === value);
   const options = [{ id: null as string | null, name: defaultName, columns: workflows.find((w) => w.is_default)?.steps.length }, ...named.map((w) => ({ id: w.id as string | null, name: w.name, columns: w.steps.length }))];
@@ -64,6 +65,9 @@ export function WorkflowPill({
             </DropdownMenuItem>
           ))}
         </DropdownMenuGroup>
+        <p className="border-t border-surface-border px-2 pb-1 pt-2 text-caption leading-5 text-muted-foreground">
+          {t(($) => $.workflows.project.picker_more)}
+        </p>
       </DropdownMenuContent>
     </DropdownMenu>
   );

@@ -35,6 +35,25 @@ import { useT } from "../i18n";
 
 const NOT_SET = "__not_set__";
 
+type HandoffMode = "none" | "agent" | "member";
+
+function modeOf(handler: IssueWorkflowStep["handler"]): HandoffMode {
+  if (handler.type === "agent") return "agent";
+  if (handler.type === "member" || handler.type === "project_lead") return "member";
+  return "none";
+}
+
+/**
+ * The parts of a handoff that are saved. Instructions and next/back statuses
+ * only reach an agent's brief, so they are kept for agent handoffs alone.
+ */
+export function savedHandoff<T extends Pick<IssueWorkflowStep, "handler" | "instructions" | "next_status_key" | "back_status_key">>(
+  step: T,
+): T {
+  if (step.handler.type === "agent") return step;
+  return { ...step, instructions: "", next_status_key: undefined, back_status_key: undefined };
+}
+
 function sameStep(a: IssueWorkflowStep, b: IssueWorkflowStep): boolean {
   return (
     a.handler.type === b.handler.type &&
@@ -82,17 +101,18 @@ export function WorkflowHandoffForm({
 
   const handler = draft.handler;
   const needsTarget = (handler.type === "agent" || handler.type === "member") && !handler.id;
-  const dirty = !sameStep(draft, saved);
+  const dirty = !sameStep(savedHandoff(draft), savedHandoff(saved));
 
   const save = async () => {
+    const out = savedHandoff(draft);
     try {
       await setHandoff.mutateAsync({
         workflowId: workflow.id,
         statusKey,
-        handler: draft.handler,
-        instructions: draft.handler.type === "none" ? "" : draft.instructions,
-        next_status_key: draft.next_status_key,
-        back_status_key: draft.back_status_key,
+        handler: out.handler,
+        instructions: out.instructions,
+        next_status_key: out.next_status_key,
+        back_status_key: out.back_status_key,
       });
       toast.success(t(($) => $.workflows.handoff.saved));
       onSaved?.();
@@ -153,24 +173,79 @@ export function HandoffFields({
   const { t } = useT("issues");
   const wsId = useWorkspaceId();
   const labelOf = useStatusLabel(wsId);
-  const handsOff = step.handler.type !== "none";
+  const mode = modeOf(step.handler);
   const [more, setMore] = useState(!!step.back_status_key || !!step.next_status_key);
   const nextDefault = workflowNextStatus({ steps: workflow.steps.map((s) => ({ ...s, next_status_key: undefined })) }, step.status_key);
   const next = step.next_status_key ?? nextDefault;
+  const choose = (m: HandoffMode) => {
+    if (m === mode) return;
+    onPatch({ handler: m === "none" ? { type: "none" } : { type: m } });
+  };
+  const options: { mode: HandoffMode; title: string; hint: string }[] = [
+    { mode: "none", title: t(($) => $.workflows.handoff.mode_none), hint: t(($) => $.workflows.handoff.mode_none_hint) },
+    { mode: "agent", title: t(($) => $.workflows.handoff.mode_agent), hint: t(($) => $.workflows.handoff.mode_agent_hint) },
+    { mode: "member", title: t(($) => $.workflows.handoff.mode_member), hint: t(($) => $.workflows.handoff.mode_member_hint) },
+  ];
 
   return (
     <div className="space-y-4">
-      <Field
-        label={t(($) => $.workflows.handoff.to)}
-        hint={handsOff ? t(($) => $.workflows.handoff.hint_on) : t(($) => $.workflows.handoff.hint_off)}
-      >
-        <HandlerPicker value={step.handler} disabled={!canEdit} onChange={(handler) => onPatch({ handler })} />
-      </Field>
+      <div role="radiogroup" aria-label={t(($) => $.workflows.handoff.to)} className="space-y-1.5">
+        {options.map((option) => {
+          const selected = option.mode === mode;
+          return (
+            <div
+              key={option.mode}
+              className={cn(
+                "rounded-lg border transition-colors",
+                selected ? "border-brand/50 bg-brand/5" : "border-surface-border",
+              )}
+            >
+              <button
+                type="button"
+                role="radio"
+                aria-checked={selected}
+                disabled={!canEdit}
+                onClick={() => choose(option.mode)}
+                className="flex w-full items-start gap-2.5 px-3 py-2.5 text-left disabled:cursor-default"
+              >
+                <span
+                  aria-hidden
+                  className={cn(
+                    "mt-0.5 flex size-4 shrink-0 items-center justify-center rounded-full border",
+                    selected ? "border-brand" : "border-input",
+                  )}
+                >
+                  {selected && <span className="size-2 rounded-full bg-brand" />}
+                </span>
+                <span className="min-w-0">
+                  <span className="block text-body font-medium">{option.title}</span>
+                  <span className="block text-caption text-muted-foreground">{option.hint}</span>
+                </span>
+              </button>
+              {selected && option.mode !== "none" && (
+                <div className="px-3 pb-3 pl-9">
+                  <HandlerPicker
+                    kind={option.mode}
+                    value={step.handler}
+                    disabled={!canEdit}
+                    onChange={(handler) => onPatch({ handler })}
+                  />
+                  {step.handler.type === "project_lead" && (
+                    <p className="mt-1.5 text-caption leading-5 text-muted-foreground">
+                      {t(($) => $.workflows.handoff.project_lead_hint)}
+                    </p>
+                  )}
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
 
-      {handsOff && (
+      {mode === "agent" && (
         <>
           <Field
-            label={t(($) => $.workflows.editor.instructions)}
+            label={t(($) => $.workflows.handoff.instructions)}
             hint={t(($) => $.workflows.editor.instructions_hint)}
             htmlFor={`workflow-handoff-instructions-${step.status_key}`}
           >
@@ -213,15 +288,16 @@ export function HandoffFields({
 }
 
 /**
- * Who entering a column hands the issue to: nobody, the project lead, or one
- * agent or member. Squads are left out on purpose — they route work
- * themselves. (MUL-7420)
+ * The agent, or the member (project lead included), a column hands the issue
+ * to. Squads are left out on purpose — they route work themselves. (MUL-7420)
  */
 function HandlerPicker({
+  kind,
   value,
   disabled,
   onChange,
 }: {
+  kind: "agent" | "member";
   value: IssueWorkflowStep["handler"];
   disabled: boolean;
   onChange: (handler: IssueWorkflowStep["handler"]) => void;
@@ -234,21 +310,21 @@ function HandlerPicker({
   const [query, setQuery] = useState("");
   const q = query.trim().toLowerCase();
   const matches = (name: string) => !q || name.toLowerCase().includes(q);
-  const agentRows = agents.filter((a) => !a.archived_at && matches(a.name));
-  const memberRows = members.filter((m) => matches(m.name));
+  const agentRows = kind === "agent" ? agents.filter((a) => !a.archived_at && matches(a.name)) : [];
+  const memberRows = kind === "member" ? members.filter((m) => matches(m.name)) : [];
   const leadLabel = t(($) => $.workflows.handler.project_lead);
-  const noneLabel = t(($) => $.workflows.handoff.none);
   const pick = (handler: IssueWorkflowStep["handler"]) => {
     onChange(handler);
     setOpen(false);
   };
   const is = (type: string, id?: string) => value.type === type && (id === undefined || value.id === id);
   const current =
-    value.type === "agent" || value.type === "member"
-      ? (value.type === "agent" ? agents.find((a) => a.id === value.id)?.name : members.find((m) => m.user_id === value.id)?.name) ?? ""
-      : value.type === "project_lead"
-        ? leadLabel
-        : noneLabel;
+    value.type === "project_lead"
+      ? leadLabel
+      : value.id
+        ? (value.type === "agent" ? agents.find((a) => a.id === value.id)?.name : members.find((m) => m.user_id === value.id)?.name) ?? ""
+        : "";
+  const placeholder = kind === "agent" ? t(($) => $.workflows.handoff.pick_agent) : t(($) => $.workflows.handoff.pick_member);
 
   return (
     <PropertyPicker
@@ -257,14 +333,14 @@ function HandlerPicker({
       align="start"
       width="w-72"
       searchable
-      searchPlaceholder={t(($) => $.workflows.handoff.search)}
+      searchPlaceholder={kind === "agent" ? t(($) => $.workflows.handoff.search_agents) : t(($) => $.workflows.handoff.search_members)}
       onSearchChange={setQuery}
       triggerRender={
         <button
           type="button"
           disabled={disabled}
-          aria-label={t(($) => $.workflows.handoff.to)}
-          className="flex h-9 w-full items-center gap-2 rounded-md border border-input bg-transparent px-3 text-left text-body disabled:cursor-default"
+          aria-label={placeholder}
+          className="flex h-8 w-full items-center gap-2 rounded-md border border-input bg-background px-2.5 text-left text-body disabled:cursor-default"
         />
       }
       trigger={
@@ -272,31 +348,22 @@ function HandlerPicker({
           {(value.type === "agent" || value.type === "member") && value.id && (
             <ActorAvatar actorType={value.type} actorId={value.id} size="xs" profileLink={false} />
           )}
-          <span className={cn("min-w-0 flex-1 truncate", value.type === "none" && "text-muted-foreground")}>{current}</span>
+          <span className={cn("min-w-0 flex-1 truncate", !current && "text-muted-foreground")}>{current || placeholder}</span>
           <ChevronDown aria-hidden className="size-3.5 shrink-0 text-muted-foreground" />
         </>
       }
     >
-      {!q && (
-        <>
-          <PickerItem emptyValue selected={is("none")} onClick={() => pick({ type: "none" })}>
-            <span className="truncate">{noneLabel}</span>
-          </PickerItem>
-          <PickerItem selected={is("project_lead")} onClick={() => pick({ type: "project_lead" })}>
-            <span className="truncate">{leadLabel}</span>
-          </PickerItem>
-        </>
+      {kind === "member" && !q && (
+        <PickerItem selected={is("project_lead")} onClick={() => pick({ type: "project_lead" })}>
+          <span className="truncate">{leadLabel}</span>
+        </PickerItem>
       )}
-      {agentRows.length > 0 && (
-        <PickerSection label={t(($) => $.workflows.handoff.agents)}>
-          {agentRows.map((agent) => (
-            <PickerItem key={agent.id} selected={is("agent", agent.id)} onClick={() => pick({ type: "agent", id: agent.id })}>
-              <ActorAvatar actorType="agent" actorId={agent.id} size="xs" profileLink={false} />
-              <span className="truncate">{agent.name}</span>
-            </PickerItem>
-          ))}
-        </PickerSection>
-      )}
+      {agentRows.map((agent) => (
+        <PickerItem key={agent.id} selected={is("agent", agent.id)} onClick={() => pick({ type: "agent", id: agent.id })}>
+          <ActorAvatar actorType="agent" actorId={agent.id} size="xs" profileLink={false} />
+          <span className="truncate">{agent.name}</span>
+        </PickerItem>
+      ))}
       {memberRows.length > 0 && (
         <PickerSection label={t(($) => $.workflows.handoff.members)}>
           {memberRows.map((member) => (
@@ -311,7 +378,7 @@ function HandlerPicker({
           ))}
         </PickerSection>
       )}
-      {q && agentRows.length === 0 && memberRows.length === 0 && <PickerEmpty />}
+      {agentRows.length === 0 && memberRows.length === 0 && (q || kind === "agent") && <PickerEmpty />}
     </PropertyPicker>
   );
 }

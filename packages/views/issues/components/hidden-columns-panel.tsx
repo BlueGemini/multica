@@ -15,6 +15,9 @@ import { useT } from "../../i18n";
 import { useWorkspaceId } from "@multica/core/hooks";
 import { useIssueStatuses } from "@multica/core/issue-statuses/hooks";
 import { useStatusLabel } from "../utils/status-label";
+import { useWorkspacePaths } from "@multica/core/paths";
+import { AppLink } from "../../navigation";
+import { useWorkflowPermissions } from "../../workflows/permissions";
 
 /**
  * Single source of truth for the "Hidden columns" side panel rendered by
@@ -34,6 +37,8 @@ export function HiddenColumnsPanel({
   renderRow: (status: IssueStatus) => React.ReactNode;
 }) {
   const { t } = useT("issues");
+  const viewerHidden = useViewStore((s) => s.hiddenStatuses);
+  const outsideWorkflow = hiddenStatuses.some((status) => !viewerHidden.includes(status));
   return (
     <div className="flex w-[240px] shrink-0 flex-col">
       <div className="mb-2 flex items-center gap-2 px-1">
@@ -44,7 +49,28 @@ export function HiddenColumnsPanel({
       <div className="flex-1 space-y-0.5">
         {hiddenStatuses.map((status) => renderRow(status))}
       </div>
+      {outsideWorkflow && <WorkflowColumnsNote />}
     </div>
+  );
+}
+
+/** Where a board's columns come from, under the rows its workflow leaves out. */
+function WorkflowColumnsNote() {
+  const { t } = useT("issues");
+  const paths = useWorkspacePaths();
+  const { isAdmin } = useWorkflowPermissions();
+  return (
+    <p className="mt-3 px-2.5 text-caption leading-5 text-muted-foreground">
+      {t(($) => $.board.workflow_columns_note)}
+      {isAdmin && (
+        <>
+          {" "}
+          <AppLink href={`${paths.settings()}?tab=workflows`} className="text-brand hover:underline">
+            {t(($) => $.workflows.project.manage)}
+          </AppLink>
+        </>
+      )}
+    </p>
   );
 }
 

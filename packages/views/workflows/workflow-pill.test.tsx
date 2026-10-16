@@ -1,5 +1,5 @@
 import { cleanup, fireEvent, screen } from "@testing-library/react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { IssueWorkflow } from "@multica/core/types";
 import { renderWithI18n } from "../test/i18n";
 import { WorkflowPill } from "./workflow-pill";
@@ -20,12 +20,14 @@ function workflow(id: string, name: string, isDefault: boolean): IssueWorkflow {
 
 vi.mock("@multica/core/config", () => ({ useFeatureEnabled: () => true }));
 vi.mock("@multica/core/hooks", () => ({ useWorkspaceId: () => "workspace-1" }));
+const workflows = vi.hoisted(() => ({ list: [] as IssueWorkflow[] }));
 vi.mock("@multica/core/issue-workflows", () => ({
-  useIssueWorkflows: () => ({
-    workflows: [workflow("wf-default", "Default", true), workflow("wf-delivery", "Delivery", false)],
-  }),
+  useIssueWorkflows: () => ({ workflows: workflows.list }),
 }));
 
+beforeEach(() => {
+  workflows.list = [workflow("wf-default", "Default", true), workflow("wf-delivery", "Delivery", false)];
+});
 afterEach(cleanup);
 
 describe("WorkflowPill", () => {
@@ -37,5 +39,15 @@ describe("WorkflowPill", () => {
     fireEvent.click(await screen.findByRole("menuitem", { name: /Delivery/ }));
 
     expect(onChange).toHaveBeenCalledWith("wf-delivery");
+  });
+
+  it("shows Default and where to create more when it is the only workflow", async () => {
+    workflows.list = [workflow("wf-default", "Default", true)];
+    renderWithI18n(<WorkflowPill value={null} onChange={vi.fn()} />);
+
+    fireEvent.click(screen.getByRole("button", { name: /Default/ }));
+
+    expect(await screen.findByRole("menuitem", { name: /Default/ })).toBeTruthy();
+    expect(screen.getByText(/Settings → Workflows/)).toBeTruthy();
   });
 });

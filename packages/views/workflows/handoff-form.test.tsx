@@ -39,16 +39,42 @@ function renderFields(step: IssueWorkflowStep, onPatch = vi.fn()) {
 afterEach(cleanup);
 
 describe("HandoffFields", () => {
-  it("hands to one agent, member or the project lead — never a squad", async () => {
+  it("offers no handoff, an agent or a member — never a squad", () => {
     const onPatch = renderFields({ status_key: "in_progress", handler: { type: "none" }, instructions: "" });
 
-    fireEvent.click(screen.getByRole("button", { name: "Hand to" }));
-    expect(await screen.findByText("Project lead")).toBeTruthy();
-    expect(screen.getByText("Ada")).toBeTruthy();
+    const radios = screen.getAllByRole("radio");
+    expect(radios.map((r) => r.textContent)).toEqual([
+      expect.stringContaining("No handoff"),
+      expect.stringContaining("Hand to an agent"),
+      expect.stringContaining("Hand to a member"),
+    ]);
     expect(screen.queryByText(/squad/i)).toBeNull();
-    fireEvent.click(screen.getByText("Builder"));
+    fireEvent.click(screen.getByRole("radio", { name: /Hand to an agent/ }));
+
+    expect(onPatch).toHaveBeenCalledWith({ handler: { type: "agent" } });
+  });
+
+  it("lists only agents for an agent handoff", async () => {
+    const onPatch = renderFields({ status_key: "in_progress", handler: { type: "agent" }, instructions: "" });
+
+    fireEvent.click(screen.getByRole("button", { name: "Choose an agent" }));
+    fireEvent.click(await screen.findByText("Builder"));
+    expect(screen.queryByText("Ada")).toBeNull();
+    expect(screen.queryByText("Project lead")).toBeNull();
 
     expect(onPatch).toHaveBeenCalledWith({ handler: { type: "agent", id: "agent-1" } });
+  });
+
+  it("lists the project lead and members for a member handoff, without instructions", async () => {
+    const onPatch = renderFields({ status_key: "in_review", handler: { type: "member" }, instructions: "" });
+
+    expect(screen.queryByRole("textbox")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Choose a member" }));
+    expect(await screen.findByText("Project lead")).toBeTruthy();
+    expect(screen.queryByText("Builder")).toBeNull();
+    fireEvent.click(screen.getByText("Ada"));
+
+    expect(onPatch).toHaveBeenCalledWith({ handler: { type: "member", id: "user-1" } });
   });
 
   it("defaults the next status to the next column and tucks the rest away", () => {

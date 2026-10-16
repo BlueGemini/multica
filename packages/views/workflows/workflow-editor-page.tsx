@@ -59,7 +59,7 @@ import { StatusIcon } from "../issues/components/status-icon";
 import { useStatusLabel } from "../issues/utils/status-label";
 import { ActorAvatar } from "../common/actor-avatar";
 import { useT } from "../i18n";
-import { BriefPreviewDialog, HandoffFields } from "./handoff-form";
+import { BriefPreviewDialog, HandoffFields, savedHandoff } from "./handoff-form";
 import { stepHandlerActor, useStepHandlerLabel } from "./step-handler";
 import { WORKFLOW_TEMPLATES, type WorkflowTemplateId } from "./templates";
 import { WorkflowMappingDialog } from "./workflow-mapping-dialog";
@@ -248,7 +248,8 @@ export function WorkflowEditorPage({
   const save = async (mapping?: Record<string, string>) => {
     const listed = new Set(targetKeys);
     const steps: IssueWorkflowStepInput[] = columns.map((c) => {
-      const h = draft.handoffs[c.id];
+      const raw = draft.handoffs[c.id];
+      const h = raw && savedHandoff(raw);
       const handoff = hasHandoff(h)
         ? {
             ...(h.handler.type !== "none" ? { handler: h.handler, instructions: h.instructions } : {}),

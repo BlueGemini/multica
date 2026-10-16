@@ -373,7 +373,8 @@
     "ordered_by": "Board ordered by {{field}}",
     "manual_reorder_hint": "Switch to Manual ordering to rearrange issues within a column.",
     "filter_to_status": "Filter to this status",
-    "outside_workflow": "Not in this board’s workflow"
+    "outside_workflow": "Not in this board’s workflow",
+    "workflow_columns_note": "Columns come from the board’s workflow; views outside a project use Default."
   },
   "peek": {
     "panel_label": "Issue preview",
@@ -1588,7 +1589,8 @@
       "default_badge": "Default",
       "used_by_short": "Used by: {{names}}",
       "used_by_nobody": "No projects yet",
-      "manage": "Manage workflows…"
+      "manage": "Manage workflows…",
+      "picker_more": "Create more workflows in Settings → Workflows."
     },
     "picker": {
       "header": "{{workflow}} · from project “{{project}}”",
@@ -1642,17 +1644,24 @@
       "error": "Couldn't save the handoff",
       "read_only": "Handoffs belong to the workflow; workspace admins change them.",
       "to": "Hand to",
-      "none": "No handoff (assignee stays)",
-      "search": "Search agents or members",
-      "agents": "Agents",
       "members": "Members",
-      "hint_on": "Entering this column makes them the assignee; an agent starts a run right away.",
-      "hint_off": "Entering this column keeps the current assignee.",
       "then": "When done, moves to {{status}}",
       "then_none": "When done, the handler picks the next status",
       "more": "More options",
       "scope_note_one": "Part of the {{workflow}} workflow: applies to the {{count}} project using it.",
-      "scope_note_other": "Part of the {{workflow}} workflow: applies to all {{count}} projects using it."
+      "scope_note_other": "Part of the {{workflow}} workflow: applies to all {{count}} projects using it.",
+      "mode_none": "No handoff",
+      "mode_none_hint": "The assignee stays the same",
+      "mode_agent": "Hand to an agent",
+      "mode_agent_hint": "Starts a run right away",
+      "mode_member": "Hand to a member",
+      "mode_member_hint": "Changes the assignee; nothing runs",
+      "project_lead_hint": "If the project lead is an agent, it starts a run.",
+      "pick_agent": "Choose an agent",
+      "pick_member": "Choose a member",
+      "search_agents": "Search agents",
+      "search_members": "Search members",
+      "instructions": "What this step does"
     },
     "columns": {
       "new_status": "New status…",

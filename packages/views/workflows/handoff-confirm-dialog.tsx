@@ -75,7 +75,7 @@ export function WorkflowHandoffConfirmDialog({
   const { getActorName } = useActorName();
   const duration = useDuration();
   const [stop, setStop] = useState(true);
-  const [briefOpen, setBriefOpen] = useState(true);
+  const [briefOpen, setBriefOpen] = useState(false);
   const open = issue !== null;
   const { data: preview, isPending, isError } = useQuery({
     ...workflowHandoffPreviewOptions(wsId, issue?.id ?? "", toStatus),
@@ -85,7 +85,7 @@ export function WorkflowHandoffConfirmDialog({
   useEffect(() => {
     if (open) {
       setStop(true);
-      setBriefOpen(true);
+      setBriefOpen(false);
     }
   }, [open, issue?.id, toStatus]);
 

@@ -369,7 +369,8 @@
     "ordered_by": "按{{field}}排序",
     "manual_reorder_hint": "切换到“手动”排序后，才能调整同一列内的顺序。",
     "filter_to_status": "按此状态筛选",
-    "outside_workflow": "不在当前看板的工作流里"
+    "outside_workflow": "不在当前看板的工作流里",
+    "workflow_columns_note": "看板的列由工作流决定，项目外的视图使用 Default 工作流。"
   },
   "peek": {
     "panel_label": "任务预览",
@@ -1528,7 +1529,8 @@
       "default_badge": "默认",
       "used_by_short": "用于：{{names}}",
       "used_by_nobody": "暂无项目",
-      "manage": "管理工作流…"
+      "manage": "管理工作流…",
+      "picker_more": "在「设置 → 工作流」里可以新建更多工作流。"
     },
     "picker": {
       "header": "{{workflow}} · 跟随项目「{{project}}」",
@@ -1580,16 +1582,23 @@
       "error": "无法保存交接",
       "read_only": "交接属于工作流，由工作区管理员修改。",
       "to": "交给谁",
-      "none": "不交接（负责人不变）",
-      "search": "搜索智能体或成员",
-      "agents": "智能体",
       "members": "成员",
-      "hint_on": "任务进入这一列时，负责人改为这里选的对象；交给智能体时会立即开始运行。",
-      "hint_off": "任务进入这一列时，负责人不变。",
       "then": "完成后进入「{{status}}」",
       "then_none": "完成后由处理人决定下一步",
       "more": "更多选项",
-      "scope_note_other": "属于「{{workflow}}」工作流，对使用它的 {{count}} 个项目生效。"
+      "scope_note_other": "属于「{{workflow}}」工作流，对使用它的 {{count}} 个项目生效。",
+      "mode_none": "不交接",
+      "mode_none_hint": "负责人不变",
+      "mode_agent": "交给智能体",
+      "mode_agent_hint": "立即开始运行",
+      "mode_member": "交给成员",
+      "mode_member_hint": "只改负责人，不会自动运行",
+      "project_lead_hint": "项目负责人是智能体时，会开始运行。",
+      "pick_agent": "选择智能体",
+      "pick_member": "选择成员",
+      "search_agents": "搜索智能体",
+      "search_members": "搜索成员",
+      "instructions": "这一步要做什么"
     },
     "columns": {
       "new_status": "新建状态…",

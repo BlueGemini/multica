@@ -369,7 +369,8 @@
     "ordered_by": "{{field}} 順に並べたボード",
     "manual_reorder_hint": "列内の順序を変更するには、並び順を「手動」に切り替えてください。",
     "filter_to_status": "このステータスで絞り込む",
-    "outside_workflow": "このボードのワークフローにはありません"
+    "outside_workflow": "このボードのワークフローにはありません",
+    "workflow_columns_note": "ボードの列はワークフローで決まります。プロジェクト外のビューは Default を使います。"
   },
   "peek": {
     "panel_label": "タスクのプレビュー",
@@ -1528,7 +1529,8 @@
       "default_badge": "デフォルト",
       "used_by_short": "使用中：{{names}}",
       "used_by_nobody": "まだプロジェクトがありません",
-      "manage": "ワークフローを管理…"
+      "manage": "ワークフローを管理…",
+      "picker_more": "「設定 → ワークフロー」でワークフローを追加できます。"
     },
     "picker": {
       "header": "{{workflow}} · プロジェクト「{{project}}」に従う",
@@ -1580,16 +1582,23 @@
       "error": "引き継ぎを保存できませんでした",
       "read_only": "引き継ぎはワークフローに属し、ワークスペース管理者が変更します。",
       "to": "引き継ぎ先",
-      "none": "引き継がない（担当者はそのまま）",
-      "search": "エージェントまたはメンバーを検索",
-      "agents": "エージェント",
       "members": "メンバー",
-      "hint_on": "この列に入ると担当者がここで選んだ相手に変わります。エージェントならすぐに実行を始めます。",
-      "hint_off": "この列に入っても担当者は変わりません。",
       "then": "完了後は「{{status}}」へ",
       "then_none": "完了後の行き先は担当者が決めます",
       "more": "その他のオプション",
-      "scope_note_other": "「{{workflow}}」ワークフローの一部です。使用している {{count}} 件のプロジェクトすべてに適用されます。"
+      "scope_note_other": "「{{workflow}}」ワークフローの一部です。使用している {{count}} 件のプロジェクトすべてに適用されます。",
+      "mode_none": "引き継がない",
+      "mode_none_hint": "担当者はそのまま",
+      "mode_agent": "エージェントに渡す",
+      "mode_agent_hint": "すぐに実行を始めます",
+      "mode_member": "メンバーに渡す",
+      "mode_member_hint": "担当者だけが変わり、自動では実行されません",
+      "project_lead_hint": "プロジェクトリードがエージェントの場合は実行を始めます。",
+      "pick_agent": "エージェントを選択",
+      "pick_member": "メンバーを選択",
+      "search_agents": "エージェントを検索",
+      "search_members": "メンバーを検索",
+      "instructions": "このステップでやること"
     },
     "columns": {
       "new_status": "新しいステータス…",
