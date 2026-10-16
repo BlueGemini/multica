@@ -951,7 +951,9 @@ func TestHandoffDoesNotAlsoWakeTheHandler(t *testing.T) {
 		dbfx.QueryRow(t, `INSERT INTO issue_wakeup (id, workspace_id, issue_id, instruction, kind, mode, event_types, system_rule)
 			VALUES (gen_random_uuid(), $1, $2, 'stage closed', 'event', 'continuous', ARRAY['issue.status_changed'], 'child_done')
 			RETURNING id::text`, testWorkspaceID, issueID).Scan(&id)
-		t.Cleanup(func() { testPool.Exec(context.Background(), `DELETE FROM issue_wakeup_receipt WHERE wakeup_id = $1`, id) })
+		t.Cleanup(func() {
+			testPool.Exec(context.Background(), `DELETE FROM issue_wakeup_receipt WHERE wakeup_id = $1`, id)
+		})
 		return id
 	}
 	handedOffRule := platformRule(handedOff)
