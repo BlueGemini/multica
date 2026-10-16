@@ -131,11 +131,7 @@ interface OnboardingFlowProps {
   runtimesPending?: boolean;
 }
 
-export function OnboardingFlow(props: OnboardingFlowProps) {
-  return <OnboardingStepFlow {...props} />;
-}
-
-function OnboardingStepFlow({
+export function OnboardingFlow({
   onComplete,
   mode = "first_run",
   onCancel,
