@@ -127,8 +127,9 @@ vi.mock("@multica/core/hooks", () => ({
 
 vi.mock("@multica/core/paths", () => ({
   useWorkspacePaths: () => ({
-    newAgent: () => "/test-workspace/agents/new",
-    newAgentManual: () => "/test-workspace/agents/new/manual",
+    agents: () => "/test-workspace/agents",
+    createAgent: () => "/test-workspace/agents?create=1",
+    agentDraft: (id: string) => `/test-workspace/agents?draft=${id}`,
     agentDetail: (id: string) => `/test-workspace/agents/${id}`,
   }),
 }));
@@ -147,6 +148,17 @@ vi.mock("@multica/core/runtimes", () => ({
 // on the gate, not on avatars, row menus, the toolbar, or tooltip portals.
 vi.mock("../../common/actor-avatar", () => ({ ActorAvatar: () => null }));
 vi.mock("./agent-row-actions", () => ({ AgentRowActions: () => null }));
+vi.mock("../create/agent-draft-dialog", () => ({ AgentDraftDialog: () => null }));
+vi.mock("../create/agent-draft-actions", () => ({
+  useHandDraftToAgent: () => vi.fn(),
+}));
+vi.mock("../create/create-agent-menu", () => ({ CreateAgentMenu: () => null }));
+vi.mock("../create/pending-agent-drafts", () => ({
+  PendingAgentDrafts: () => null,
+}));
+vi.mock("../create/use-draft-helper-agent", () => ({
+  useDraftHelperAgent: () => null,
+}));
 vi.mock("./agent-list-toolbar", () => ({
   AgentListToolbar: () => <div data-testid="agent-list-toolbar" />,
   countActiveFilterDimensions: () => 0,

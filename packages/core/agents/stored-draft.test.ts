@@ -1,12 +1,13 @@
 // @vitest-environment node
 
 import { describe, expect, it } from "vitest";
-import { StoredAgentDraftSchema } from "../api/schemas";
+import { AgentDraftConfigSchema } from "../api/schemas";
 import type { AgentDraft } from "./draft";
 import {
-  fromStoredAgentDraft,
-  storedAgentDraftsEqual,
-  toStoredAgentDraft,
+  diffAgentDraftConfig,
+  fromAgentDraftConfig,
+  mergeRemoteAgentDraft,
+  toAgentDraftConfig,
 } from "./stored-draft";
 
 const draft = (): AgentDraft => ({
@@ -27,72 +28,54 @@ const draft = (): AgentDraft => ({
   teamIds: new Set(["team-1"]),
 });
 
-describe("stored agent draft", () => {
+describe("agent draft config", () => {
   it("round-trips every editable field", () => {
     const original = draft();
-    const restored = fromStoredAgentDraft(
-      toStoredAgentDraft(original, "msg-1"),
-      original.runtimeId,
-    );
-    expect(restored).toEqual(original);
+    expect(fromAgentDraftConfig(toAgentDraftConfig(original))).toEqual(original);
   });
 
-  // The runtime a conversation executes on is owned by its carrier agent. A
-  // copy inside the draft could only go stale and put the picker on a runtime
-  // that runs nothing (MUL-5163), so the restore takes it from the caller.
-  it("takes the runtime from the caller, not the stored copy", () => {
-    const stored = toStoredAgentDraft(draft(), null);
-    expect(stored).not.toHaveProperty("runtimeId");
-    expect(fromStoredAgentDraft(stored, "runtime-2").runtimeId).toBe(
-      "runtime-2",
-    );
+  it("survives the wire schema unchanged", () => {
+    const config = toAgentDraftConfig(draft());
+    expect(AgentDraftConfigSchema.parse(config)).toEqual(config);
   });
 
-  // The marker is what stops a restore from re-applying the last reply over
-  // edits made after it, so it has to survive the round trip.
-  it("carries the applied message marker", () => {
-    expect(toStoredAgentDraft(draft(), "msg-9").applied_message_id).toBe(
-      "msg-9",
-    );
-    expect(toStoredAgentDraft(draft(), null).applied_message_id).toBeNull();
-  });
-
-  it("stores dismissed notices separately from the applied draft", () => {
-    const stored = toStoredAgentDraft(draft(), "applied", "dismissed");
-    expect(StoredAgentDraftSchema.parse(stored)).toMatchObject({
-      applied_message_id: "applied",
-      dismissed_message_id: "dismissed",
+  // A PATCH carries only what changed, so a member and an agent editing
+  // different fields of the same draft do not overwrite each other.
+  it("diffs to the changed fields only", () => {
+    const base = toAgentDraftConfig(draft());
+    const next = toAgentDraftConfig({
+      ...draft(),
+      name: "Other",
+      skillIds: new Set(["skill-1"]),
     });
-    expect(fromStoredAgentDraft(stored, "runtime-1")).toEqual(draft());
-    expect(storedAgentDraftsEqual(stored, toStoredAgentDraft(draft(), "applied"))).toBe(false);
-  });
-
-  it("accepts older drafts and ignores malformed dismissal markers", () => {
-    const stored = toStoredAgentDraft(draft(), "applied");
-    expect(stored).not.toHaveProperty("dismissed_message_id");
-    expect(StoredAgentDraftSchema.parse(stored).dismissed_message_id).toBeUndefined();
-    expect(StoredAgentDraftSchema.parse({ ...stored, dismissed_message_id: 42 })).toMatchObject({
-      name: stored.name,
-      applied_message_id: "applied",
-      dismissed_message_id: null,
+    expect(diffAgentDraftConfig(base, next)).toEqual({
+      name: "Other",
+      skill_ids: ["skill-1"],
     });
   });
 
-  // Autosave compares on the stored form: a Set rebuilt with the same members
-  // is a new reference every render and would otherwise write on every keystroke
-  // elsewhere in the form.
   it("treats rebuilt sets with the same members as unchanged", () => {
     expect(
-      storedAgentDraftsEqual(
-        toStoredAgentDraft(draft(), "msg-1"),
-        toStoredAgentDraft(draft(), "msg-1"),
+      diffAgentDraftConfig(
+        toAgentDraftConfig(draft()),
+        toAgentDraftConfig(draft()),
       ),
-    ).toBe(true);
-    expect(
-      storedAgentDraftsEqual(
-        toStoredAgentDraft(draft(), "msg-1"),
-        toStoredAgentDraft({ ...draft(), name: "Other" }, "msg-1"),
-      ),
-    ).toBe(false);
+    ).toEqual({});
+  });
+
+  // An agent filling in instructions while the member renames the draft: both
+  // edits must survive.
+  it("takes remote edits only for fields the user has not touched", () => {
+    const base = toAgentDraftConfig(draft());
+    const local = { ...draft(), name: "Renamed locally" };
+    const server = {
+      ...base,
+      name: "Renamed remotely",
+      instructions: "# Role\nShip, then announce.",
+    };
+    const merged = mergeRemoteAgentDraft(local, base, server);
+    expect(merged.name).toBe("Renamed locally");
+    expect(merged.instructions).toBe("# Role\nShip, then announce.");
+    expect(merged.skillIds).toEqual(new Set(["skill-1", "skill-2"]));
   });
 });

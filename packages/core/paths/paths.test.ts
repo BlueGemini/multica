@@ -13,13 +13,21 @@ describe("paths.workspace(slug)", () => {
     expect(ws.autopilots()).toBe("/acme/autopilots");
     expect(ws.autopilotDetail("a1")).toBe("/acme/autopilots/a1");
     expect(ws.agents()).toBe("/acme/agents");
-    expect(ws.newAgent()).toBe("/acme/agents/new");
-    expect(ws.newAgentAi()).toBe("/acme/agents/new/ai");
-    expect(ws.newAgentAiSession("sess_1")).toBe("/acme/agents/new/ai/sess_1");
+    expect(ws.createAgent()).toBe("/acme/agents?create=1");
+    expect(ws.createAgent({ squad: "sq 1", duplicate: "a1" })).toBe(
+      "/acme/agents?create=1&squad=sq+1&duplicate=a1",
+    );
+    expect(ws.agentDraft("d 1")).toBe("/acme/agents?draft=d%201");
+    expect(ws.agentDraft("d1", { squad: "sq1" })).toBe(
+      "/acme/agents?draft=d1&squad=sq1",
+    );
     expect(ws.memberDetail("u1")).toBe("/acme/members/u1");
     expect(ws.inbox()).toBe("/acme/inbox");
     expect(ws.chatWithAgent("agent one")).toBe(
       "/acme/chat?agent=agent%20one",
+    );
+    expect(ws.chatWithAgent("a1", { prompt: "hi & bye" })).toBe(
+      "/acme/chat?agent=a1&prompt=hi%20%26%20bye",
     );
     expect(ws.chatSession("session one")).toBe(
       "/acme/chat?session=session%20one",

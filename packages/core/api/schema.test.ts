@@ -1056,32 +1056,56 @@ describe("ApiClient schema fallback", () => {
     });
   });
 
-  describe("listAgentBuilderSessions", () => {
+  describe("listAgentDrafts", () => {
     it("falls back to no drafts when the response is malformed", async () => {
       stubFetchJson({ unexpected: "shape" });
       const client = new ApiClient("https://api.example.test");
-      expect(await client.listAgentBuilderSessions()).toEqual([]);
+      expect(await client.listAgentDrafts()).toEqual([]);
     });
 
-    // Losing the whole row would lose the conversation. A draft missing its
-    // runtime degrades to "let the user pick one" instead.
-    it("keeps a draft whose runtime the server omitted", async () => {
+    // A draft written by a newer build must keep the fields this client knows
+    // instead of disappearing from the list.
+    it("keeps a draft whose config fields are partly malformed", async () => {
       stubFetchJson({
-        sessions: [{ session_id: "s-1", title: "Create an agent" }],
+        drafts: [
+          {
+            id: "d-1",
+            status: "pending",
+            config: { name: "Reviewer", skill_ids: "not-an-array" },
+          },
+        ],
       });
       const client = new ApiClient("https://api.example.test");
-      const sessions = await client.listAgentBuilderSessions();
-      expect(sessions).toHaveLength(1);
-      expect(sessions[0]?.session_id).toBe("s-1");
-      expect(sessions[0]?.runtime_id).toBe("");
+      const drafts = await client.listAgentDrafts();
+      expect(drafts).toHaveLength(1);
+      expect(drafts[0]?.config.name).toBe("Reviewer");
+      expect(drafts[0]?.config.skill_ids).toEqual([]);
+      expect(drafts[0]?.config.permission_scope).toBe("private");
     });
 
-    // An installed desktop build can outrun a self-hosted backend. Without this
-    // the Agents page would error instead of simply offering no drafts.
     it("treats a 404 from an older backend as no drafts", async () => {
       stubFetchJson({ error: "not found" }, 404);
       const client = new ApiClient("https://api.example.test");
-      expect(await client.listAgentBuilderSessions()).toEqual([]);
+      expect(await client.listAgentDrafts()).toEqual([]);
+    });
+  });
+
+  describe("getAgentDraft", () => {
+    // The card must never offer "create" for a record it could not read.
+    it("degrades a malformed body to a closed draft carrying the id", async () => {
+      stubFetchJson({ wrong: "shape" });
+      const client = new ApiClient("https://api.example.test");
+      const draft = await client.getAgentDraft("d-1");
+      expect(draft.id).toBe("d-1");
+      expect(draft.status).toBe("discarded");
+    });
+
+    it("treats an unknown status as closed", async () => {
+      stubFetchJson({ id: "d-1", status: "archived_in_future", config: {} });
+      const client = new ApiClient("https://api.example.test");
+      const draft = await client.getAgentDraft("d-1");
+      expect(draft.status).toBe("discarded");
+      expect(draft.config.name).toBe("");
     });
   });
 

@@ -67,6 +67,8 @@ export type WSEventType =
   | "project:created"
   | "project:updated"
   | "project:deleted"
+  | "agent_draft:created"
+  | "agent_draft:updated"
   | "squad:created"
   | "squad:updated"
   | "squad:deleted"
@@ -98,6 +100,12 @@ export interface WSMessage<T = unknown> {
   payload: T;
   actor_id?: string;
   actor_type?: string;
+}
+
+export interface AgentDraftEventPayload {
+  draft_id: string;
+  owner_id: string;
+  status: "pending" | "created" | "discarded";
 }
 
 export interface IssueCreatedPayload {
@@ -643,6 +651,8 @@ export interface WSEventPayloadMap {
   "skill:created": unknown;
   "skill:updated": unknown;
   "skill:deleted": unknown;
+  "agent_draft:created": AgentDraftEventPayload;
+  "agent_draft:updated": AgentDraftEventPayload;
   "squad:created": unknown;
   "squad:updated": unknown;
   "squad:deleted": unknown;

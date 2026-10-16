@@ -781,10 +781,10 @@ describe("ApiClient label response schemas", () => {
   });
 });
 
-describe("ApiClient agent builder runtime switch", () => {
-  it("PATCHes the session runtime endpoint and returns the runtime the server bound", async () => {
+describe("ApiClient agent drafts", () => {
+  it("PATCHes only the fields it was given", async () => {
     const fetchMock = vi.fn().mockResolvedValue(
-      new Response(JSON.stringify({ runtime_id: "runtime-b" }), {
+      new Response(JSON.stringify({ id: "d-1", status: "pending", config: { name: "Reviewer" } }), {
         status: 200,
         headers: { "Content-Type": "application/json" },
       }),
@@ -792,50 +792,13 @@ describe("ApiClient agent builder runtime switch", () => {
     vi.stubGlobal("fetch", fetchMock);
 
     const client = new ApiClient("https://api.example.test");
-    await expect(
-      client.switchAgentBuilderRuntime("session-1", { runtime_id: "runtime-b" }),
-    ).resolves.toEqual({ runtime_id: "runtime-b" });
+    const draft = await client.updateAgentDraft("d-1", { name: "Reviewer" });
+    expect(draft.config.name).toBe("Reviewer");
 
     const call = fetchMock.mock.calls[0] as [string, RequestInit];
-    expect(call[0]).toContain("/api/agent-builder/sessions/session-1/runtime");
+    expect(call[0]).toContain("/api/agent-drafts/d-1");
     expect(call[1].method).toBe("PATCH");
-    expect(JSON.parse(String(call[1].body))).toEqual({ runtime_id: "runtime-b" });
-  });
-
-  it("falls back to the requested runtime id for a malformed success body", async () => {
-    // A 2xx means the rebind committed onto the runtime we asked for, so the
-    // fallback must say so. Reporting "unknown" here would leave the picker on
-    // the old runtime while the conversation executes on the new one — the very
-    // split this endpoint exists to close.
-    const fetchMock = vi.fn().mockResolvedValue(
-      new Response(JSON.stringify({ runtime_id: 42 }), {
-        status: 200,
-        headers: { "Content-Type": "application/json" },
-      }),
-    );
-    vi.stubGlobal("fetch", fetchMock);
-
-    const client = new ApiClient("https://api.example.test");
-    await expect(
-      client.switchAgentBuilderRuntime("session-1", { runtime_id: "runtime-b" }),
-    ).resolves.toEqual({ runtime_id: "runtime-b" });
-  });
-
-  it("rejects without a fallback when the switch is refused", async () => {
-    // 409 (a reply in flight) means nothing was committed, so the caller must
-    // see a rejection and keep the old runtime selected.
-    const fetchMock = vi.fn().mockResolvedValue(
-      new Response(JSON.stringify({ error: "stop the current reply before switching runtime" }), {
-        status: 409,
-        headers: { "Content-Type": "application/json" },
-      }),
-    );
-    vi.stubGlobal("fetch", fetchMock);
-
-    const client = new ApiClient("https://api.example.test");
-    await expect(
-      client.switchAgentBuilderRuntime("session-1", { runtime_id: "runtime-b" }),
-    ).rejects.toBeInstanceOf(ApiError);
+    expect(JSON.parse(String(call[1].body))).toEqual({ config: { name: "Reviewer" } });
   });
 });
 

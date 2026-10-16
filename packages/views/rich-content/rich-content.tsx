@@ -25,7 +25,7 @@
  *             settled-but-malformed fence still renders as source.
  */
 
-import { createContext, isValidElement, memo, useContext, useMemo, useRef } from "react";
+import { createContext, isValidElement, lazy, memo, Suspense, useContext, useMemo, useRef } from "react";
 import ReactMarkdown, {
   type Components,
   type ExtraProps,
@@ -391,6 +391,32 @@ function stringProperty(node: ExtraProps["node"], key: string): string {
   return typeof value === "string" ? value : "";
 }
 
+// Loaded on first use: the card carries the whole agent editor, which every
+// other message and comment would otherwise pay for.
+const AgentDraftCard = lazy(() =>
+  import("../agents/create/agent-draft-card").then((module) => ({
+    default: module.AgentDraftCard,
+  })),
+);
+
+const AGENT_DRAFT_HREF = /^mention:\/\/agent-draft\/([^/?#]+)$/;
+
+/**
+ * The draft id when a paragraph holds nothing but one agent-draft link — the
+ * shape agents are told to post. Only then does the link become a card: a card
+ * is a block, and a block inside a sentence would break the paragraph.
+ */
+function soleAgentDraftId(node: ExtraProps["node"]): string | null {
+  const children = (node?.children ?? []).filter(
+    (child) => !(child.type === "text" && child.value.trim() === ""),
+  );
+  const only = children.length === 1 ? children[0] : undefined;
+  if (only?.type !== "element" || only.tagName !== "a") return null;
+  const href = only.properties?.href;
+  if (typeof href !== "string") return null;
+  return href.match(AGENT_DRAFT_HREF)?.[1] ?? null;
+}
+
 function isMultiLineNode(node: ExtraProps["node"]): boolean {
   const position = node?.position;
   return position != null && position.start.line !== position.end.line;
@@ -497,6 +523,20 @@ const COMPONENTS: Partial<Components> = {
       }}
     />
   ),
+
+  p: ({ node, children, ...props }) => {
+    const draftId = soleAgentDraftId(node);
+    if (draftId) {
+      return (
+        <Suspense
+          fallback={<div className="my-2 h-24 max-w-xl rounded-lg border bg-card" />}
+        >
+          <AgentDraftCard draftId={draftId} />
+        </Suspense>
+      );
+    }
+    return <p {...props}>{children}</p>;
+  },
 
   // FileCard — intercept <div data-type="fileCard"> from preprocessMarkdown
   div: ({ node, children, ...props }) => {

@@ -19,7 +19,6 @@ import "../issues/stores/quick-create-store";
 import "../issues/stores/comment-draft-store";
 import "../projects/draft-store";
 import "../feedback/draft-store";
-import "../agents/manual-draft-store";
 import { registerDraftCleanup } from "./cleanup-registry";
 
 // Retired: drafts for a running turn now live in the thread's reply draft.
@@ -27,6 +26,14 @@ import { registerDraftCleanup } from "./cleanup-registry";
 // outlives logout or workspace removal.
 registerDraftCleanup({
   storageKey: "multica_task_supplement_drafts",
+  workspaceScoped: true,
+  resetInMemory: () => {},
+});
+
+// Retired: an unfinished agent form is now a server-side agent draft. Keep
+// clearing the old local copy for the same reason as above.
+registerDraftCleanup({
+  storageKey: "multica:agents:manual-draft",
   workspaceScoped: true,
   resetInMemory: () => {},
 });

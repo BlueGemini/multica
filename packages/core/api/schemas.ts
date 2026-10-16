@@ -6,9 +6,8 @@ import type {
   IssueWorkflowDryRunResponse,
   IssueWorkflowHandlerType,
   ListIssueWorkflowsResponse,
-  AgentBuilderRuntimeSwitch,
-  AgentBuilderSession,
-  AgentBuilderSessionSummary,
+  AgentDraftConfig,
+  AgentDraftRecord,
   Attachment,
   AutopilotRun,
   BillingBalance,
@@ -2282,25 +2281,12 @@ export const EMPTY_CANCEL_TASK_RESPONSE: CancelTaskResponse = {
   created_at: "",
 };
 
-export const AgentBuilderSessionSchema = z.object({
-  session_id: z.string(),
-  builder_agent_id: z.string(),
-  runtime_id: z.string(),
-}).loose();
-
-export const EMPTY_AGENT_BUILDER_SESSION: AgentBuilderSession = {
-  session_id: "",
-  builder_agent_id: "",
-  runtime_id: "",
-};
-
 /**
- * The stored configuration of a creation conversation. Every field falls back
- * to empty on its own: a draft written by a newer build (or truncated in
- * transit) must still restore the fields it does understand rather than
- * discarding the user's work wholesale.
+ * Every config field falls back to empty on its own: a draft written by a
+ * newer build must still show the fields this client understands rather than
+ * dropping the whole draft.
  */
-export const StoredAgentDraftSchema = z.object({
+export const AgentDraftConfigSchema = z.object({
   name: z.string().catch(""),
   description: z.string().catch(""),
   instructions: z.string().catch(""),
@@ -2313,6 +2299,7 @@ export const StoredAgentDraftSchema = z.object({
     )
     .catch([]),
   avatar_url: z.string().nullable().catch(null),
+  runtime_id: z.string().catch(""),
   model: z.string().catch(""),
   thinking_level: z.string().catch(""),
   service_tier: z.string().catch(""),
@@ -2322,50 +2309,65 @@ export const StoredAgentDraftSchema = z.object({
     .catch("private"),
   member_ids: z.array(z.string()).catch([]),
   team_ids: z.array(z.string()).catch([]),
-  applied_message_id: z.string().nullable().catch(null),
-  dismissed_message_id: z.string().nullish().catch(null),
 }).loose();
 
-/**
- * One unfinished creation draft. Every field except the id has a safe empty
- * default: an older server that omits `runtime_id` must degrade to "let the
- * user pick" rather than dropping the whole row and losing the conversation.
- */
-export const AgentBuilderSessionSummarySchema = z.object({
-  session_id: z.string(),
-  title: z.string().catch(""),
-  runtime_id: z.string().catch(""),
+export const EMPTY_AGENT_DRAFT_CONFIG: AgentDraftConfig = {
+  name: "",
+  description: "",
+  instructions: "",
+  conversation_starters: [],
+  avatar_url: null,
+  runtime_id: "",
+  model: "",
+  thinking_level: "",
+  service_tier: "",
+  skill_ids: [],
+  permission_scope: "private",
+  member_ids: [],
+  team_ids: [],
+};
+
+export const AgentDraftRecordSchema = z.object({
+  id: z.string(),
+  workspace_id: z.string().catch(""),
+  owner_id: z.string().catch(""),
+  author_type: z.enum(["member", "agent"]).catch("member"),
+  author_id: z.string().catch(""),
+  source_issue_id: z.string().nullable().catch(null),
+  source_chat_session_id: z.string().nullable().catch(null),
+  // An unknown future status is treated as closed: the card must never offer
+  // to create from a draft this client cannot classify.
+  status: z.enum(["pending", "created", "discarded"]).catch("discarded"),
+  config: AgentDraftConfigSchema.catch({ ...EMPTY_AGENT_DRAFT_CONFIG }),
+  version: z.number().catch(0),
+  created_agent_id: z.string().nullable().catch(null),
   created_at: z.string().catch(""),
   updated_at: z.string().catch(""),
-  last_message_content: z.string().catch(""),
-  last_message_role: z.string().catch(""),
-  last_message_at: z.string().catch(""),
-  // Absent for a conversation the user has never hand-edited; the client then
-  // replays the last <agent_draft> block instead of restoring a stored copy.
-  draft: StoredAgentDraftSchema.nullish().catch(null),
+  mention: z.string().catch(""),
 }).loose();
 
-export const AgentBuilderSessionListSchema = z.object({
-  sessions: z.array(AgentBuilderSessionSummarySchema).catch([]),
+// An unparseable draft body degrades to a closed draft: rendering it offers no
+// create action, which is the only safe reading of a record nobody can see.
+export const agentDraftRecordFallback = (id: string): AgentDraftRecord => ({
+  id,
+  workspace_id: "",
+  owner_id: "",
+  author_type: "member",
+  author_id: "",
+  source_issue_id: null,
+  source_chat_session_id: null,
+  status: "discarded",
+  config: EMPTY_AGENT_DRAFT_CONFIG,
+  version: 0,
+  created_agent_id: null,
+  created_at: "",
+  updated_at: "",
+  mention: "",
+});
+
+export const AgentDraftListSchema = z.object({
+  drafts: z.array(AgentDraftRecordSchema).catch([]),
 }).loose();
-
-export const EMPTY_AGENT_BUILDER_SESSION_LIST: {
-  sessions: AgentBuilderSessionSummary[];
-} = { sessions: [] };
-
-export const AgentBuilderRuntimeSwitchSchema = z.object({
-  runtime_id: z.string(),
-}).loose();
-
-// This endpoint returns 2xx only after the carrier has been bound to the
-// runtime the caller asked for; anything else is a thrown error and no commit.
-// So the safe fallback for an unparseable SUCCESS body is the requested id, not
-// an empty one: the rebind did happen, and reporting "unknown" would leave the
-// picker showing a runtime that is no longer executing — the exact split this
-// endpoint exists to close.
-export const agentBuilderRuntimeSwitchFallback = (
-  requestedRuntimeID: string,
-): AgentBuilderRuntimeSwitch => ({ runtime_id: requestedRuntimeID });
 
 // Squad list responses carry lightweight membership previews used by hover
 // cards. The preview fields are additive API fields, so older backends default

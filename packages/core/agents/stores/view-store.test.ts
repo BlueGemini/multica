@@ -45,6 +45,7 @@ describe("useAgentsViewStore", () => {
     expect(raw).not.toBeNull();
     const parsed = JSON.parse(raw as string);
     expect(Object.keys(parsed.state).sort()).toEqual([
+      "createMethod",
       "filters",
       "hiddenColumns",
       "scope",

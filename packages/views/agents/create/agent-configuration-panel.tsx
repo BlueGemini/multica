@@ -35,6 +35,8 @@ const PERMISSION_SCOPES: AgentPermissionScope[] = [
   "members",
 ];
 
+export type AgentDraftUpdate = (current: AgentDraft) => AgentDraft;
+
 export function AgentConfigurationPanel({
   draft,
   onChange,
@@ -46,14 +48,14 @@ export function AgentConfigurationPanel({
   nameError,
   onNameChange,
   compact = false,
-  onRuntimeSelect,
-  runtimeSwitchPending = false,
-  runtimeSwitchInFlight = false,
 }: {
   draft: AgentDraft;
-  onChange: (draft: AgentDraft) => void;
+  /** Takes an updater, never a whole draft: pickers seed and clear values from
+   *  effects, and a copy of `draft` captured then would undo whatever the
+   *  parent wrote in the meantime — such as a saved draft hydrating. */
+  onChange: (update: AgentDraftUpdate) => void;
   /** Value cleanup without user interaction, such as an unsupported model. */
-  onAutomaticChange?: (draft: AgentDraft) => void;
+  onAutomaticChange?: (update: AgentDraftUpdate) => void;
   runtimes: RuntimeDevice[];
   runtimesLoading: boolean;
   members: MemberWithUser[];
@@ -61,14 +63,6 @@ export function AgentConfigurationPanel({
   nameError: string | null;
   onNameChange: (name: string) => void;
   compact?: boolean;
-  /** Builder sessions rebind the server-side carrier instead of only editing
-   *  the draft. Absent for the plain create flows, where the draft is the only
-   *  state that exists. */
-  onRuntimeSelect?: (runtimeId: string) => void;
-  /** A builder reply is in flight, so the server would refuse the rebind. */
-  runtimeSwitchPending?: boolean;
-  /** A rebind request is in flight. */
-  runtimeSwitchInFlight?: boolean;
 }) {
   const { t } = useT("agents");
   const conversationStartersSupported = useConfigStore(
@@ -77,21 +71,21 @@ export function AgentConfigurationPanel({
   const selectedRuntime =
     runtimes.find((runtime) => runtime.id === draft.runtimeId) ?? null;
   const set = <K extends keyof AgentDraft>(key: K, value: AgentDraft[K]) =>
-    onChange({ ...draft, [key]: value });
+    onChange((current) => ({ ...current, [key]: value }));
   const otherMembers = members.filter(
     (member) => member.user_id !== currentUserId,
   );
-  const runtimeLocked = runtimeSwitchPending || runtimeSwitchInFlight;
   const handleRuntimeSelect = (id: string) => {
-    if (id === draft.runtimeId) return;
-    if (onRuntimeSelect) {
-      onRuntimeSelect(id);
-      return;
-    }
-    // Model is per-runtime; clear it — and the per-model thinking / speed
-    // overrides — on runtime change so the new runtime resolves its own
-    // defaults instead of stale values.
-    onChange(applyDraftRuntimeChange(draft, id));
+    const seen = draft.runtimeId;
+    if (id === seen) return;
+    // The picker also seeds an empty selection on its own, so a change only
+    // lands on the runtime it was made against; one that arrived since (a
+    // saved draft hydrating) wins. Model is per-runtime; clear it — and the
+    // per-model thinking / speed overrides — so the new runtime resolves its
+    // own defaults instead of stale values.
+    onChange((current) =>
+      current.runtimeId === seen ? applyDraftRuntimeChange(current, id) : current,
+    );
   };
 
   return (
@@ -209,28 +203,22 @@ export function AgentConfigurationPanel({
                 currentUserId={currentUserId}
                 selectedRuntimeId={draft.runtimeId}
                 onSelect={handleRuntimeSelect}
-                disabled={runtimeLocked}
               />
-              {/* A silently greyed-out picker is the worst version of this: the
-                  user reaches for it exactly when the current runtime has gone
-                  wrong, so say what unblocks it instead of just refusing. */}
-              {runtimeSwitchPending && (
-                <p className="mt-1.5 text-caption text-muted-foreground">
-                  {t(($) => $.creation_studio.builder.switch_runtime_pending)}
-                </p>
-              )}
             </div>
             <ModelDropdown
               runtimeId={selectedRuntime?.id ?? null}
               runtimeOnline={selectedRuntime?.status === "online"}
               value={draft.model}
-              onChange={(value) => onChange(applyDraftModelChange(draft, value))}
-              onAutomaticChange={(value) =>
-                onAutomaticChange(applyDraftModelChange(draft, value))
+              onChange={(value) =>
+                onChange((current) => applyDraftModelChange(current, value))
               }
-              // A successful switch clears the model, so an edit made while the
-              // rebind is in flight would be silently discarded.
-              disabled={!selectedRuntime || runtimeSwitchInFlight}
+              onAutomaticChange={(value) => {
+                const seen = draft.model;
+                onAutomaticChange((current) =>
+                  current.model === seen ? applyDraftModelChange(current, value) : current,
+                );
+              }}
+              disabled={!selectedRuntime}
             />
           </div>
           {/* Both fields fail closed: they render only when the exact selected
@@ -241,7 +229,6 @@ export function AgentConfigurationPanel({
           <AgentExecutionOverrides
             draft={draft}
             runtime={selectedRuntime}
-            disabled={runtimeLocked}
             onChange={onChange}
           />
         </SettingsCard>
@@ -302,12 +289,14 @@ export function AgentConfigurationPanel({
                   >
                     <Checkbox
                       checked={checked}
-                      onCheckedChange={(value) => {
-                        const next = new Set(draft.memberIds);
-                        if (value === true) next.add(member.user_id);
-                        else next.delete(member.user_id);
-                        set("memberIds", next);
-                      }}
+                      onCheckedChange={(value) =>
+                        onChange((current) => {
+                          const next = new Set(current.memberIds);
+                          if (value === true) next.add(member.user_id);
+                          else next.delete(member.user_id);
+                          return { ...current, memberIds: next };
+                        })
+                      }
                     />
                     <ActorAvatar
                       actorType="member"
@@ -400,7 +389,7 @@ export function AgentExecutionOverrides({
   draft: AgentDraft;
   runtime: RuntimeDevice | null;
   disabled?: boolean;
-  onChange: (draft: AgentDraft) => void;
+  onChange: (update: AgentDraftUpdate) => void;
 }) {
   const { t } = useT("agents");
   const runtimeOnline = runtime?.status === "online";
@@ -414,7 +403,9 @@ export function AgentExecutionOverrides({
         model={draft.model}
         value={draft.thinkingLevel}
         canEdit={!disabled}
-        onChange={(thinkingLevel) => onChange({ ...draft, thinkingLevel })}
+        onChange={(thinkingLevel) =>
+          onChange((current) => ({ ...current, thinkingLevel }))
+        }
       />
       <ServiceTierSettingField
         label={t(($) => $.creation_studio.speed_label)}
@@ -424,7 +415,9 @@ export function AgentExecutionOverrides({
         model={draft.model}
         value={draft.serviceTier}
         canEdit={!disabled}
-        onChange={(serviceTier) => onChange({ ...draft, serviceTier })}
+        onChange={(serviceTier) =>
+          onChange((current) => ({ ...current, serviceTier }))
+        }
       />
     </>
   );

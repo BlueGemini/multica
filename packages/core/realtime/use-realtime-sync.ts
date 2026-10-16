@@ -11,6 +11,7 @@ import { clearWorkspaceStorage } from "../platform/storage-cleanup";
 import { defaultStorage } from "../platform/storage";
 import { getCurrentWsId, getCurrentSlug } from "../platform/workspace-storage";
 import { issueKeys } from "../issues/queries";
+import { agentDraftKeys } from "../agents/queries";
 import { projectKeys } from "../projects/queries";
 import { pinKeys } from "../pins/queries";
 import { autopilotKeys } from "../autopilots/queries";
@@ -839,6 +840,13 @@ export function useRealtimeSync(
           // queries unconditionally rather than guess.
           qc.invalidateQueries({ queryKey: issueKeys.tableAll(wsId) });
         }
+      },
+      // Draft events fan out workspace-wide but carry no config, so refetch:
+      // the card in a chat or comment and the owner's pending list both read
+      // through these keys.
+      agent_draft: () => {
+        const wsId = getCurrentWsId();
+        if (wsId) qc.invalidateQueries({ queryKey: agentDraftKeys.all(wsId) });
       },
       squad: () => {
         const wsId = getCurrentWsId();

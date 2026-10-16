@@ -279,27 +279,6 @@
     "squad_title": "为小队创建智能体",
     "duplicate_title": "复制 {{name}}",
     "back": "返回",
-    "eyebrow": "创建智能体",
-    "choose_title": "你想从哪里开始？",
-    "recommended": "推荐",
-    "continue": "继续",
-    "step_choose": "选择起点",
-    "step_configure": "检查并配置",
-    "step_ai": "通过对话创建",
-    "modes": {
-      "blank": {
-        "title": "从空白开始",
-        "description": "手动填写名称、指令和运行时。"
-      },
-      "template": {
-        "title": "使用模板",
-        "description": "从整理好的指令和 skill 开始，再根据工作区需要修改每个细节。"
-      },
-      "ai": {
-        "title": "通过 AI 创建",
-        "description": "通过对话生成可编辑的配置草稿。"
-      }
-    },
     "sections": {
       "identity": "身份",
       "behavior": "行为与能力",
@@ -324,32 +303,6 @@
         "required": "请至少选择一位成员。"
       }
     },
-    "builder": {
-      "setup_title": "为智能体构建器选择运行时",
-      "setup_description": "该运行时用于创建对话，并默认用于新智能体。",
-      "start": "开始对话",
-      "connect_runtime": "连接运行时",
-      "draft_parse_failed": "本次回复未能填入表单。请让智能体重新生成草稿，或手动填写。",
-      "start_failed": "无法启动智能体构建器。",
-      "send_failed": "无法发送消息。",
-      "stop_failed": "无法停止当前生成任务。",
-      "switch_runtime_failed": "切换运行时失败，对话仍在原来的运行时上执行。",
-      "switch_runtime_pending": "停止当前回复后即可切换运行时。",
-      "switch_runtime_success": "已切换运行时。配置草稿保留，后续对话将在新运行时上重新开始一段模型会话。",
-      "chat_title": "智能体构建器",
-      "runtime_online": "运行时在线",
-      "runtime_offline": "运行时离线",
-      "empty_title": "这个智能体需要做什么？",
-      "empty_description": "描述这个智能体要做什么。",
-      "prompt_review": "审查前端 Pull Request",
-      "prompt_research": "研究竞品并整理结论",
-      "prompt_assistant": "帮助团队规划和撰写项目",
-      "thinking": "正在更新草稿…",
-      "placeholder": "描述你需要的智能体…",
-      "send": "发送消息"
-    },
-    "live_draft": "智能体配置",
-    "live_draft_hint": "可直接修改草稿。",
     "duplicate_env_notice": "指令、skill 和命令行参数会被复制。环境变量、MCP 服务器和本机运行时配置不会复制。",
     "duplicate_runtime_reset_notice": "原运行时当前不可用，副本已改用其他运行时。模型、思考等级和速度只在所选运行时上有效，因此已被清空。",
     "create_and_open": "创建并打开",
@@ -357,17 +310,7 @@
     "creating": "正在创建…",
     "create_failed": "无法创建智能体。",
     "name_conflict": "工作区中已存在同名智能体。",
-    "created": "已创建 {{name}}",
-    "drafts": {
-      "title": "创建草稿",
-      "untitled": "未命名草稿",
-      "discard": "放弃创建",
-      "discard_confirm": "对话和右侧配置都会被永久删除。",
-      "discard_title": "放弃这次创建？",
-      "discard_cancel": "继续编辑",
-      "banner": "您有 {{count}} 条未完成的创建",
-      "pick_hint": "选一条继续。"
-    }
+    "created": "已创建 {{name}}"
   },
   "create_dialog": {
     "title_create": "创建智能体",
@@ -963,5 +906,45 @@
   "actions": {
     "selected_other": "已选 {{count}} 项",
     "clear_selection": "清除选择"
+  },
+  "drafts": {
+    "create_menu_aria": "更多创建方式",
+    "with_agent": "和 {{name}} 一起创建",
+    "with_agent_hint": "在对话里描述需求，{{name}} 起草后由你确认。",
+    "manual": "手动填写表单",
+    "manual_hint": "自己设置每一项。",
+    "duplicate": "复制现有智能体",
+    "agent_prompt": "我想创建一个新的智能体。先问问我它要做什么，再把配置作为智能体草稿发给我，我确认后创建。",
+    "handoff_prompt": "帮我完善智能体草稿 {{id}}：先读一下现在的内容，补全缺少的部分，再更新这份草稿，我确认后创建。",
+    "dialog_description": "边填边自动保存，只有你可以创建。",
+    "save_later": "稍后再填",
+    "hand_off": "交给 {{name}} 起草",
+    "discard": "丢弃草稿",
+    "discard_title": "丢弃这份草稿？",
+    "discard_confirm": "草稿会被删除，且无法恢复。",
+    "discard_cancel": "保留草稿",
+    "discarded": "草稿已丢弃",
+    "discard_failed": "无法丢弃草稿。",
+    "save_failed": "草稿保存失败，你的修改仍保留在这里。",
+    "saving": "正在保存…",
+    "saved": "草稿已保存",
+    "pending_title": "待你确认的草稿",
+    "pending_hint": "你或智能体替你起草的智能体，只有你可以创建。",
+    "untitled": "未命名智能体",
+    "continue": "继续",
+    "open_chat": "回到对话",
+    "open_issue": "回到任务",
+    "authored_by_agent": "由 {{name}} 起草",
+    "authored_by_you": "由你发起",
+    "open_agent": "打开智能体",
+    "card_label": "智能体草稿",
+    "card_review": "检查并创建",
+    "card_waiting": "等待 {{name}} 确认",
+    "card_created": "已创建",
+    "card_discarded": "已丢弃",
+    "card_unavailable": "这份智能体草稿不可用。",
+    "card_no_runtime": "未选运行时",
+    "card_skills_other": "{{count}} 个 skill",
+    "load_failed": "无法加载这份草稿。"
   }
 }

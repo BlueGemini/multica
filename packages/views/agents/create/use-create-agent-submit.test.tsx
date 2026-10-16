@@ -147,3 +147,41 @@ describe("useCreateAgentSubmit cache handoff", () => {
     });
   });
 });
+
+describe("useCreateAgentSubmit from a draft", () => {
+  // The draft id is what marks the draft created everywhere it is shown; a
+  // draft confirmed from a chat or a comment leaves the user there.
+  it("consumes the draft and stays put when navigation is off", async () => {
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    const onCreated = vi.fn();
+    const { result } = renderHook(
+      () =>
+        useCreateAgentSubmit({
+          draft: {
+            ...EMPTY_AGENT_DRAFT,
+            name: CREATED_AGENT.name,
+            runtimeId: CREATED_AGENT.runtime_id,
+          },
+          runtimeId: CREATED_AGENT.runtime_id,
+          squadId: null,
+          draftId: "draft-1",
+          navigateOnCreate: false,
+          onCreated,
+        }),
+      { wrapper: wrapper(queryClient) },
+    );
+
+    await act(async () => {
+      await result.current.create();
+    });
+
+    expect(mockCreateAgent).toHaveBeenCalledWith(
+      expect.objectContaining({ name: CREATED_AGENT.name, draft_id: "draft-1" }),
+    );
+    expect(onCreated).toHaveBeenCalledWith(CREATED_AGENT);
+    expect(mockPush).not.toHaveBeenCalled();
+    expect(result.current.creating).toBe(false);
+  });
+});

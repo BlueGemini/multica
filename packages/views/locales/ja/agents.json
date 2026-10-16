@@ -870,27 +870,6 @@
     "squad_title": "このスクワッド用のエージェントを作成",
     "duplicate_title": "{{name}} を複製",
     "back": "戻る",
-    "eyebrow": "エージェント作成",
-    "choose_title": "どの方法で始めますか？",
-    "recommended": "おすすめ",
-    "continue": "続ける",
-    "step_choose": "開始方法を選択",
-    "step_configure": "確認して設定",
-    "step_ai": "会話で作成",
-    "modes": {
-      "blank": {
-        "title": "空白から始める",
-        "description": "名前、指示、ランタイムを自分で設定します。"
-      },
-      "template": {
-        "title": "テンプレートを使用",
-        "description": "整理された指示とスキルを基に、ワークスペースに合わせて詳細を調整します。"
-      },
-      "ai": {
-        "title": "AI で作成",
-        "description": "対話で編集可能な設定の下書きを作成します。"
-      }
-    },
     "sections": {
       "identity": "基本情報",
       "behavior": "動作と機能",
@@ -915,32 +894,6 @@
         "required": "メンバーを1人以上選択してください。"
       }
     },
-    "builder": {
-      "setup_title": "Agent Builder のランタイムを選択",
-      "setup_description": "このランタイムは作成時の対話と、新しいエージェントの既定値に使われます。",
-      "start": "会話を開始",
-      "connect_runtime": "ランタイムを接続",
-      "draft_parse_failed": "この返信からフォームを入力できませんでした。エージェントに下書きの再生成を依頼するか、手動で入力してください。",
-      "start_failed": "Agent Builder を開始できませんでした。",
-      "send_failed": "メッセージを送信できませんでした。",
-      "stop_failed": "現在の生成を停止できませんでした。",
-      "switch_runtime_failed": "ランタイムを切り替えられませんでした。会話は引き続き元のランタイムで実行されています。",
-      "switch_runtime_pending": "現在の返信を停止するとランタイムを切り替えられます。",
-      "switch_runtime_success": "ランタイムを切り替えました。下書き設定はそのまま残り、以降の会話は新しいランタイムで新しいモデルセッションとして続きます。",
-      "chat_title": "Agent Builder",
-      "runtime_online": "ランタイムはオンライン",
-      "runtime_offline": "ランタイムはオフライン",
-      "empty_title": "このエージェントに何をさせますか？",
-      "empty_description": "このエージェントに任せたいことを説明してください。",
-      "prompt_review": "フロントエンドの Pull Request をレビュー",
-      "prompt_research": "競合を調査して結果を要約",
-      "prompt_assistant": "チームのプロジェクト計画と文章作成を支援",
-      "thinking": "下書きを更新中…",
-      "placeholder": "必要なエージェントを説明…",
-      "send": "メッセージを送信"
-    },
-    "live_draft": "エージェント設定",
-    "live_draft_hint": "下書きは直接編集できます。",
     "duplicate_env_notice": "指示、スキル、コマンド引数がコピーされます。環境変数、MCP サーバー、マシンローカルのランタイム設定はコピーされません。",
     "duplicate_runtime_reset_notice": "元のランタイムが利用できないため、このコピーは別のランタイムで実行されます。モデル・思考レベル・速度は選択したランタイムでのみ有効なため、クリアされました。",
     "create_and_open": "作成して開く",
@@ -948,20 +901,50 @@
     "creating": "エージェントを作成中…",
     "create_failed": "エージェントを作成できませんでした。",
     "name_conflict": "同じ名前のエージェントがすでに存在します。",
-    "created": "{{name}} を作成しました",
-    "drafts": {
-      "title": "下書き",
-      "untitled": "無題の下書き",
-      "discard": "作成を破棄",
-      "discard_confirm": "会話と右側の設定は完全に削除されます。",
-      "discard_title": "この作成を破棄しますか？",
-      "discard_cancel": "編集を続ける",
-      "banner": "未完了の下書きが {{count}} 件あります",
-      "pick_hint": "続きを選んでください。"
-    }
+    "created": "{{name}} を作成しました"
   },
   "actions": {
     "selected_other": "{{count}} 件選択中",
     "clear_selection": "選択を解除"
+  },
+  "drafts": {
+    "create_menu_aria": "その他の作成方法",
+    "with_agent": "{{name}} と一緒に作成",
+    "with_agent_hint": "チャットで要件を伝えると、{{name}} が下書きを作り、あなたが確認します。",
+    "manual": "フォームに入力",
+    "manual_hint": "すべての項目を自分で設定します。",
+    "duplicate": "既存のエージェントを複製",
+    "agent_prompt": "新しいエージェントを作りたいです。まず何をするエージェントか質問して、その後エージェントの下書きとして提案してください。確認してから作成します。",
+    "handoff_prompt": "エージェントの下書き {{id}} を仕上げるのを手伝ってください。内容を確認して足りない部分を補い、下書きを更新してください。確認してから作成します。",
+    "dialog_description": "入力内容は自動で保存されます。作成できるのはあなただけです。",
+    "save_later": "あとで続ける",
+    "hand_off": "{{name}} に下書きを任せる",
+    "discard": "下書きを破棄",
+    "discard_title": "この下書きを破棄しますか？",
+    "discard_confirm": "下書きは削除され、元に戻せません。",
+    "discard_cancel": "下書きを残す",
+    "discarded": "下書きを破棄しました",
+    "discard_failed": "下書きを破棄できませんでした。",
+    "save_failed": "下書きを保存できませんでした。変更内容はこのまま残っています。",
+    "saving": "保存中…",
+    "saved": "下書きを保存しました",
+    "pending_title": "確認待ちの下書き",
+    "pending_hint": "あなた、またはエージェントがあなたのために作った下書きです。作成できるのはあなただけです。",
+    "untitled": "無題のエージェント",
+    "continue": "続ける",
+    "open_chat": "チャットを開く",
+    "open_issue": "タスクを開く",
+    "authored_by_agent": "{{name}} が下書き",
+    "authored_by_you": "あなたが開始",
+    "open_agent": "エージェントを開く",
+    "card_label": "エージェントの下書き",
+    "card_review": "確認して作成",
+    "card_waiting": "{{name}} の確認待ち",
+    "card_created": "作成済み",
+    "card_discarded": "破棄済み",
+    "card_unavailable": "このエージェントの下書きは利用できません。",
+    "card_no_runtime": "ランタイム未選択",
+    "card_skills_other": "スキル {{count}} 個",
+    "load_failed": "この下書きを読み込めませんでした。"
   }
 }

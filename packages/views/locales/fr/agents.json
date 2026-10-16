@@ -289,27 +289,6 @@
     "squad_title": "Créer un agent pour ce squad",
     "duplicate_title": "Dupliquer {{name}}",
     "back": "Revenir en arrière",
-    "eyebrow": "Création d'agent",
-    "choose_title": "Comment souhaitez-vous commencer ?",
-    "recommended": "Recommandé",
-    "continue": "Continuer",
-    "step_choose": "Choisir un point de départ",
-    "step_configure": "Vérifier et configurer",
-    "step_ai": "Construire par la conversation",
-    "modes": {
-      "blank": {
-        "title": "Partir de zéro",
-        "description": "Définissez vous-même le nom, les instructions et le runtime."
-      },
-      "template": {
-        "title": "Partir d'un modèle",
-        "description": "Partez d'instructions et de skills sélectionnés, puis adaptez chaque détail à votre espace de travail."
-      },
-      "ai": {
-        "title": "Construire avec l'IA",
-        "description": "Créez une configuration modifiable par la conversation."
-      }
-    },
     "sections": {
       "identity": "Identité",
       "behavior": "Comportement et capacités",
@@ -334,32 +313,6 @@
         "required": "Sélectionnez au moins un membre."
       }
     },
-    "builder": {
-      "setup_title": "Choisir un runtime pour l'Agent Builder",
-      "setup_description": "Ce runtime sert à la configuration et sera celui du nouvel agent par défaut.",
-      "start": "Démarrer la conversation",
-      "connect_runtime": "Connecter un runtime",
-      "draft_parse_failed": "Cette réponse n’a pas permis de remplir le formulaire. Demandez à l’agent de générer à nouveau le brouillon ou remplissez le formulaire manuellement.",
-      "start_failed": "Impossible de démarrer l'Agent Builder.",
-      "send_failed": "Impossible d'envoyer votre message.",
-      "stop_failed": "Impossible d'arrêter la génération en cours.",
-      "switch_runtime_failed": "Impossible de changer de runtime. La conversation se poursuit sur le précédent.",
-      "switch_runtime_pending": "Arrêtez la réponse en cours pour changer de runtime.",
-      "switch_runtime_success": "Runtime changé. Votre brouillon est conservé et la conversation se poursuit sur le nouveau runtime avec une session de modèle neuve.",
-      "chat_title": "Agent Builder",
-      "runtime_online": "Runtime en ligne",
-      "runtime_offline": "Runtime hors ligne",
-      "empty_title": "Que doit faire cet agent ?",
-      "empty_description": "Décrivez ce que cet agent doit faire.",
-      "prompt_review": "Relire les pull requests du frontend",
-      "prompt_research": "Étudier les concurrents et résumer les constats",
-      "prompt_assistant": "Aider notre équipe à planifier et rédiger des projets",
-      "thinking": "Mise à jour du brouillon…",
-      "placeholder": "Décrivez l'agent dont vous avez besoin…",
-      "send": "Envoyer le message"
-    },
-    "live_draft": "Configuration de l'agent",
-    "live_draft_hint": "Vous pouvez modifier le brouillon directement.",
     "duplicate_env_notice": "Les instructions, les skills et les arguments de commande sont copiés. Les variables d'environnement, les serveurs MCP et la configuration de runtime locale à la machine ne le sont pas.",
     "duplicate_runtime_reset_notice": "Le runtime d'origine est indisponible : cette copie s'exécute donc sur un autre. Le modèle, le niveau de réflexion et la vitesse ont été effacés car ils ne valent que pour le runtime sur lequel ils ont été choisis.",
     "create_and_open": "Créer et ouvrir l'agent",
@@ -367,17 +320,7 @@
     "creating": "Création de l'agent…",
     "create_failed": "Impossible de créer l'agent.",
     "name_conflict": "Un agent portant ce nom existe déjà.",
-    "created": "{{name}} a été créé",
-    "drafts": {
-      "title": "Brouillons",
-      "untitled": "Brouillon sans titre",
-      "discard": "Abandonner",
-      "discard_confirm": "La conversation et sa configuration sont définitivement supprimées.",
-      "discard_title": "Abandonner ce brouillon ?",
-      "discard_cancel": "Continuer à modifier",
-      "banner": "Vous avez {{count}} brouillon(s) inachevé(s)",
-      "pick_hint": "Choisissez-en un pour continuer."
-    }
+    "created": "{{name}} a été créé"
   },
   "create_dialog": {
     "title_create": "Créer un agent",
@@ -985,5 +928,46 @@
     "selected_one": "{{count}} sélectionné",
     "selected_other": "{{count}} sélectionnés",
     "clear_selection": "Effacer la sélection"
+  },
+  "drafts": {
+    "create_menu_aria": "Autres façons de créer un agent",
+    "with_agent": "Créer avec {{name}}",
+    "with_agent_hint": "Décrivez votre besoin dans le chat. {{name}} prépare un brouillon que vous confirmez.",
+    "manual": "Remplir le formulaire",
+    "manual_hint": "Réglez chaque champ vous-même.",
+    "duplicate": "Dupliquer un agent",
+    "agent_prompt": "J'aimerais créer un nouvel agent. Demande-moi ce qu'il doit faire, puis propose-le sous forme de brouillon d'agent que je pourrai vérifier et créer.",
+    "handoff_prompt": "Aide-moi à terminer le brouillon d'agent {{id}} : lis-le, complète ce qui manque et mets le brouillon à jour pour que je puisse le vérifier et le créer.",
+    "dialog_description": "Enregistré au fil de la saisie. Vous seul pouvez le créer.",
+    "save_later": "Terminer plus tard",
+    "hand_off": "Laisser {{name}} le rédiger",
+    "discard": "Supprimer le brouillon",
+    "discard_title": "Supprimer ce brouillon ?",
+    "discard_confirm": "Le brouillon sera supprimé. Cette action est irréversible.",
+    "discard_cancel": "Garder le brouillon",
+    "discarded": "Brouillon supprimé",
+    "discard_failed": "Impossible de supprimer le brouillon.",
+    "save_failed": "Impossible d'enregistrer le brouillon. Vos modifications sont toujours là.",
+    "saving": "Enregistrement…",
+    "saved": "Brouillon enregistré",
+    "pending_title": "En attente de votre confirmation",
+    "pending_hint": "Agents rédigés par vous, ou par des agents pour vous. Vous seul pouvez les créer.",
+    "untitled": "Agent sans nom",
+    "continue": "Continuer",
+    "open_chat": "Ouvrir le chat",
+    "open_issue": "Ouvrir la tâche",
+    "authored_by_agent": "Rédigé par {{name}}",
+    "authored_by_you": "Commencé par vous",
+    "open_agent": "Ouvrir l'agent",
+    "card_label": "Brouillon d'agent",
+    "card_review": "Vérifier et créer",
+    "card_waiting": "En attente de la confirmation de {{name}}",
+    "card_created": "Créé",
+    "card_discarded": "Supprimé",
+    "card_unavailable": "Ce brouillon d'agent n'est pas disponible.",
+    "card_no_runtime": "Aucun runtime",
+    "card_skills_one": "{{count}} skill",
+    "card_skills_other": "{{count}} skills",
+    "load_failed": "Impossible de charger ce brouillon."
   }
 }

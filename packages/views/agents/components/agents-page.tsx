@@ -1,11 +1,10 @@
 "use client";
 
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useMemo, useRef, useState, type ReactNode } from "react";
 import {
   AlertCircle,
   Bot,
   Lock,
-  Plus,
 } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { useVirtualizer } from "@tanstack/react-virtual";
@@ -30,6 +29,7 @@ import {
   AGENT_DEFAULT_HIDDEN_COLUMNS,
   AGENT_SCOPES,
   type AgentColumnKey,
+  type AgentCreateMethod,
   type AgentsScope,
   type AgentSortField,
 } from "@multica/core/agents/stores";
@@ -65,11 +65,15 @@ import { docsLocalePrefix } from "../../common/docs-locale";
 import { ProviderLogo } from "../../runtimes/components/provider-logo";
 import {
   CollectionPageHeader,
-  CollectionPageHeaderAction,
   CollectionPageState,
 } from "../../layout/collection-page";
 import { availabilityConfig } from "../presence";
 import { AgentRowActions } from "./agent-row-actions";
+import { AgentDraftDialog } from "../create/agent-draft-dialog";
+import { useHandDraftToAgent } from "../create/agent-draft-actions";
+import { CreateAgentMenu } from "../create/create-agent-menu";
+import { PendingAgentDrafts } from "../create/pending-agent-drafts";
+import { useDraftHelperAgent } from "../create/use-draft-helper-agent";
 import {
   AgentListToolbar,
   countActiveFilterDimensions,
@@ -249,10 +253,10 @@ export interface AgentsPageProps {
 
 function PageHeaderBar({
   totalCount,
-  onCreate,
+  createControl,
 }: {
   totalCount: number;
-  onCreate: () => void;
+  createControl: ReactNode;
 }) {
   const { t, i18n } = useT("agents");
   return (
@@ -265,30 +269,24 @@ function PageHeaderBar({
         href: `https://multica.ai/docs${docsLocalePrefix(i18n.language)}/agents`,
         label: t(($) => $.page.learn_more),
       }}
-      actions={
-        <CollectionPageHeaderAction
-          icon={Plus}
-          label={t(($) => $.page.new_agent)}
-          onClick={onCreate}
-        />
-      }
+      actions={createControl}
     />
   );
 }
 
 function ListError({
-  onCreate,
+  createControl,
   listError,
   onRetry,
 }: {
-  onCreate: () => void;
+  createControl: ReactNode;
   listError: unknown;
   onRetry: () => void;
 }) {
   const { t } = useT("agents");
   return (
     <div className="flex flex-1 min-h-0 flex-col">
-      <PageHeaderBar totalCount={0} onCreate={onCreate} />
+      <PageHeaderBar totalCount={0} createControl={createControl} />
       <CollectionPageState
         role="alert"
         tone="destructive"
@@ -309,19 +307,14 @@ function ListError({
   );
 }
 
-function EmptyState({ onCreate }: { onCreate: () => void }) {
+function EmptyState({ createControl }: { createControl: ReactNode }) {
   const { t } = useT("agents");
   return (
     <CollectionPageState
       icon={Bot}
       title={t(($) => $.empty.title)}
       description={t(($) => $.empty.description)}
-      actions={
-        <Button type="button" onClick={onCreate} size="sm">
-          <Plus aria-hidden="true" className="size-3" />
-          {t(($) => $.page.new_agent)}
-        </Button>
-      }
+      actions={createControl}
     />
   );
 }
@@ -791,6 +784,14 @@ export function AgentsPage(_props: AgentsPageProps = {}) {
   );
   const [search, setSearch] = useState("");
 
+  const draftHelper = useDraftHelperAgent();
+  const handDraftToAgent = useHandDraftToAgent();
+  const createMethod = useAgentsViewStore((s) => s.createMethod);
+  const setCreateMethod = useAgentsViewStore((s) => s.setCreateMethod);
+  const duplicateSources = useMemo(
+    () => agents.filter((agent) => !agent.archived_at),
+    [agents],
+  );
   const rawScope = useAgentsViewStore((s) => s.scope);
   const scope = AGENT_SCOPES.includes(rawScope) ? rawScope : "mine";
   const setScope = useAgentsViewStore((s) => s.setScope);
@@ -963,11 +964,8 @@ export function AgentsPage(_props: AgentsPageProps = {}) {
     overscan: 10,
   });
 
-  // Straight to the manual form: a duplicate already has every field decided,
-  // so the method chooser would be a step with nothing to choose.
   const duplicateHref = useCallback(
-    (agent: Agent) =>
-      `${paths.newAgentManual()}?duplicate=${encodeURIComponent(agent.id)}`,
+    (agent: Agent) => paths.createAgent({ duplicate: agent.id }),
     [paths],
   );
 
@@ -990,10 +988,49 @@ export function AgentsPage(_props: AgentsPageProps = {}) {
       : 0,
   };
 
+  // The create dialog is addressed by the URL (`?create=1`, `?draft=<id>`), so
+  // a refresh or a link reopens it, and closing it is leaving that address.
+  const createParam = navigation.searchParams.get("create");
+  const draftParam = navigation.searchParams.get("draft");
+  const squadParam = navigation.searchParams.get("squad");
+  const duplicateParam = navigation.searchParams.get("duplicate");
+  const createDialog = (
+    <AgentDraftDialog
+      open={createParam === "1" || !!draftParam}
+      onOpenChange={(open) => {
+        if (!open) navigation.replace(paths.agents());
+      }}
+      draftId={draftParam}
+      squadId={squadParam}
+      duplicateId={duplicateParam}
+      onDraftCreated={(id) =>
+        navigation.replace(paths.agentDraft(id, { squad: squadParam }))
+      }
+    />
+  );
+  const startCreate = (method: AgentCreateMethod) => {
+    setCreateMethod(method);
+    if (method === "chat" && draftHelper) {
+      handDraftToAgent(draftHelper.id, null);
+      return;
+    }
+    navigation.replace(paths.createAgent());
+  };
+  const createControl = (variant: "outline" | "default") => (
+    <CreateAgentMenu
+      method={createMethod}
+      helper={draftHelper}
+      duplicateSources={duplicateSources}
+      onCreate={startCreate}
+      onDuplicate={(id) => navigation.replace(paths.createAgent({ duplicate: id }))}
+      variant={variant}
+    />
+  );
+
   if (listError) {
     return (
       <ListError
-        onCreate={() => navigation.push(paths.newAgent())}
+        createControl={createControl("outline")}
         listError={listError}
         onRetry={() => refetchList()}
       />
@@ -1030,8 +1067,13 @@ export function AgentsPage(_props: AgentsPageProps = {}) {
     <div className="relative flex flex-1 min-h-0 flex-col">
       <PageHeaderBar
         totalCount={totalCount}
-        onCreate={() => navigation.push(paths.newAgent())}
+        createControl={createControl("outline")}
       />
+      <div className="@container">
+        <PendingAgentDrafts
+          onContinue={(id) => navigation.replace(paths.agentDraft(id))}
+        />
+      </div>
 
       {isLoading || (!showEmpty && !listReady) ? (
         <div className="flex-1 overflow-y-auto @container">
@@ -1039,7 +1081,7 @@ export function AgentsPage(_props: AgentsPageProps = {}) {
         </div>
       ) : showEmpty ? (
         <div className="flex flex-1 items-center justify-center">
-          <EmptyState onCreate={() => navigation.push(paths.newAgent())} />
+          <EmptyState createControl={createControl("default")} />
         </div>
       ) : (
         <>
@@ -1186,6 +1228,7 @@ export function AgentsPage(_props: AgentsPageProps = {}) {
         onClear={() => setSelectedIds(new Set())}
       />
 
+      {createDialog}
     </div>
   );
 }

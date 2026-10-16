@@ -691,33 +691,25 @@ export interface CreateAgentRequest {
   template?: string;
   /** Workspace skill IDs attached atomically with the agent row. */
   skill_ids?: string[];
-}
-
-export interface AgentBuilderSession {
-  session_id: string;
-  builder_agent_id: string;
-  runtime_id: string;
+  /** Pending draft this create consumes. Owner-only, and never an agent. */
+  draft_id?: string;
 }
 
 /** Who may invoke the agent being created, as the creation form models it. */
 export type AgentPermissionScope = "private" | "workspace" | "members";
 
 /**
- * The wire form of an in-progress agent configuration.
- *
- * Differs from the editable draft in two deliberate ways: `Set` becomes an
- * array (JSON has no sets), and there is no runtime — which runtime a
- * conversation executes on is owned by its carrier agent server-side, and a
- * copy here could only go stale. `applied_message_id` travels along because it
- * is what stops a restore from re-applying the last reply's `<agent_draft>`
- * over edits the user made after it.
+ * The configuration an agent draft carries — the wire form of the editable
+ * {@link AgentDraft}: `Set`s become arrays and access stays in the editor's
+ * `permission_scope` shape until the draft is created.
  */
-export interface StoredAgentDraft {
+export interface AgentDraftConfig {
   name: string;
   description: string;
   instructions: string;
   conversation_starters: AgentConversationStarter[];
   avatar_url: string | null;
+  runtime_id: string;
   model: string;
   thinking_level: string;
   service_tier: string;
@@ -725,36 +717,30 @@ export interface StoredAgentDraft {
   permission_scope: AgentPermissionScope;
   member_ids: string[];
   team_ids: string[];
-  applied_message_id: string | null;
-  /** Recovery notice acknowledged by manual editing or dismissal. */
-  dismissed_message_id?: string | null;
 }
 
-/** One unfinished agent-creation conversation, as listed by the studio. */
-export interface AgentBuilderSessionSummary {
-  session_id: string;
-  title: string;
-  /** The carrier's runtime — where this conversation actually executes. The
-   *  picker seeds from it so it can never disagree with what answers the next
-   *  message (MUL-5163). */
-  runtime_id: string;
+export type AgentDraftStatus = "pending" | "created" | "discarded";
+
+/**
+ * An agent that does not exist yet. Members and agents write drafts; only the
+ * owner turns one into an agent, by passing `draft_id` to the create call.
+ */
+export interface AgentDraftRecord {
+  id: string;
+  workspace_id: string;
+  owner_id: string;
+  author_type: "member" | "agent";
+  author_id: string;
+  source_issue_id: string | null;
+  source_chat_session_id: string | null;
+  status: AgentDraftStatus;
+  config: AgentDraftConfig;
+  version: number;
+  created_agent_id: string | null;
   created_at: string;
   updated_at: string;
-  /** Still in the builder wire format; decode with the builder protocol helpers
-   *  before showing it to a human. */
-  last_message_content: string;
-  last_message_role: string;
-  last_message_at: string;
-  /** The stored configuration, or null when the conversation has never been
-   *  hand-edited — the client then replays the last `<agent_draft>` block. */
-  draft?: StoredAgentDraft | null;
-}
-
-/** Result of rebinding a live builder conversation to another runtime.
- *  `runtime_id` is the runtime the server actually bound — the caller must
- *  wait for it before showing the new runtime as selected. */
-export interface AgentBuilderRuntimeSwitch {
-  runtime_id: string;
+  /** Markdown link that renders this draft as a card. */
+  mention: string;
 }
 
 export interface UpdateAgentRequest {

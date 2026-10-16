@@ -99,7 +99,11 @@ vi.mock("@multica/core/platform", async (importOriginal) => ({
 // DOM frozen on the first commit — which silently hides exactly the class of
 // bug the StrictMode regression below exists to catch.
 const storeRef = vi.hoisted(() => ({
-  current: { activeSessionId: null as string | null },
+  current: { activeSessionId: null as string | null } as {
+    activeSessionId: string | null;
+    inputDrafts?: Record<string, string>;
+    setInputDraft?: (key: string, value: string) => void;
+  },
 }));
 const storeListeners = vi.hoisted(() => new Set<() => void>());
 const availableAgentsRef = vi.hoisted(() => ({ current: [] as Agent[] }));
@@ -122,6 +126,7 @@ vi.mock("sonner", () => ({
 }));
 
 vi.mock("@multica/core/chat", () => ({
+  DRAFT_NEW_SESSION: "__new__",
   useChatStore: Object.assign(
     (selector?: (s: { activeSessionId: string | null }) => unknown) =>
       selector ? selector(storeRef.current) : storeRef.current,
@@ -367,6 +372,25 @@ describe("ChatPage URL synchronization", () => {
 });
 
 describe("ChatPage ?agent= deep link", () => {
+  it("pre-fills an empty composer from ?prompt= without sending", () => {
+    const setInputDraft = vi.fn();
+    storeRef.current = { activeSessionId: null, inputDrafts: {}, setInputDraft };
+    renderPage("agent=agent-1&prompt=Draft%20an%20agent");
+    expect(mockStartNewChat).toHaveBeenCalledWith(agent);
+    expect(setInputDraft).toHaveBeenCalledWith("__new__", "Draft an agent");
+  });
+
+  it("never overwrites what the user was already typing", () => {
+    const setInputDraft = vi.fn();
+    storeRef.current = {
+      activeSessionId: null,
+      inputDrafts: { __new__: "half a thought" },
+      setInputDraft,
+    };
+    renderPage("agent=agent-1&prompt=Draft%20an%20agent");
+    expect(setInputDraft).not.toHaveBeenCalled();
+  });
+
   it("starts a new chat with the linked agent and strips the param", () => {
     const { replace } = renderPage("agent=agent-1");
     expect(mockStartNewChat).toHaveBeenCalledTimes(1);

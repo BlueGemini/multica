@@ -289,27 +289,6 @@
     "squad_title": "Create an agent for this squad",
     "duplicate_title": "Duplicate {{name}}",
     "back": "Go back",
-    "eyebrow": "Agent creation",
-    "choose_title": "How would you like to start?",
-    "recommended": "Recommended",
-    "continue": "Continue",
-    "step_choose": "Choose a starting point",
-    "step_configure": "Review and configure",
-    "step_ai": "Build through conversation",
-    "modes": {
-      "blank": {
-        "title": "Start blank",
-        "description": "Set the name, instructions, and runtime yourself."
-      },
-      "template": {
-        "title": "Use a template",
-        "description": "Start from curated instructions and skills, then adapt every detail to your workspace."
-      },
-      "ai": {
-        "title": "Build with AI",
-        "description": "Create an editable configuration through conversation."
-      }
-    },
     "sections": {
       "identity": "Identity",
       "behavior": "Behavior & capabilities",
@@ -334,32 +313,6 @@
         "required": "Select at least one member."
       }
     },
-    "builder": {
-      "setup_title": "Choose a runtime for Agent Builder",
-      "setup_description": "This runtime powers setup and is the default for the new agent.",
-      "start": "Start conversation",
-      "connect_runtime": "Connect a runtime",
-      "draft_parse_failed": "This reply could not fill the form. Ask the assistant to generate the draft again, or fill it in manually.",
-      "start_failed": "Could not start Agent Builder.",
-      "send_failed": "Could not send your message.",
-      "stop_failed": "Could not stop the current generation.",
-      "switch_runtime_failed": "Could not switch runtime. The conversation is still running on the previous one.",
-      "switch_runtime_pending": "Stop the current reply to switch runtime.",
-      "switch_runtime_success": "Runtime switched. Your draft is kept and the conversation continues on the new runtime with a fresh model session.",
-      "chat_title": "Agent Builder",
-      "runtime_online": "Runtime online",
-      "runtime_offline": "Runtime offline",
-      "empty_title": "What should this agent do?",
-      "empty_description": "Describe what this agent should do.",
-      "prompt_review": "Review frontend pull requests",
-      "prompt_research": "Research competitors and summarize findings",
-      "prompt_assistant": "Help our team plan and write projects",
-      "thinking": "Updating the draft…",
-      "placeholder": "Describe the agent you need…",
-      "send": "Send message"
-    },
-    "live_draft": "Agent configuration",
-    "live_draft_hint": "You can edit the draft directly.",
     "duplicate_env_notice": "Instructions, skills and command arguments are copied. Environment variables, MCP servers and machine-local runtime config are not.",
     "duplicate_runtime_reset_notice": "The original runtime is unavailable, so this copy runs on another one. Model, thinking level and speed were cleared because they only apply to the runtime they were chosen on.",
     "create_and_open": "Create & open agent",
@@ -367,17 +320,7 @@
     "creating": "Creating agent…",
     "create_failed": "Could not create the agent.",
     "name_conflict": "An agent with this name already exists.",
-    "created": "{{name}} was created",
-    "drafts": {
-      "title": "Drafts",
-      "untitled": "Untitled draft",
-      "discard": "Discard",
-      "discard_confirm": "The conversation and its configuration are deleted permanently.",
-      "discard_title": "Discard this draft?",
-      "discard_cancel": "Keep editing",
-      "banner": "You have {{count}} unfinished draft(s)",
-      "pick_hint": "Pick one to continue."
-    }
+    "created": "{{name}} was created"
   },
   "create_dialog": {
     "title_create": "Create Agent",
@@ -985,5 +928,46 @@
     "selected_one": "{{count}} selected",
     "selected_other": "{{count}} selected",
     "clear_selection": "Clear selection"
+  },
+  "drafts": {
+    "create_menu_aria": "More ways to create an agent",
+    "with_agent": "Create with {{name}}",
+    "with_agent_hint": "Describe it in chat. {{name}} drafts it for you to confirm.",
+    "manual": "Fill in the form",
+    "manual_hint": "Set every field yourself.",
+    "duplicate": "Duplicate an agent",
+    "agent_prompt": "I'd like to create a new agent. Ask me what it should do, then propose it as an agent draft I can review and create.",
+    "handoff_prompt": "Help me finish agent draft {{id}}: read it, fill in what's missing, and update the draft so I can review and create it.",
+    "dialog_description": "Saved as you type. Only you can create it.",
+    "save_later": "Finish later",
+    "hand_off": "Let {{name}} draft it",
+    "discard": "Discard draft",
+    "discard_title": "Discard this draft?",
+    "discard_confirm": "The draft will be deleted. This can't be undone.",
+    "discard_cancel": "Keep draft",
+    "discarded": "Draft discarded",
+    "discard_failed": "Couldn't discard the draft.",
+    "save_failed": "Couldn't save the draft. Your changes are still here.",
+    "saving": "Saving…",
+    "saved": "Draft saved",
+    "pending_title": "Waiting for you to confirm",
+    "pending_hint": "Agents drafted by you, or by agents on your behalf. Only you can create them.",
+    "untitled": "Untitled agent",
+    "continue": "Continue",
+    "open_chat": "Open chat",
+    "open_issue": "Open issue",
+    "authored_by_agent": "Drafted by {{name}}",
+    "authored_by_you": "Started by you",
+    "open_agent": "Open agent",
+    "card_label": "Agent draft",
+    "card_review": "Review & create",
+    "card_waiting": "Waiting for {{name}} to confirm",
+    "card_created": "Created",
+    "card_discarded": "Discarded",
+    "card_unavailable": "This agent draft isn't available.",
+    "card_no_runtime": "No runtime",
+    "card_skills_one": "{{count}} skill",
+    "card_skills_other": "{{count}} skills",
+    "load_failed": "Couldn't load this draft."
   }
 }

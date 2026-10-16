@@ -138,22 +138,26 @@ export function agentTasksOptions(wsId: string, agentId: string) {
   });
 }
 
-/** Unfinished agent-creation conversations, scoped to the caller. */
-export const agentBuilderSessionKeys = {
-  all: (wsId: string) => ["workspace", wsId, "agent-builder-sessions"] as const,
-  list: (wsId: string) => [...agentBuilderSessionKeys.all(wsId), "list"] as const,
+export const agentDraftKeys = {
+  all: (wsId: string) => ["workspace", wsId, "agent-drafts"] as const,
+  /** The caller's own pending drafts — the "waiting on you" list. */
+  pending: (wsId: string) => [...agentDraftKeys.all(wsId), "pending"] as const,
+  detail: (wsId: string, id: string) =>
+    [...agentDraftKeys.all(wsId), "detail", id] as const,
 };
 
-export function agentBuilderSessionListOptions(wsId: string) {
+export function pendingAgentDraftsOptions(wsId: string) {
   return queryOptions({
-    queryKey: agentBuilderSessionKeys.list(wsId),
-    queryFn: () => api.listAgentBuilderSessions(),
+    queryKey: agentDraftKeys.pending(wsId),
+    queryFn: () => api.listAgentDrafts("pending"),
     enabled: wsId.length > 0,
-    // Overrides the client-wide `staleTime: Infinity`. This list changes
-    // through work done on another screen — starting a conversation, sending a
-    // turn, an agent finally being created — and the surfaces that render it
-    // mount on demand. Cached forever it would show the state of the first
-    // visit: a user who just held a conversation comes back to "no drafts".
-    staleTime: 0,
+  });
+}
+
+export function agentDraftOptions(wsId: string, id: string) {
+  return queryOptions({
+    queryKey: agentDraftKeys.detail(wsId, id),
+    queryFn: () => api.getAgentDraft(id),
+    enabled: wsId.length > 0 && id.length > 0,
   });
 }

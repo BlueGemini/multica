@@ -83,8 +83,14 @@ export const AGENT_DEFAULT_HIDDEN_COLUMNS: AgentColumnKey[] = [
   "created",
 ];
 
+/** How the "New agent" button creates when clicked directly. Not "duplicate":
+ *  that one always needs a source picked from the menu. */
+export type AgentCreateMethod = "chat" | "form";
+
 export interface AgentsViewState {
   scope: AgentsScope;
+  /** The method last picked from the create menu; the main button repeats it. */
+  createMethod: AgentCreateMethod;
   sortField: AgentSortField;
   sortDirection: AgentSortDirection;
   hiddenColumns: AgentColumnKey[];
@@ -99,6 +105,7 @@ export interface AgentsViewState {
   toggleColumn: (key: AgentColumnKey) => void;
   toggleFilter: (key: keyof AgentListFilters, value: string) => void;
   clearFilters: () => void;
+  setCreateMethod: (method: AgentCreateMethod) => void;
 }
 
 const DEFAULTS = {
@@ -109,6 +116,7 @@ const DEFAULTS = {
   sortDirection: AGENT_SORT_DEFAULT_DIRECTION.lastActive,
   hiddenColumns: AGENT_DEFAULT_HIDDEN_COLUMNS,
   filters: EMPTY_AGENT_FILTERS,
+  createMethod: "chat" as AgentCreateMethod,
 };
 
 export const useAgentsViewStore = create<AgentsViewState>()(
@@ -160,6 +168,7 @@ export const useAgentsViewStore = create<AgentsViewState>()(
           return { scope, filters: { ...state.filters, [key]: next } };
         }),
       clearFilters: () => set({ filters: EMPTY_AGENT_FILTERS }),
+      setCreateMethod: (createMethod) => set({ createMethod }),
     }),
     {
       name: "multica_agents_view",
@@ -172,6 +181,7 @@ export const useAgentsViewStore = create<AgentsViewState>()(
         sortDirection: state.sortDirection,
         hiddenColumns: state.hiddenColumns,
         filters: state.filters,
+        createMethod: state.createMethod,
       }),
       // On rehydrate, if the new workspace has no persisted value, reset to
       // the defaults instead of leaving the previous workspace's in-memory
@@ -187,6 +197,7 @@ export const useAgentsViewStore = create<AgentsViewState>()(
           ...current,
           ...p,
           filters: { ...EMPTY_AGENT_FILTERS, ...(p.filters ?? {}) },
+          createMethod: p.createMethod === "form" ? "form" : "chat",
         };
       },
     },

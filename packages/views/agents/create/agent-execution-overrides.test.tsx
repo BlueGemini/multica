@@ -128,9 +128,8 @@ describe("AgentExecutionOverrides", () => {
     fireEvent.click(screen.getByRole("button", { name: /speed/i }));
     fireEvent.click(await screen.findByText("Fast"));
 
-    expect(onChange).toHaveBeenCalledWith(
-      expect.objectContaining({ serviceTier: "priority" }),
-    );
+    const update = onChange.mock.calls.at(-1)?.[0];
+    expect(update(baseDraft)).toEqual({ ...baseDraft, serviceTier: "priority" });
   });
 
   it("offers the exact model's thinking levels", async () => {
@@ -140,9 +139,8 @@ describe("AgentExecutionOverrides", () => {
     fireEvent.click(screen.getByRole("button", { name: /thinking/i }));
     fireEvent.click(await screen.findByText("High"));
 
-    expect(onChange).toHaveBeenCalledWith(
-      expect.objectContaining({ thinkingLevel: "high" }),
-    );
+    const update = onChange.mock.calls.at(-1)?.[0];
+    expect(update(baseDraft)).toEqual({ ...baseDraft, thinkingLevel: "high" });
   });
 
   it("hides both fields when the model advertises neither capability", async () => {

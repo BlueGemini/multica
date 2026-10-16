@@ -3,7 +3,11 @@
 import { useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { buildCreateAgentRequest, type AgentDraft } from "@multica/core/agents";
+import {
+  agentDraftKeys,
+  buildCreateAgentRequest,
+  type AgentDraft,
+} from "@multica/core/agents";
 import { api, ApiError } from "@multica/core/api";
 import { useWorkspaceId } from "@multica/core/hooks";
 import { useWorkspacePaths } from "@multica/core/paths";
@@ -47,6 +51,12 @@ export function useCreateAgentSubmit(options: {
   /** Creation-source attribution for the `agent_created` analytics event. */
   template?: string;
   duplicateSource?: Agent | null;
+  /** The saved draft this create consumes, so it reads as created everywhere
+   *  it is shown. */
+  draftId?: string | null;
+  /** False keeps the user where they are — a draft confirmed from a chat or a
+   *  comment stays in that conversation. */
+  navigateOnCreate?: boolean;
   /** Runs after the agent is committed, before navigation. */
   onCreated?: (agent: Agent) => Promise<void> | void;
 }) {
@@ -60,8 +70,16 @@ export function useCreateAgentSubmit(options: {
   const [nameError, setNameError] = useState<string | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
 
-  const { draft, runtimeId, squadId, template, duplicateSource, onCreated } =
-    options;
+  const {
+    draft,
+    runtimeId,
+    squadId,
+    template,
+    duplicateSource,
+    draftId,
+    navigateOnCreate = true,
+    onCreated,
+  } = options;
 
   const create = async () => {
     if (!runtimeId || creating) return;
@@ -69,14 +87,15 @@ export function useCreateAgentSubmit(options: {
     setNameError(null);
     setFormError(null);
     try {
-      const agent = await api.createAgent(
-        buildCreateAgentRequest({
+      const agent = await api.createAgent({
+        ...buildCreateAgentRequest({
           draft,
           runtimeId,
           template,
           duplicateSource,
         }),
-      );
+        ...(draftId ? { draft_id: draftId } : {}),
+      });
       if (!agent.id) throw new Error(t(($) => $.creation_studio.create_failed));
 
       if (squadId) {
@@ -109,14 +128,26 @@ export function useCreateAgentSubmit(options: {
       // Reconcile other list projections in the background instead of making
       // navigation wait on a second network request.
       void qc.invalidateQueries({ queryKey: workspaceKeys.agents(wsId) });
-      toast.success(
-        t(($) => $.creation_studio.created, {
-          name: agent.name || draft.name.trim(),
-        }),
-      );
-      navigation.push(
-        squadId ? paths.squadDetail(squadId) : paths.agentDetail(agent.id),
-      );
+      if (draftId) {
+        void qc.invalidateQueries({ queryKey: agentDraftKeys.all(wsId) });
+      }
+      const createdMessage = t(($) => $.creation_studio.created, {
+        name: agent.name || draft.name.trim(),
+      });
+      if (navigateOnCreate) {
+        toast.success(createdMessage);
+        navigation.push(
+          squadId ? paths.squadDetail(squadId) : paths.agentDetail(agent.id),
+        );
+      } else {
+        toast.success(createdMessage, {
+          action: {
+            label: t(($) => $.drafts.open_agent),
+            onClick: () => navigation.push(paths.agentDetail(agent.id)),
+          },
+        });
+        setCreating(false);
+      }
     } catch (error) {
       const nextErrors = classifyAgentCreateError(
         error,

@@ -33,10 +33,9 @@ import type {
   Agent,
   MikaBootstrapResponse,
   CreateAgentRequest,
-  AgentBuilderRuntimeSwitch,
-  AgentBuilderSession,
-  AgentBuilderSessionSummary,
-  StoredAgentDraft,
+  AgentDraftConfig,
+  AgentDraftRecord,
+  AgentDraftStatus,
   UpdateAgentRequest,
   AgentEnvResponse,
   UpdateAgentEnvRequest,
@@ -279,11 +278,9 @@ import {
   IssueTriggerPreviewSchema,
   CloudRuntimeNodeListSchema,
   CloudRuntimeNodeSchema,
-  AgentBuilderRuntimeSwitchSchema,
-  AgentBuilderSessionSchema,
-  AgentBuilderSessionListSchema,
-  EMPTY_AGENT_BUILDER_SESSION_LIST,
-  agentBuilderRuntimeSwitchFallback,
+  AgentDraftListSchema,
+  AgentDraftRecordSchema,
+  agentDraftRecordFallback,
   DashboardAgentRunTimeListSchema,
   DashboardRunTimeDailyListSchema,
   DashboardFailureDailyListSchema,
@@ -299,7 +296,6 @@ import {
   EMPTY_PRIORITIZE_QUEUED_CHAT_TASK_RESPONSE,
   EMPTY_CLOUD_RUNTIME_NODE,
   EMPTY_CLOUD_RUNTIME_NODE_LIST,
-  EMPTY_AGENT_BUILDER_SESSION,
   EMPTY_GROUPED_ISSUES_RESPONSE,
   EMPTY_ISSUE_TABLE_FACETS_RESPONSE,
   EMPTY_ISSUE_TABLE_GROUPS_RESPONSE,
@@ -1888,82 +1884,83 @@ export class ApiClient {
     });
   }
 
-  async createAgentBuilderSession(data: {
-    runtime_id: string;
-    model?: string;
-  }): Promise<AgentBuilderSession> {
-    const raw = await this.fetch<unknown>("/api/agent-builder/sessions", {
-      method: "POST",
-      body: JSON.stringify(data),
-    });
-    return parseWithFallback(
-      raw,
-      AgentBuilderSessionSchema,
-      EMPTY_AGENT_BUILDER_SESSION,
-      { endpoint: "POST /api/agent-builder/sessions" },
-    );
-  }
-
   /**
-   * The caller's unfinished agent-creation conversations.
-   *
-   * Builder sessions are hidden from every chat list (their carrier agent is
-   * `kind = 'system'`), so this is the only route back to one. A 404 means the
-   * backend predates the endpoint: degrade to "no drafts" instead of erroring
-   * the Agents page, exactly as listChatDraftRestores does.
+   * The caller's own drafts — the ones waiting on them to confirm. A 404 means
+   * the backend predates drafts: degrade to "none" instead of erroring the
+   * Agents page.
    */
-  async listAgentBuilderSessions(): Promise<AgentBuilderSessionSummary[]> {
+  async listAgentDrafts(
+    status: AgentDraftStatus = "pending",
+  ): Promise<AgentDraftRecord[]> {
     let raw: unknown;
     try {
-      raw = await this.fetch<unknown>("/api/agent-builder/sessions");
+      raw = await this.fetch<unknown>(
+        `/api/agent-drafts?status=${encodeURIComponent(status)}`,
+      );
     } catch (err) {
       if (err instanceof ApiError && err.status === 404) return [];
       throw err;
     }
+    return parseWithFallback(raw, AgentDraftListSchema, { drafts: [] }, {
+      endpoint: "GET /api/agent-drafts",
+    }).drafts;
+  }
+
+  async getAgentDraft(id: string): Promise<AgentDraftRecord> {
+    const raw = await this.fetch<unknown>(`/api/agent-drafts/${id}`);
     return parseWithFallback(
       raw,
-      AgentBuilderSessionListSchema,
-      EMPTY_AGENT_BUILDER_SESSION_LIST,
-      { endpoint: "GET /api/agent-builder/sessions" },
-    ).sessions;
+      AgentDraftRecordSchema,
+      agentDraftRecordFallback(id),
+      { endpoint: "GET /api/agent-drafts/{id}" },
+    );
+  }
+
+  async createAgentDraft(
+    config: Partial<AgentDraftConfig>,
+  ): Promise<AgentDraftRecord> {
+    const raw = await this.fetch<unknown>("/api/agent-drafts", {
+      method: "POST",
+      body: JSON.stringify({ config }),
+    });
+    return parseWithFallback(
+      raw,
+      AgentDraftRecordSchema,
+      agentDraftRecordFallback(""),
+      { endpoint: "POST /api/agent-drafts" },
+    );
   }
 
   /**
-   * Stores the configuration a creation conversation has arrived at, including
-   * edits the user typed but has not sent. Whole-object last-write-wins: one
-   * conversation has one editor, so a field-level merge could only reconstruct
-   * a state nobody saw. Read back through `listAgentBuilderSessions`.
+   * Field-level merge: only the keys present change, so two authors editing
+   * different fields (the member in the form, an agent through the CLI) do
+   * not overwrite each other. Send only the fields the user touched.
    */
-  async saveAgentBuilderDraft(
-    sessionId: string,
-    draft: StoredAgentDraft,
-  ): Promise<void> {
-    await this.fetch(`/api/agent-builder/sessions/${sessionId}/draft`, {
-      method: "PUT",
-      body: JSON.stringify({ draft }),
+  async updateAgentDraft(
+    id: string,
+    config: Partial<AgentDraftConfig>,
+  ): Promise<AgentDraftRecord> {
+    const raw = await this.fetch<unknown>(`/api/agent-drafts/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify({ config }),
     });
-  }
-
-  /** Rebinds a live builder conversation to another runtime. Callers must not
-   *  show the new runtime as selected until this resolves — the whole point is
-   *  that the UI's runtime and the executing runtime agree.
-   *
-   *  A non-2xx throws before we get here and nothing was committed. Reaching the
-   *  parse means the server bound `data.runtime_id`, so that is the fallback for
-   *  an unparseable body — see agentBuilderRuntimeSwitchFallback. */
-  async switchAgentBuilderRuntime(
-    sessionId: string,
-    data: { runtime_id: string },
-  ): Promise<AgentBuilderRuntimeSwitch> {
-    const raw = await this.fetch<unknown>(
-      `/api/agent-builder/sessions/${sessionId}/runtime`,
-      { method: "PATCH", body: JSON.stringify(data) },
-    );
     return parseWithFallback(
       raw,
-      AgentBuilderRuntimeSwitchSchema,
-      agentBuilderRuntimeSwitchFallback(data.runtime_id),
-      { endpoint: "PATCH /api/agent-builder/sessions/{id}/runtime" },
+      AgentDraftRecordSchema,
+      agentDraftRecordFallback(id),
+      { endpoint: "PATCH /api/agent-drafts/{id}" },
+    );
+  }
+
+  async discardAgentDraft(id: string): Promise<AgentDraftRecord> {
+    const raw = await this.fetch<unknown>(`/api/agent-drafts/${id}/discard`, {
+      method: "POST",
+    });
+    return parseWithFallback(
+      raw,
+      AgentDraftRecordSchema,
+      agentDraftRecordFallback(id),
+      { endpoint: "POST /api/agent-drafts/{id}/discard" },
     );
   }
 

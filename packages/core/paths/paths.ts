@@ -34,16 +34,20 @@ function workspaceScoped(slug: string) {
     autopilots: () => `${ws}/autopilots`,
     autopilotDetail: (id: string) => `${ws}/autopilots/${encode(id)}`,
     agents: () => `${ws}/agents`,
-    newAgent: () => `${ws}/agents/new`,
-    // The two creation methods behind the chooser. Each is a real route so a
-    // half-filled form survives a refresh and can be linked to directly.
-    newAgentManual: () => `${ws}/agents/new/manual`,
-    newAgentAi: () => `${ws}/agents/new/ai`,
-    // One creation conversation. It is a durable object, not a step of the
-    // route above: it survives leaving the studio and is resumed later, so it
-    // owns an address instead of being a query param on the "start one" screen.
-    newAgentAiSession: (sessionId: string) =>
-      `${ws}/agents/new/ai/${encode(sessionId)}`,
+    // Creating an agent is a dialog over the agents list. The query is what
+    // opens it, so a half-filled form survives a refresh and can be linked to.
+    // `squad` is why the flow was opened; `duplicate` seeds from an agent.
+    createAgent: (options?: { squad?: string | null; duplicate?: string | null }) => {
+      const query = new URLSearchParams({ create: "1" });
+      if (options?.squad) query.set("squad", options.squad);
+      if (options?.duplicate) query.set("duplicate", options.duplicate);
+      return `${ws}/agents?${query.toString()}`;
+    },
+    // A saved agent draft, reopened in the same dialog.
+    agentDraft: (draftId: string, options?: { squad?: string | null }) =>
+      `${ws}/agents?draft=${encode(draftId)}${
+        options?.squad ? `&squad=${encode(options.squad)}` : ""
+      }`,
     agentDetail: (id: string) => `${ws}/agents/${encode(id)}`,
     // Deep link behind "customize" in a chat's empty state: the agent's
     // Instructions tab, scrolled to the conversation starters that produced
@@ -55,8 +59,10 @@ function workspaceScoped(slug: string) {
     squadDetail: (id: string) => `${ws}/squads/${encode(id)}`,
     inbox: () => `${ws}/inbox`,
     chat: () => `${ws}/chat`,
-    chatWithAgent: (agentId: string) =>
-      `${ws}/chat?agent=${encode(agentId)}`,
+    chatWithAgent: (agentId: string, options?: { prompt?: string }) =>
+      `${ws}/chat?agent=${encode(agentId)}${
+        options?.prompt ? `&prompt=${encode(options.prompt)}` : ""
+      }`,
     chatSession: (sessionId: string) =>
       `${ws}/chat?session=${encode(sessionId)}`,
     myIssues: () => `${ws}/my-issues`,

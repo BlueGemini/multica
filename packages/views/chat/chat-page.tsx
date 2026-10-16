@@ -13,7 +13,7 @@ import {
 import { useIsCompact } from "@multica/ui/hooks/use-mobile";
 import { useRequiredWorkspaceSlug, useWorkspacePaths } from "@multica/core/paths";
 import { getCurrentSlug } from "@multica/core/platform";
-import { useChatStore } from "@multica/core/chat";
+import { DRAFT_NEW_SESSION, useChatStore } from "@multica/core/chat";
 import { chatQuickActionsPendingOptions } from "@multica/core/chat/queries";
 import { useRegenerateChatQuickActions } from "@multica/core/chat/mutations";
 import { useQuickActionsPendingTimeout } from "@multica/core/chat/use-quick-actions-pending-timeout";
@@ -82,6 +82,7 @@ export function ChatPage() {
   const regenerateQuickActions = useRegenerateChatQuickActions();
   const urlSession = searchParams.get("session") || null;
   const urlAgent = searchParams.get("agent") || null;
+  const urlPrompt = searchParams.get("prompt") || null;
 
   // "Composing a brand-new chat" — the user hit ⊕ but hasn't sent yet, so no
   // session exists. At compact widths this decides list-vs-conversation; on desktop the
@@ -187,7 +188,7 @@ export function ChatPage() {
     if (!c.currentSession || projectId !== null) setComposingNew(true);
   };
 
-  // URL → new chat: `?agent=<id>` is the deep link used by "DM" entry points
+  // URL → new chat: `?agent=<id>` (optionally `&prompt=`) is the deep link used by "DM" entry points
   // (e.g. the agent detail page) to land on a fresh compose bound to that
   // agent. The permission-filtered agent list loads async, so the intent is
   // consumed on the render where the agent resolves, then the param is
@@ -208,6 +209,12 @@ export function ChatPage() {
     if (agent) {
       consumedAgentIntent.current = urlAgent;
       startNewChat(agent);
+      // `?prompt=` pre-fills the composer — never sends — and only an empty
+      // one, so a link can never overwrite what the user was typing.
+      const store = useChatStore.getState();
+      if (urlPrompt && !store.inputDrafts[DRAFT_NEW_SESSION]?.trim()) {
+        store.setInputDraft(DRAFT_NEW_SESSION, urlPrompt);
+      }
       replace(wsPaths.chat());
       return;
     }
@@ -217,7 +224,7 @@ export function ChatPage() {
       replace(wsPaths.chat());
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps -- consume when the URL param or the resolving agent list changes
-  }, [isCurrentChatRoute, workspaceSlug, urlAgent, c.availableAgents, c.agentsSettled]);
+  }, [isCurrentChatRoute, workspaceSlug, urlAgent, urlPrompt, c.availableAgents, c.agentsSettled]);
 
   const newChatButton = (
     <NewChatButton
