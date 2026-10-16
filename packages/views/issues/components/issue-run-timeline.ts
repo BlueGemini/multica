@@ -10,7 +10,7 @@ import { taskDurationMs } from "./task-run-labels";
 
 // Pure data for the issue's run timeline: the sidebar's per-run cost bars and
 // the Runs dialog they open. Everything the two surfaces draw — bar heights,
-// time buckets, lanes, day groups, totals — is derived here, so the rendering
+// shares, day groups, totals — is derived here, so the rendering
 // code only maps numbers to pixels and the arithmetic has one place to be
 // tested.
 
@@ -74,8 +74,6 @@ export interface RunTimeline {
   failedCount: number;
   cancelledCount: number;
   activeCount: number;
-  /** First start to last end — the stretch of time that holds runs. */
-  extent: [number, number];
   /** One lane per agent, in order of first appearance. */
   lanes: TimelineLane[];
   /** Spend per agent, most expensive first. */
@@ -201,7 +199,6 @@ export function buildRunTimeline(tasks: readonly AgentTask[], nowMs: number): Ru
     failedCount,
     cancelledCount,
     activeCount,
-    extent: [first?.startMs ?? nowMs, lastEnd],
     lanes: Array.from(laneMap, ([agentId, laneRuns]) => ({ agentId, runs: laneRuns })),
     costByAgent: sortedShares(agentCost),
     costByModel: sortedShares(modelCost),
@@ -213,153 +210,6 @@ export function buildRunTimeline(tasks: readonly AgentTask[], nowMs: number): Ru
 export function cacheHitRate(tokens: Pick<TokenTotals, "input" | "cacheRead" | "cacheWrite">): number | null {
   const prompt = tokens.input + tokens.cacheRead + tokens.cacheWrite;
   return prompt > 0 ? tokens.cacheRead / prompt : null;
-}
-
-// ─── Time buckets ──────────────────────────────────────────────────────────
-
-export type BucketUnit = "hour" | "day" | "week";
-
-export interface RunBucket {
-  startMs: number;
-  endMs: number;
-  /** Runs that started in this bucket, oldest first. */
-  runs: TimelineRun[];
-  cost: number;
-  tokens: TokenTotals;
-  agentMs: number;
-  /** Per agent: what its runs that started here cost and took. */
-  byAgent: Map<string, { cost: number; agentMs: number }>;
-}
-
-export interface RunBuckets {
-  unit: BucketUnit;
-  buckets: RunBucket[];
-  /** First bucket's start to last bucket's end — the chart's x axis. */
-  domain: [number, number];
-}
-
-const HOUR_MS = 60 * 60 * 1000;
-const DAY_MS = 24 * HOUR_MS;
-// A chart of two fat bars says less than the same two bars among their empty
-// neighbours, so short spans are padded out to at least this many buckets —
-// fewer for days, where every padded bucket is a whole empty day.
-const MIN_BUCKETS: Record<BucketUnit, number> = { hour: 12, day: 7, week: 8 };
-
-export function bucketUnitFor(spanMs: number): BucketUnit {
-  if (spanMs <= 72 * HOUR_MS) return "hour";
-  if (spanMs <= 42 * DAY_MS) return "day";
-  return "week";
-}
-
-function floorTo(ms: number, unit: BucketUnit): number {
-  const d = new Date(ms);
-  if (unit === "hour") {
-    d.setMinutes(0, 0, 0);
-    return d.getTime();
-  }
-  d.setHours(0, 0, 0, 0);
-  // Weeks start on Monday.
-  if (unit === "week") d.setDate(d.getDate() - ((d.getDay() + 6) % 7));
-  return d.getTime();
-}
-
-// Calendar arithmetic rather than fixed milliseconds, so a DST shift does not
-// knock every later bucket off local midnight.
-function step(ms: number, unit: BucketUnit, by = 1): number {
-  const d = new Date(ms);
-  if (unit === "hour") d.setHours(d.getHours() + by);
-  else d.setDate(d.getDate() + (unit === "week" ? 7 : 1) * by);
-  return d.getTime();
-}
-
-/**
- * The runs in time buckets for the dialog's bar chart. The unit follows the
- * span that holds runs — hours within three days, days within six weeks,
- * weeks beyond — and each run counts in the bucket it started in, the same
- * rule the day-grouped list uses. Short spans are padded towards now, then
- * backwards, to `MIN_BUCKETS`.
- */
-export function bucketRuns(timeline: RunTimeline, nowMs: number): RunBuckets {
-  const [first, last] = timeline.extent;
-  const unit = bucketUnitFor(last - first);
-  let start = floorTo(first, unit);
-  let end = step(floorTo(last, unit), unit);
-  const nowEnd = step(floorTo(nowMs, unit), unit);
-  const count = () => Math.round((end - start) / (unit === "hour" ? HOUR_MS : unit === "day" ? DAY_MS : 7 * DAY_MS));
-  const min = MIN_BUCKETS[unit];
-  while (count() < min && end < nowEnd) end = step(end, unit);
-  while (count() < min) start = step(start, unit, -1);
-
-  const buckets: RunBucket[] = [];
-  const index = new Map<number, RunBucket>();
-  for (let t = start; t < end; t = step(t, unit)) {
-    const bucket: RunBucket = {
-      startMs: t,
-      endMs: step(t, unit),
-      runs: [],
-      cost: 0,
-      tokens: emptyTokens(),
-      agentMs: 0,
-      byAgent: new Map(),
-    };
-    buckets.push(bucket);
-    index.set(t, bucket);
-  }
-
-  for (const run of timeline.runs) {
-    const bucket = index.get(floorTo(run.startMs, unit));
-    if (!bucket) continue;
-    bucket.runs.push(run);
-    const agent = bucket.byAgent.get(run.task.agent_id) ?? { cost: 0, agentMs: 0 };
-    if (run.usage) {
-      bucket.cost += run.usage.cost;
-      agent.cost += run.usage.cost;
-      addTokens(bucket.tokens, run.usage);
-    }
-    if (run.durationMs != null) {
-      bucket.agentMs += run.durationMs;
-      agent.agentMs += run.durationMs;
-    }
-    bucket.byAgent.set(run.task.agent_id, agent);
-  }
-
-  return { unit, buckets, domain: [start, end] };
-}
-
-/**
- * The run a pointer at time `t` is on: the one whose bar spans `t`, give or
- * take `slopMs` — the time a few pixels cover, so a bar one pixel wide is
- * still something a pointer can land on. -1 between runs, rather than
- * reaching across a gap for a run the pointer is nowhere near.
- *
- * Runs overlap — one agent's short run inside another's long one, or two
- * agents at once — so "the bar it is on" can be several. A bar the pointer is
- * inside beats one it is merely near, then the shortest wins: a bar fully
- * inside another is otherwise unreachable, while the long one still owns
- * every moment the short one doesn't cover. `agentId` narrows the choice to
- * one lane when the pointer is over that lane.
- */
-export function runIndexAt(
-  runs: readonly TimelineRun[],
-  t: number,
-  slopMs: number,
-  agentId?: string,
-): number {
-  let best = -1;
-  let bestDistance = Infinity;
-  let bestSpan = Infinity;
-  runs.forEach((run, i) => {
-    if (agentId && run.task.agent_id !== agentId) return;
-    const distance = t < run.startMs ? run.startMs - t : t > run.endMs ? t - run.endMs : 0;
-    if (distance > slopMs) return;
-    const span = run.endMs - run.startMs;
-    if (distance < bestDistance || (distance === bestDistance && span < bestSpan)) {
-      best = i;
-      bestDistance = distance;
-      bestSpan = span;
-    }
-  });
-  return best;
 }
 
 /**
@@ -378,47 +228,6 @@ export function niceTicks(max: number, maxCount = 4): number[] {
     const v = Number((step * i).toPrecision(12));
     ticks.push(v);
     if (v >= max) break;
-  }
-  return ticks;
-}
-
-export interface TimeTick {
-  t: number;
-  /** "day" ticks sit on local midnight; "hour" ticks on a whole hour. */
-  kind: "day" | "hour";
-}
-
-const HOUR_STEPS = [1, 2, 3, 6, 12];
-
-/**
- * X-axis ticks in local time. Past a day and a half the axis marks midnights
- * (labelled by weekday); shorter spans mark whole hours at a step that keeps
- * the count readable, because a single day label would leave the axis blank.
- */
-export function timeTicks([start, end]: [number, number], maxTicks = 8): TimeTick[] {
-  const span = end - start;
-  if (!(span > 0)) return [];
-  if (span > 36 * HOUR_MS) {
-    const ticks: TimeTick[] = [];
-    const d = new Date(start);
-    d.setHours(0, 0, 0, 0);
-    d.setDate(d.getDate() + 1);
-    // Thin daily ticks for long issues so the labels never collide.
-    const days = Math.ceil(span / DAY_MS);
-    const every = Math.max(1, Math.ceil(days / maxTicks));
-    for (let i = 0; d.getTime() <= end; i++) {
-      if (i % every === 0) ticks.push({ t: d.getTime(), kind: "day" });
-      d.setDate(d.getDate() + 1);
-    }
-    return ticks;
-  }
-  const step = HOUR_STEPS.find((h) => span / (h * HOUR_MS) <= maxTicks) ?? 24;
-  const d = new Date(start);
-  d.setMinutes(0, 0, 0);
-  while (d.getHours() % step !== 0 || d.getTime() <= start) d.setHours(d.getHours() + 1);
-  const ticks: TimeTick[] = [];
-  for (; d.getTime() < end; d.setHours(d.getHours() + step)) {
-    ticks.push({ t: d.getTime(), kind: "hour" });
   }
   return ticks;
 }

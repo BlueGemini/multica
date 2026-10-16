@@ -27,17 +27,12 @@ import {
 } from "../../runtimes/utils";
 import { AttributionBadge } from "./attribution-badge";
 import {
-  bucketRuns,
   buildRunTimeline,
   cacheHitRate,
   groupRunsByDay,
   niceTicks,
-  runIndexAt,
   shortModelName,
-  timeTicks,
   type CostShare,
-  type RunBucket,
-  type RunBuckets,
   type RunTimeline,
   type TimelineRun,
 } from "./issue-run-timeline";
@@ -50,10 +45,9 @@ import { WakeupRunLabel } from "./wakeup-source-chip";
 //
 // The sidebar answers "what is running and what just ran"; this answers "how
 // did this issue get here": what it spent and on what, when, who asked for
-// each run, and which ones were expensive. The chart on top buckets the runs
-// in time (cost, tokens or agent time per bucket, over per-agent run lanes on
-// the same axis); the list below is the same runs as rows, newest first — it
-// is also the chart's accessible, exact-value view.
+// each run, and which ones were expensive. The chart on top is one bar per
+// run (cost, tokens or agent time); the list below is the same runs as rows,
+// newest first — it is also the chart's accessible, exact-value view.
 //
 // Every figure comes from the same `summarizeTaskUsage` helpers the sidebar
 // uses, so the total here can never disagree with the total that opened it.
@@ -122,13 +116,12 @@ export function IssueRunsDialog({
   // Active runs stretch to "now". The clock is re-read when the task list
   // changes or the dialog reopens rather than ticking: the bars move by
   // minutes, and a live timer already runs in the sidebar row.
-  const { timeline, buckets } = useMemo(() => {
-    const now = Date.now();
-    const built = buildRunTimeline(tasks, now);
-    return { timeline: built, buckets: bucketRuns(built, now) };
+  const timeline = useMemo(
+    () => buildRunTimeline(tasks, Date.now()),
     // `pricings` re-prices on a saved custom rate; `open` re-reads the clock.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tasks, pricings, open]);
+    [tasks, pricings, open],
+  );
   // Models with no rate-table entry and no provider-reported cost: their tokens
   // are counted but their spend is not, so the totals understate reality.
   const unmapped = useMemo(
@@ -153,7 +146,7 @@ export function IssueRunsDialog({
         {timeline.runs.length > 0 && (
           <>
             <RunStats timeline={timeline} />
-            <RunActivityChart timeline={timeline} buckets={buckets} />
+            <RunActivityChart timeline={timeline} />
             {timeline.pricedCount > 0 && <CostSplit timeline={timeline} />}
             {/* `min-h-0`: the dialog is a flex column; without it this flex
                 item sizes to its content and the list never scrolls. */}
@@ -265,88 +258,71 @@ interface Series {
   key: string;
   label: string;
   swatch: string;
-  value: (bucket: RunBucket) => number;
 }
 
-const PLOT_HEIGHT = 112;
-// How far the pointer can miss a lane's bar and still be on it: a run a few
-// seconds long draws as a 3px sliver, which nobody lands on exactly.
-const HOVER_SLOP_PX = 8;
-// The hover card's `max-w-72` plus its gap from the bucket. With less room
-// than this to the right, the card opens on its left.
+const PLOT_HEIGHT = 128;
+// A run that reported nothing for the metric still gets a mark, short enough
+// to never read as a small figure.
+const STUB_HEIGHT = 4;
+// The hover card's `max-w-72` plus its gap from the bar. With less room than
+// this to the right, the card opens on its left.
 const HOVER_CARD_ROOM_PX = 298;
+// Day labels closer than this share of the plot would collide; the later
+// day keeps its divider but drops its label.
+const MIN_DAY_LABEL_GAP = 0.1;
 const HOUR_MS = 60 * 60 * 1000;
-
-export function runBarTone(run: TimelineRun): string {
-  if (run.active) return "bg-info animate-pulse";
-  if (run.task.status === "failed") return "bg-destructive";
-  if (run.task.status === "cancelled") return "bg-faint-foreground";
-  return "bg-chart-2";
-}
 
 function swatchFor(index: number): string {
   return SERIES_SWATCHES[index] ?? OTHERS_SWATCH;
 }
 
-interface ChartHover {
-  /** The moment under the pointer, clamped to the chart's domain. */
-  t: number;
-  /** The lane the pointer is over, if any. */
-  lane?: string;
-  /** The plot's rendered width, which turns pixels into time. */
-  width: number;
-}
-
-function RunActivityChart({ timeline, buckets }: { timeline: RunTimeline; buckets: RunBuckets }) {
+// One bar per run, oldest on the left, the same reading as the sidebar's
+// strip: the height is what the run cost, used or took, the colour who ran it
+// (or, for tokens, what kind they were), and a tick under the bar marks a run
+// that failed or was cancelled. Days are dividers rather than an axis — runs
+// cluster in bursts, and a time axis spends most of its width on the hours in
+// between where nothing ran.
+function RunActivityChart({ timeline }: { timeline: RunTimeline }) {
   const { t } = useT("issues");
   const locale = useLocale();
   const { getActorName } = useActorName();
   const partLabel = useCostPartLabel();
   const [metric, setMetric] = useState<Metric>("cost");
-  const [d0, d1] = buckets.domain;
-  const xPct = (ms: number) => ((ms - d0) / (d1 - d0)) * 100;
+  const runs = timeline.runs;
+  const n = runs.length;
+
+  // Agents in cost order, then any that ran without reporting usage.
+  const agentSwatch = useMemo(() => {
+    const keys = timeline.costByAgent.map((s) => s.key);
+    for (const lane of timeline.lanes) {
+      if (!keys.includes(lane.agentId)) keys.push(lane.agentId);
+    }
+    return new Map(keys.map((key, i) => [key, swatchFor(i)]));
+  }, [timeline]);
 
   const series: Series[] = useMemo(() => {
     if (metric === "tokens") {
-      return COST_PARTS.map((part) => ({
-        key: part.key,
-        label: partLabel(part.key),
-        swatch: part.swatch,
-        value: (b: RunBucket) => b.tokens[part.key],
-      }));
+      return COST_PARTS.map((part) => ({ key: part.key, label: partLabel(part.key), swatch: part.swatch }));
     }
-    const pick = (b: RunBucket, agentId: string) => {
-      const entry = b.byAgent.get(agentId);
-      return metric === "cost" ? (entry?.cost ?? 0) : (entry?.agentMs ?? 0);
-    };
-    // Agents in cost order, then any that ran without reporting usage.
-    const agentKeys = timeline.costByAgent.map((s) => s.key);
-    for (const lane of timeline.lanes) {
-      if (!agentKeys.includes(lane.agentId)) agentKeys.push(lane.agentId);
+    const list: Series[] = [];
+    let others = false;
+    for (const [agentId, swatch] of agentSwatch) {
+      if (swatch === OTHERS_SWATCH) others = true;
+      else list.push({ key: agentId, label: getActorName("agent", agentId), swatch });
     }
-    const named = agentKeys.slice(0, SERIES_SWATCHES.length);
-    const rest = agentKeys.slice(SERIES_SWATCHES.length);
-    const list: Series[] = named.map((agentId, i) => ({
-      key: agentId,
-      label: getActorName("agent", agentId),
-      swatch: swatchFor(i),
-      value: (b: RunBucket) => pick(b, agentId),
-    }));
-    if (rest.length > 0) {
-      list.push({
-        key: OTHERS_KEY,
-        label: t(($) => $.runs_timeline.others),
-        swatch: OTHERS_SWATCH,
-        value: (b: RunBucket) => rest.reduce((sum, agentId) => sum + pick(b, agentId), 0),
-      });
-    }
+    if (others) list.push({ key: OTHERS_KEY, label: t(($) => $.runs_timeline.others), swatch: OTHERS_SWATCH });
     return list;
-  }, [metric, timeline, getActorName, partLabel, t]);
+  }, [metric, agentSwatch, getActorName, partLabel, t]);
 
-  const totalOf = (b: RunBucket) =>
-    metric === "cost" ? b.cost : metric === "tokens" ? b.tokens.total : b.agentMs;
-  const maxValue = Math.max(0, ...buckets.buckets.map(totalOf));
-  // Agent time ticks in whole hours once a bucket holds an hour, else minutes.
+  const valueOf = (run: TimelineRun) =>
+    metric === "cost" ? (run.usage?.cost ?? 0) : metric === "tokens" ? (run.usage?.tokens ?? 0) : (run.durationMs ?? 0);
+  const segmentsOf = (run: TimelineRun) =>
+    metric === "tokens"
+      ? COST_PARTS.map((part) => ({ key: part.key, swatch: part.swatch, value: run.usage?.[part.key] ?? 0 }))
+      : [{ key: "run", swatch: agentSwatch.get(run.task.agent_id) ?? OTHERS_SWATCH, value: valueOf(run) }];
+
+  const maxValue = Math.max(0, ...runs.map(valueOf));
+  // Agent time ticks in whole hours once a run takes an hour, else minutes.
   const timeUnitMs = metric === "time" && maxValue < HOUR_MS ? 60_000 : HOUR_MS;
   const yTicks =
     metric === "time"
@@ -360,66 +336,40 @@ function RunActivityChart({ timeline, buckets }: { timeline: RunTimeline; bucket
         ? formatTokens(v)
         : `${Number((v / timeUnitMs).toPrecision(3))}${timeUnitMs === HOUR_MS ? "h" : "m"}`;
 
-  const ticks = timeTicks(buckets.domain);
-  const [tickFormat, bucketLabel] = useMemo(() => {
-    const day = new Intl.DateTimeFormat(locale, { weekday: "short", month: "short", day: "numeric" });
-    const monthDay = new Intl.DateTimeFormat(locale, { month: "short", day: "numeric" });
-    const hour = new Intl.DateTimeFormat(locale, { hour: "2-digit", minute: "2-digit", hour12: false });
-    const dayHour = new Intl.DateTimeFormat(locale, {
-      month: "short",
-      day: "numeric",
-      hour: "2-digit",
-      minute: "2-digit",
-      hour12: false,
+  // Where each local day starts in the run sequence.
+  const dayMarks = useMemo(() => {
+    const today = new Date().toDateString();
+    const fmt = new Intl.DateTimeFormat(locale, { month: "short", day: "numeric" });
+    const marks: { index: number; label: string | null }[] = [];
+    let lastLabelled = -Infinity;
+    runs.forEach((run, i) => {
+      const day = new Date(run.startMs).toDateString();
+      if (i > 0 && day === new Date(runs[i - 1]!.startMs).toDateString()) return;
+      const labelled = (i - lastLabelled) / runs.length >= MIN_DAY_LABEL_GAP;
+      if (labelled) lastLabelled = i;
+      marks.push({
+        index: i,
+        label: labelled ? (day === today ? t(($) => $.runs_timeline.day_today) : fmt.format(run.startMs)) : null,
+      });
     });
-    return [
-      (tick: (typeof ticks)[number]) => (tick.kind === "day" ? day.format(tick.t) : hour.format(tick.t)),
-      (bucket: RunBucket) =>
-        buckets.unit === "hour"
-          ? dayHour.format(bucket.startMs)
-          : buckets.unit === "day"
-            ? day.format(bucket.startMs)
-            : t(($) => $.runs_timeline.week_of, { date: monthDay.format(bucket.startMs) }),
-    ] as const;
-  }, [locale, buckets.unit, t]);
+    return marks;
+  }, [runs, locale, t]);
 
-  // Hover layer. The pointer picks a bucket anywhere on the chart row — lane
-  // labels and y scale included, so drifting a few pixels off the plot does
-  // not drop the hover. Over a lane, the run under the pointer answers
-  // instead. The list below carries the same figures for keyboard and
-  // screen-reader users.
+  // Hover layer: the pointer picks the run whose slot it is over, anywhere in
+  // the chart row, so a run with no bar to aim at is still reachable. The
+  // list below carries the same figures for keyboard and screen-reader users.
   const plotRef = useRef<HTMLDivElement>(null);
-  const [hover, setHover] = useState<ChartHover | null>(null);
+  const [hover, setHover] = useState<{ index: number; width: number } | null>(null);
   const trackPointer = (event: React.PointerEvent<HTMLDivElement>) => {
     const rect = plotRef.current?.getBoundingClientRect();
     if (!rect || rect.width <= 0) return;
-    const at = d0 + ((event.clientX - rect.left) / rect.width) * (d1 - d0);
-    const lane = (event.target as Element).closest?.("[data-lane]")?.getAttribute("data-lane");
-    setHover({ t: Math.min(Math.max(at, d0), d1 - 1), lane: lane ?? undefined, width: rect.width });
+    const index = Math.floor(((event.clientX - rect.left) / rect.width) * n);
+    setHover({ index: Math.min(Math.max(index, 0), n - 1), width: rect.width });
   };
+  const hovered = hover ? runs[hover.index] : undefined;
+  const cardOnLeft = hover ? ((hover.index + 1) / n) * hover.width + HOVER_CARD_ROOM_PX > hover.width : false;
+  const slot = (i: number) => ({ left: `${(i / n) * 100}%`, width: `${100 / n}%` });
 
-  const hoverBucket = hover
-    ? buckets.buckets.find((b) => hover.t >= b.startMs && hover.t < b.endMs)
-    : undefined;
-  const hoverRunIndex =
-    hover?.lane != null
-      ? runIndexAt(timeline.runs, hover.t, (HOVER_SLOP_PX / hover.width) * (d1 - d0), hover.lane)
-      : -1;
-  const hoveredRun = hoverRunIndex >= 0 ? timeline.runs[hoverRunIndex] : undefined;
-  const anchorX = hoveredRun
-    ? xPct(hoveredRun.endMs)
-    : hoverBucket
-      ? xPct(hoverBucket.endMs)
-      : 0;
-  const cardOnLeft = hover ? (anchorX / 100) * hover.width + HOVER_CARD_ROOM_PX > hover.width : false;
-  const cardLeftX = hoveredRun ? xPct(hoveredRun.startMs) : hoverBucket ? xPct(hoverBucket.startMs) : 0;
-
-  const unitLabel =
-    buckets.unit === "hour"
-      ? t(($) => $.runs_timeline.unit_hour)
-      : buckets.unit === "day"
-        ? t(($) => $.runs_timeline.unit_day)
-        : t(($) => $.runs_timeline.unit_week);
   const stackLabel =
     metric === "tokens" ? t(($) => $.runs_timeline.stack_type) : t(($) => $.runs_timeline.stack_agent);
 
@@ -437,7 +387,7 @@ function RunActivityChart({ timeline, buckets }: { timeline: RunTimeline; bucket
           ]}
         />
         <span className="text-caption text-muted-foreground">
-          {unitLabel} · {stackLabel}
+          {t(($) => $.runs_timeline.unit_run)} · {stackLabel}
         </span>
         <div className="ml-auto flex flex-wrap items-center gap-x-3 gap-y-1 text-caption text-muted-foreground">
           {series.map((s) => (
@@ -452,7 +402,7 @@ function RunActivityChart({ timeline, buckets }: { timeline: RunTimeline; bucket
       <div
         role="img"
         aria-label={t(($) => $.runs_timeline.chart_aria, {
-          count: timeline.runs.length,
+          count: n,
           cost: formatUsd(timeline.totalCost),
         })}
         className="flex gap-3"
@@ -460,31 +410,18 @@ function RunActivityChart({ timeline, buckets }: { timeline: RunTimeline; bucket
         onPointerDown={trackPointer}
         onPointerLeave={() => setHover(null)}
       >
-        {/* Lane labels, aligned with the lanes in the plot column. */}
-        <div className="w-24 shrink-0" aria-hidden>
-          <div style={{ height: PLOT_HEIGHT }} />
-          <div className="mt-[9px]">
-            {timeline.lanes.map((lane) => (
-              <div key={lane.agentId} className="flex h-5 min-w-0 items-center gap-1.5">
-                <ActorAvatar actorType="agent" actorId={lane.agentId} size="xs" />
-                <span className="truncate text-micro text-muted-foreground">
-                  {getActorName("agent", lane.agentId)}
-                </span>
-              </div>
-            ))}
-          </div>
-        </div>
-
         <div ref={plotRef} className="relative min-w-0 flex-1">
-          {/* Time gridlines run through the bars and the lanes alike. */}
-          {ticks.map((tick) => (
-            <span
-              key={tick.t}
-              aria-hidden
-              className="absolute top-0 bottom-5 w-px bg-border"
-              style={{ left: `${xPct(tick.t)}%` }}
-            />
-          ))}
+          {/* Day dividers run through the bars and the status ticks alike. */}
+          {dayMarks
+            .filter((mark) => mark.index > 0)
+            .map((mark) => (
+              <span
+                key={mark.index}
+                aria-hidden
+                className="absolute top-0 bottom-5 w-px bg-border"
+                style={{ left: `${(mark.index / n) * 100}%` }}
+              />
+            ))}
 
           <div className="relative" style={{ height: PLOT_HEIGHT }} aria-hidden>
             {yTicks.map((v) => (
@@ -494,113 +431,89 @@ function RunActivityChart({ timeline, buckets }: { timeline: RunTimeline; bucket
                 style={{ top: `${(1 - v / yMax) * 100}%` }}
               />
             ))}
-            {buckets.buckets.map((bucket) => {
-              const total = totalOf(bucket);
-              const left = xPct(bucket.startMs);
-              const width = xPct(bucket.endMs) - left;
-              const dimmed = hoverBucket && !hoveredRun && hoverBucket !== bucket;
-              // Bars take the middle of their bucket, so neighbours never touch.
-              const box = { left: `${left + width * 0.15}%`, width: `${width * 0.7}%` };
-              if (total <= 0) {
-                return (
-                  <span
-                    key={bucket.startMs}
-                    data-bucket={bucket.startMs}
-                    className="absolute bottom-0 h-0.5 rounded-full bg-border"
-                    style={box}
-                  />
-                );
-              }
+            {runs.map((run, i) => {
+              const total = valueOf(run);
+              const dimmed = hovered && hovered !== run;
               return (
-                <span
-                  key={bucket.startMs}
-                  data-bucket={bucket.startMs}
-                  className={cn(
-                    "absolute bottom-0 flex flex-col-reverse gap-px overflow-hidden rounded-t-xs transition-opacity",
-                    dimmed && "opacity-35",
+                <span key={run.task.id} className="absolute inset-y-0 flex items-end justify-center" style={slot(i)}>
+                  {total > 0 ? (
+                    <span
+                      data-run={run.task.id}
+                      className={cn(
+                        "flex w-[70%] max-w-10 min-w-px flex-col-reverse gap-px overflow-hidden rounded-t-xs transition-opacity",
+                        dimmed && "opacity-35",
+                      )}
+                      style={{ height: Math.max(2, (total / yMax) * PLOT_HEIGHT) }}
+                    >
+                      {segmentsOf(run).map((s) =>
+                        s.value > 0 ? (
+                          <span key={s.key} className={cn("min-h-px", s.swatch)} style={{ flexGrow: s.value, flexBasis: 0 }} />
+                        ) : null,
+                      )}
+                    </span>
+                  ) : (
+                    <span
+                      data-run={run.task.id}
+                      className={cn(
+                        "w-[70%] max-w-10 min-w-px rounded-t-xs transition-opacity",
+                        run.active
+                          ? "bg-info animate-pulse"
+                          : "border border-b-0 border-dashed border-faint-foreground",
+                        dimmed && "opacity-35",
+                      )}
+                      style={{ height: STUB_HEIGHT }}
+                    />
                   )}
-                  style={{ ...box, height: Math.max(2, (total / yMax) * PLOT_HEIGHT) }}
-                >
-                  {series.map((s) => {
-                    const v = s.value(bucket);
-                    return v > 0 ? (
-                      <span key={s.key} className={cn("min-h-px", s.swatch)} style={{ flexGrow: v, flexBasis: 0 }} />
-                    ) : null;
-                  })}
                 </span>
               );
             })}
           </div>
 
-          {/* Rows, not tracks, carry `data-lane`, and they touch: moving from one
-              lane to the next never crosses a gap that belongs to no lane. */}
-          <div className="mt-[9px]">
-            {timeline.lanes.map((lane) => (
-              <div key={lane.agentId} data-lane={lane.agentId} className="py-[3px]">
-                <div className="relative h-3.5 rounded-xs bg-muted/60">
-                  {lane.runs.map((run) => {
-                    const dimmed = hoveredRun
-                      ? run !== hoveredRun
-                      : hoverBucket
-                        ? run.startMs < hoverBucket.startMs || run.startMs >= hoverBucket.endMs
-                        : false;
-                    return (
-                      <span
-                        key={run.task.id}
-                        className={cn(
-                          "absolute inset-y-0.5 min-w-[3px] rounded-xs transition-opacity",
-                          runBarTone(run),
-                          dimmed && "opacity-35",
-                        )}
-                        style={{
-                          left: `${xPct(run.startMs)}%`,
-                          width: `${xPct(run.endMs) - xPct(run.startMs)}%`,
-                        }}
-                      />
-                    );
-                  })}
-                </div>
-              </div>
-            ))}
+          {/* How a run ended, under its bar: the bar itself carries who ran it. */}
+          <div className="relative mt-1 h-1" aria-hidden>
+            {runs.map((run, i) =>
+              run.task.status === "failed" || run.task.status === "cancelled" ? (
+                <span key={run.task.id} className="absolute inset-y-0 flex justify-center" style={slot(i)}>
+                  <span
+                    className={cn(
+                      "h-full w-[70%] max-w-10 min-w-px rounded-full",
+                      run.task.status === "failed" ? "bg-destructive" : "bg-faint-foreground",
+                    )}
+                  />
+                </span>
+              ) : null,
+            )}
           </div>
 
-          {hover && (hoveredRun || hoverBucket) && (
+          {hovered && hover && (
             <div
               aria-hidden
               data-hover-card
               className="pointer-events-none absolute top-0 z-20 w-max max-w-72 rounded-lg border bg-popover px-2.5 py-1.5 text-caption text-popover-foreground shadow-[var(--menu-shadow)]"
               style={{
-                left: `${cardOnLeft ? cardLeftX : anchorX}%`,
+                left: `${((cardOnLeft ? hover.index : hover.index + 1) / n) * 100}%`,
                 transform: cardOnLeft ? "translateX(calc(-100% - 8px))" : "translateX(8px)",
               }}
             >
-              {hoveredRun ? (
-                <RunHoverCard run={hoveredRun} />
-              ) : hoverBucket ? (
-                <BucketHoverCard
-                  bucket={hoverBucket}
-                  label={bucketLabel(hoverBucket)}
-                  series={series}
-                  metric={metric}
-                  formatValue={formatValue}
-                />
-              ) : null}
+              <RunHoverCard run={hovered} parts={metric === "tokens"} />
             </div>
           )}
 
           <div className="relative mt-px h-5" aria-hidden>
-            {ticks.map((tick) => {
-              const x = xPct(tick.t);
-              return (
+            {dayMarks.map((mark) =>
+              mark.label ? (
                 <span
-                  key={tick.t}
+                  key={mark.index}
                   className="absolute top-1 whitespace-nowrap px-1 text-micro text-muted-foreground"
-                  style={{ left: `${x}%`, transform: x > 92 ? "translateX(-100%)" : undefined }}
+                  style={{
+                    left: `${(mark.index / n) * 100}%`,
+                    transform: mark.index / n > 0.9 ? "translateX(-100%)" : undefined,
+                  }}
                 >
-                  {tickFormat(tick)}
+                  {mark.label}
                 </span>
-              );
-            })}
+              ) : null,
+            )}
           </div>
         </div>
 
@@ -625,60 +538,6 @@ function formatTick(v: number): string {
   return Number.isInteger(v) ? `$${v}` : formatUsd(v);
 }
 
-function BucketHoverCard({
-  bucket,
-  label,
-  series,
-  metric,
-  formatValue,
-}: {
-  bucket: RunBucket;
-  label: string;
-  series: Series[];
-  metric: Metric;
-  formatValue: (v: number) => string;
-}) {
-  const { t } = useT("issues");
-  const failed = bucket.runs.filter((r) => r.task.status === "failed").length;
-  const priced = bucket.runs.some((r) => r.usage);
-  const facts = [
-    t(($) => $.runs_timeline.day_runs, { count: bucket.runs.length }),
-    failed > 0 ? t(($) => $.runs_timeline.count_failed, { count: failed }) : null,
-    bucket.agentMs > 0
-      ? t(($) => $.runs_timeline.bucket_agent_time, {
-          duration: formatDuration(bucket.agentMs / 1000, UNDER_A_SECOND),
-        })
-      : null,
-  ].filter(Boolean);
-  const rows = series.map((s) => ({ s, v: s.value(bucket) })).filter(({ v }) => v > 0);
-  return (
-    <div className="flex min-w-48 flex-col gap-1">
-      <span className="font-medium">{label}</span>
-      <span className="text-micro tabular-nums text-muted-foreground">{facts.join(" · ")}</span>
-      {priced && (
-        <span className="text-micro tabular-nums">
-          <span className="font-medium">{formatUsd(bucket.cost)}</span>
-          <span className="text-muted-foreground">
-            {" · "}
-            {t(($) => $.runs_timeline.tokens_count, { tokens: formatTokens(bucket.tokens.total) })}
-          </span>
-        </span>
-      )}
-      {metric !== "cost" || rows.length > 1
-        ? rows.map(({ s, v }) => (
-            <span key={s.key} className="flex items-center gap-1.5 text-micro tabular-nums">
-              <span aria-hidden className={cn("size-2 shrink-0 rounded-xs", s.swatch)} />
-              <span className="min-w-0 flex-1 truncate text-muted-foreground">{s.label}</span>
-              <span className="font-medium">
-                {metric === "time" ? formatDuration(v / 1000, UNDER_A_SECOND) : formatValue(v)}
-              </span>
-            </span>
-          ))
-        : null}
-    </div>
-  );
-}
-
 /**
  * A run's trigger, with a wakeup run naming its rule's condition ("Wakeup ·
  * When a linked PR's CI finishes") the way the execution log's rows do. The
@@ -697,8 +556,9 @@ export function RunTriggerLabel({
   return <WakeupRunLabel task={task} fallback={fallback} render={children} />;
 }
 
-function RunHoverCard({ run }: { run: TimelineRun }) {
+function RunHoverCard({ run, parts }: { run: TimelineRun; parts: boolean }) {
   const { t } = useT("issues");
+  const partLabel = useCostPartLabel();
   const { getActorName } = useActorName();
   const trigger = useTriggerText(run.task);
   const status = useStatusLabel(run.task.status);
@@ -738,6 +598,17 @@ function RunHoverCard({ run }: { run: TimelineRun }) {
           <span className="text-muted-foreground">{t(($) => $.runs_timeline.no_usage)}</span>
         )}
       </span>
+      {parts &&
+        run.usage &&
+        COST_PARTS.map((part) =>
+          run.usage![part.key] > 0 ? (
+            <span key={part.key} className="flex items-center gap-1.5 text-micro tabular-nums">
+              <span aria-hidden className={cn("size-2 shrink-0 rounded-xs", part.swatch)} />
+              <span className="min-w-0 flex-1 truncate text-muted-foreground">{partLabel(part.key)}</span>
+              <span className="font-medium">{formatTokens(run.usage![part.key])}</span>
+            </span>
+          ) : null,
+        )}
     </div>
   );
 }

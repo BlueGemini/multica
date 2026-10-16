@@ -2,15 +2,11 @@
 import { describe, expect, it } from "vitest";
 import type { AgentTask, TaskUsage } from "@multica/core/types";
 import {
-  bucketRuns,
-  bucketUnitFor,
   buildRunTimeline,
   cacheHitRate,
   groupRunsByDay,
   niceTicks,
-  runIndexAt,
   shortModelName,
-  timeTicks,
 } from "./issue-run-timeline";
 
 function makeTask(overrides: Partial<AgentTask> = {}): AgentTask {
@@ -87,7 +83,6 @@ describe("buildRunTimeline", () => {
     expect(timeline.agentMs).toBe(30 * 60 * 1000);
     // Elapsed runs from the first start to now, while a run is still going.
     expect(timeline.elapsedMs).toBe(NOW - new Date("2026-09-24T10:00:00").getTime());
-    expect(timeline.extent).toEqual([new Date("2026-09-24T10:00:00").getTime(), NOW]);
   });
 
   it("ignores deferred runs, which the execution log does not list", () => {
@@ -187,151 +182,6 @@ describe("cacheHitRate", () => {
   });
 });
 
-describe("bucketRuns", () => {
-  const ms = (iso: string) => new Date(iso).getTime();
-
-  it("picks hours, days or weeks from the span that holds runs", () => {
-    expect(bucketUnitFor(6 * 60 * 60 * 1000)).toBe("hour");
-    expect(bucketUnitFor(60 * 60 * 60 * 1000)).toBe("hour");
-    expect(bucketUnitFor(5 * 24 * 60 * 60 * 1000)).toBe("day");
-    expect(bucketUnitFor(90 * 24 * 60 * 60 * 1000)).toBe("week");
-  });
-
-  it("counts each run in the hour it started, padded towards now", () => {
-    const timeline = buildRunTimeline(
-      [
-        makeTask({ id: "a", started_at: "2026-09-24T10:10:00", completed_at: "2026-09-24T10:40:00", usage: usage(400_000) }),
-        // Starts in the 10:00 bucket, ends in 11:00 — it still counts at 10:00.
-        makeTask({ id: "b", started_at: "2026-09-24T10:50:00", completed_at: "2026-09-24T11:20:00", usage: usage(200_000) }),
-        makeTask({ id: "c", started_at: "2026-09-24T13:00:00", completed_at: "2026-09-24T13:10:00" }),
-      ],
-      ms("2026-09-24T15:30:00"),
-    );
-    const { unit, buckets, domain } = bucketRuns(timeline, ms("2026-09-24T15:30:00"));
-
-    expect(unit).toBe("hour");
-    expect(buckets).toHaveLength(12);
-    // Forward to now's hour first, then back from the first run.
-    expect(domain).toEqual([ms("2026-09-24T04:00:00"), ms("2026-09-24T16:00:00")]);
-    const at = (iso: string) => buckets.find((b) => b.startMs === ms(iso))!;
-    expect(at("2026-09-24T10:00:00").runs.map((r) => r.task.id)).toEqual(["a", "b"]);
-    expect(at("2026-09-24T10:00:00").cost).toBe(15);
-    expect(at("2026-09-24T10:00:00").tokens.output).toBe(600_000);
-    expect(at("2026-09-24T10:00:00").agentMs).toBe(60 * 60 * 1000);
-    expect(at("2026-09-24T10:00:00").byAgent.get("agent-1")).toEqual({ cost: 15, agentMs: 60 * 60 * 1000 });
-    expect(at("2026-09-24T11:00:00").runs).toHaveLength(0);
-    // An unpriced run still lands in its bucket, at no cost.
-    expect(at("2026-09-24T13:00:00").runs.map((r) => r.task.id)).toEqual(["c"]);
-    expect(at("2026-09-24T13:00:00").cost).toBe(0);
-  });
-
-  it("buckets a multi-day issue by local day", () => {
-    const timeline = buildRunTimeline(
-      [
-        makeTask({ id: "a", started_at: "2026-09-20T23:30:00", completed_at: "2026-09-21T00:10:00" }),
-        makeTask({ id: "b", started_at: "2026-09-24T09:00:00", completed_at: "2026-09-24T09:10:00" }),
-      ],
-      NOW,
-    );
-    const { unit, buckets } = bucketRuns(timeline, NOW);
-
-    expect(unit).toBe("day");
-    expect(buckets.every((b) => new Date(b.startMs).getHours() === 0)).toBe(true);
-    expect(buckets.find((b) => b.runs.some((r) => r.task.id === "a"))!.startMs).toBe(ms("2026-09-20T00:00:00"));
-  });
-
-  it("starts weeks on Monday", () => {
-    const timeline = buildRunTimeline(
-      [
-        makeTask({ id: "a", started_at: "2026-06-03T10:00:00", completed_at: "2026-06-03T10:10:00" }),
-        makeTask({ id: "b", started_at: "2026-09-24T10:00:00", completed_at: "2026-09-24T10:10:00" }),
-      ],
-      NOW,
-    );
-    const { unit, buckets } = bucketRuns(timeline, NOW);
-
-    expect(unit).toBe("week");
-    expect(buckets.every((b) => new Date(b.startMs).getDay() === 1)).toBe(true);
-  });
-});
-
-describe("runIndexAt", () => {
-  const MINUTE = 60_000;
-  const { runs } = buildRunTimeline(
-    [
-      makeTask({ id: "a", started_at: "2026-09-24T10:00:00", completed_at: "2026-09-24T10:30:00" }),
-      makeTask({ id: "b", started_at: "2026-09-24T14:00:00", completed_at: "2026-09-24T14:00:20" }),
-    ],
-    NOW,
-  );
-  const at = (iso: string, slopMs = MINUTE) => {
-    const i = runIndexAt(runs, new Date(iso).getTime(), slopMs);
-    return i < 0 ? null : runs[i]!.task.id;
-  };
-
-  it("picks the run under the pointer", () => {
-    expect(at("2026-09-24T10:15:00")).toBe("a");
-  });
-
-  it("reaches a sliver of a run within the slop", () => {
-    // `b` lasts 20s; the pointer lands a few pixels — here 40s — off it.
-    expect(at("2026-09-24T13:59:20")).toBe("b");
-    expect(at("2026-09-24T14:01:00")).toBe("b");
-  });
-
-  it("reports no run between runs instead of snapping across the gap", () => {
-    // Review repro (MUL-7780): the crosshair used to jump to whichever run
-    // was nearest, hundreds of pixels from the pointer.
-    expect(at("2026-09-24T11:00:00")).toBeNull();
-    expect(at("2026-09-24T13:00:00")).toBeNull();
-    expect(at("2026-09-25T00:00:00")).toBeNull();
-  });
-
-  it("prefers the run the pointer is inside over one it is merely near", () => {
-    const { runs: adjacent } = buildRunTimeline(
-      [
-        makeTask({ id: "long", started_at: "2026-09-24T10:00:00", completed_at: "2026-09-24T11:00:00" }),
-        makeTask({ id: "blip", started_at: "2026-09-24T11:00:30", completed_at: "2026-09-24T11:00:40" }),
-      ],
-      NOW,
-    );
-    const i = runIndexAt(adjacent, new Date("2026-09-24T10:59:50").getTime(), MINUTE);
-    expect(adjacent[i]!.task.id).toBe("long");
-  });
-
-  it("reaches a run nested inside a longer one", () => {
-    // Review repro: A 09:00–12:00 wraps B 10:00–11:00. Over B, B must win.
-    const { runs: nested } = buildRunTimeline(
-      [
-        makeTask({ id: "outer", started_at: "2026-09-24T09:00:00", completed_at: "2026-09-24T12:00:00" }),
-        makeTask({ id: "inner", started_at: "2026-09-24T10:00:00", completed_at: "2026-09-24T11:00:00" }),
-      ],
-      NOW,
-    );
-    const pick = (iso: string) => nested[runIndexAt(nested, new Date(iso).getTime(), MINUTE)]!.task.id;
-    expect(pick("2026-09-24T10:30:00")).toBe("inner");
-    expect(pick("2026-09-24T09:30:00")).toBe("outer");
-    expect(pick("2026-09-24T11:30:00")).toBe("outer");
-  });
-
-  it("stays in the lane the pointer is over", () => {
-    const { runs: lanes } = buildRunTimeline(
-      [
-        makeTask({ id: "lambda", agent_id: "agent-lambda", started_at: "2026-09-24T10:00:00", completed_at: "2026-09-24T10:20:00" }),
-        makeTask({ id: "emacs", agent_id: "agent-emacs", started_at: "2026-09-24T09:00:00", completed_at: "2026-09-24T12:00:00" }),
-      ],
-      NOW,
-    );
-    const t = new Date("2026-09-24T10:10:00").getTime();
-    expect(lanes[runIndexAt(lanes, t, MINUTE)]!.task.id).toBe("lambda");
-    expect(lanes[runIndexAt(lanes, t, MINUTE, "agent-emacs")]!.task.id).toBe("emacs");
-  });
-
-  it("has nothing to point at without runs", () => {
-    expect(runIndexAt([], 0, MINUTE)).toBe(-1);
-  });
-});
-
 describe("niceTicks", () => {
   it("steps in clean values and tops out at or above the max", () => {
     expect(niceTicks(166)).toEqual([50, 100, 150, 200]);
@@ -342,35 +192,6 @@ describe("niceTicks", () => {
 
   it("has nothing to mark without a total", () => {
     expect(niceTicks(0)).toEqual([]);
-  });
-});
-
-describe("timeTicks", () => {
-  it("marks local midnights across a multi-day issue", () => {
-    const ticks = timeTicks([
-      new Date("2026-09-23T20:00:00").getTime(),
-      new Date("2026-09-27T18:00:00").getTime(),
-    ]);
-    expect(ticks.every((t) => t.kind === "day")).toBe(true);
-    expect(ticks.map((t) => new Date(t.t).getDate())).toEqual([24, 25, 26, 27]);
-    expect(ticks.every((t) => new Date(t.t).getHours() === 0)).toBe(true);
-  });
-
-  it("marks whole hours when the issue fits in a day", () => {
-    const ticks = timeTicks([
-      new Date("2026-09-24T09:40:00").getTime(),
-      new Date("2026-09-24T15:10:00").getTime(),
-    ]);
-    expect(ticks.every((t) => t.kind === "hour")).toBe(true);
-    expect(ticks.map((t) => new Date(t.t).getHours())).toEqual([10, 11, 12, 13, 14, 15]);
-  });
-
-  it("thins daily ticks on a long issue", () => {
-    const ticks = timeTicks([
-      new Date("2026-08-01T00:00:00").getTime(),
-      new Date("2026-09-27T00:00:00").getTime(),
-    ]);
-    expect(ticks.length).toBeLessThanOrEqual(8);
   });
 });
 
