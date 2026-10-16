@@ -2293,16 +2293,24 @@ func NewRouterWithOptions(pool *pgxpool.Pool, hub *realtime.Hub, bus *events.Bus
 				})
 			})
 
+			// Deprecated: the web/desktop studio no longer uses builder sessions
+			// (MUL-8048). Kept only for installed desktop clients that still ship
+			// the old AI creation flow; remove once those are past support.
 			r.Route("/api/agent-builder/sessions", func(r chi.Router) {
-				// The creation studio's unfinished drafts. Builder sessions are
-				// invisible to every chat list (their carrier is kind='system'),
-				// so this is the only route back to one.
 				r.Get("/", h.ListAgentBuilderSessions)
 				r.Post("/", h.CreateAgentBuilderSession)
 				r.Patch("/{sessionId}/runtime", h.SwitchAgentBuilderRuntime)
-				// Autosaved configuration, including edits the user has typed
-				// but not sent. Read back through the list above.
 				r.Put("/{sessionId}/draft", h.SaveAgentBuilderDraft)
+			})
+
+			// Agent drafts: written by members and agents, turned into an
+			// agent only by the owner through POST /api/agents with draft_id.
+			r.Route("/api/agent-drafts", func(r chi.Router) {
+				r.Get("/", h.ListAgentDrafts)
+				r.Post("/", h.CreateAgentDraft)
+				r.Get("/{id}", h.GetAgentDraft)
+				r.Patch("/{id}", h.UpdateAgentDraft)
+				r.Post("/{id}/discard", h.DiscardAgentDraft)
 			})
 
 			// Skills

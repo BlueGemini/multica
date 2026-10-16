@@ -1,0 +1,1 @@
+DROP INDEX CONCURRENTLY IF EXISTS agent_draft_pkey_uidx;

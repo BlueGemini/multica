@@ -26,6 +26,10 @@ const (
 	EventAgentArchived = "agent:archived"
 	EventAgentRestored = "agent:restored"
 
+	// Agent draft events carry ids only; clients refetch the draft.
+	EventAgentDraftCreated = "agent_draft:created"
+	EventAgentDraftUpdated = "agent_draft:updated"
+
 	// Task events (server <-> daemon).
 	// Each event maps to a status transition on agent_task_queue. Front-end
 	// subscribes by `task:` prefix and invalidates the workspace task

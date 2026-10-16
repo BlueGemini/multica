@@ -17,6 +17,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/multica-ai/multica/server/internal/analytics"
@@ -1357,6 +1358,10 @@ type CreateAgentRequest struct {
 	// SkillIDs are attached inside the same transaction as the agent row so a
 	// create never becomes visible in a partially configured state.
 	SkillIDs []string `json:"skill_ids"`
+	// DraftID consumes a pending agent draft in the same transaction. Only the
+	// draft's owner can do this, and only as a human: agents write drafts but
+	// never confirm them.
+	DraftID string `json:"draft_id"`
 }
 
 func decodeJSONBodyWithRawFields(body io.Reader, dst any) (map[string]json.RawMessage, error) {
@@ -1581,6 +1586,17 @@ func (h *Handler) CreateAgent(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	var draftUUID pgtype.UUID
+	if strings.TrimSpace(req.DraftID) != "" {
+		if isMachineCredentialActor(r) {
+			writeError(w, http.StatusForbidden, "only a member can create an agent from a draft")
+			return
+		}
+		if draftUUID, ok = parseUUIDOrBadRequest(w, strings.TrimSpace(req.DraftID), "draft_id"); !ok {
+			return
+		}
+	}
+
 	avatarURL, ok := h.newAgentAvatar(w, r, req.AvatarURL)
 	if !ok {
 		return
@@ -1593,6 +1609,33 @@ func (h *Handler) CreateAgent(w http.ResponseWriter, r *http.Request) {
 	}
 	defer tx.Rollback(r.Context())
 	qtx := h.Queries.WithTx(tx)
+
+	var draft db.AgentDraft
+	if draftUUID.Valid {
+		draft, err = qtx.LockAgentDraftForUpdate(r.Context(), db.LockAgentDraftForUpdateParams{
+			ID:          draftUUID,
+			WorkspaceID: wsUUID,
+		})
+		if err != nil {
+			if errors.Is(err, pgx.ErrNoRows) {
+				writeError(w, http.StatusNotFound, "agent draft not found")
+				return
+			}
+			writeError(w, http.StatusInternalServerError, "failed to load agent draft")
+			return
+		}
+		if uuidToString(draft.OwnerID) != ownerID {
+			writeError(w, http.StatusForbidden, "only the draft's owner can create an agent from it")
+			return
+		}
+		if draft.Status != "pending" {
+			writeError(w, http.StatusConflict, fmt.Sprintf("agent draft is already %s", draft.Status))
+			return
+		}
+		if req.Template == "" && draft.AuthorType == "agent" {
+			req.Template = "agent_draft"
+		}
+	}
 
 	created, err := qtx.CreateAgent(r.Context(), db.CreateAgentParams{
 		WorkspaceID:              wsUUID,
@@ -1641,6 +1684,15 @@ func (h *Handler) CreateAgent(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+	if draftUUID.Valid {
+		if draft, err = qtx.MarkAgentDraftCreated(r.Context(), db.MarkAgentDraftCreatedParams{
+			ID:             draft.ID,
+			CreatedAgentID: created.ID,
+		}); err != nil {
+			writeError(w, http.StatusInternalServerError, "failed to mark agent draft created")
+			return
+		}
+	}
 	if err := tx.Commit(r.Context()); err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to commit agent create")
 		return
@@ -1661,6 +1713,9 @@ func (h *Handler) CreateAgent(w http.ResponseWriter, r *http.Request) {
 	}
 	actorType, actorID := h.resolveActor(r, ownerID, workspaceID)
 	h.publish(protocol.EventAgentCreated, workspaceID, actorType, actorID, map[string]any{"agent": broadcastAgentResponse(resp)})
+	if draftUUID.Valid {
+		h.publishAgentDraftEvent(protocol.EventAgentDraftUpdated, workspaceID, actorType, actorID, draft)
+	}
 
 	obsmetrics.RecordEvent(h.Analytics, h.Metrics, analytics.AgentCreated(
 		ownerID,
