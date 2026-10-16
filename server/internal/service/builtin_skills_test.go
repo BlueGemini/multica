@@ -569,6 +569,11 @@ func TestPlatformSkillCoversPlatformContracts(t *testing.T) {
 				"multica agent skills list <agent-id> --output json",
 				"multica agent get <agent-id> --output json",
 				"255",
+				// Asked to create an agent, an agent proposes a draft the
+				// member confirms; it must never confirm one itself.
+				"multica agent draft create --name <name>",
+				"mention://agent-draft/<id>",
+				"**Only the member creates.**",
 			},
 			notWant: []string{
 				"--from-template",

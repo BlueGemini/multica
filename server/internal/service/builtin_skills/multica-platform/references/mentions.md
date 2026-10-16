@@ -38,6 +38,10 @@ a project reference should never be able to start a run. Use it freely to point
 at a project; everything else in this document is about the four types (plus
 `all`) the parser does recognize.
 
+`[Name](mention://agent-draft/<draft-id>)` is the other render-only form: web
+and desktop show it as the draft's review card. Take it from the `mention`
+field `multica agent draft create` returns (see `references/agents.md`).
+
 ## Step 1 — look up the UUID
 
 A name is not a UUID. Look the UUID up first, from the matching list command:

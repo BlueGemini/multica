@@ -6,6 +6,7 @@ which fields the daemon actually reads at claim time. This is not a
 parameter manual.
 
 - [Quick start (read-only inspection)](#quick-start-read-only-inspection)
+- [Proposing an agent: drafts](#proposing-an-agent-drafts)
 - [Core model](#core-model)
 - [CLI / API entry points](#cli--api-entry-points)
 - [Copying an agent](#copying-an-agent)
@@ -34,6 +35,53 @@ binds it again. Unbound is orthogonal to archived.
 `agent get` returns the persisted agent including `runtime_id`, `model`,
 `thinking_level`, `service_tier`, `custom_args`, `has_custom_env`,
 `custom_env_key_count`, and `skills`. It never returns plaintext `custom_env`.
+
+## Proposing an agent: drafts
+
+When a member asks you — in a chat or on an issue — to create an agent, write a
+**draft**, not the agent. A draft is a pending configuration that only that
+member can turn into an agent. In chat messages and comments it renders as a
+card where they review it, edit any field, and create it.
+
+```bash
+multica skill list --output json                 # skills the new agent can use
+multica runtime list --output json               # where the new agent can run
+multica agent draft create --name <name> \
+  --description "<one-sentence catalog summary>" \
+  --instructions-file ./instructions.md \
+  --skill-ids <skill-id>,<skill-id> --output json
+```
+
+The response carries `id` and `mention`. Put the `mention` value — the whole
+Markdown link, `[Name](mention://agent-draft/<id>)` — on its own line in your
+reply. That link is what renders the card; without it the member has nothing to
+confirm. It is inert: it enqueues no run and notifies nobody.
+
+Contracts:
+
+- **Only the member creates.** `POST /api/agents` with `draft_id` rejects task
+  tokens with 403. Do not call `agent create` to finish a draft yourself, and
+  do not claim the agent exists until the draft's `status` is `created`.
+- **The owner is the member your task runs for.** Every workspace member can
+  read a draft; only its owner (or an agent working for them) can change or
+  discard it.
+- **`draft set <draft-id>` changes only the flags you pass.** The member may
+  have edited the card since your last write, so run `draft get <draft-id>`
+  first and build on what it returns rather than re-sending every field.
+- **Fields mean what they mean on create** (see Core model below). Access is
+  `--access private|workspace|members` with `--member-ids` for `members`;
+  omitted means private. `--runtime-id` is the NEW agent's runtime, not yours;
+  a private runtime is usable only by its owner, so when unsure leave it unset
+  and the card selects the member's first online runtime.
+- **A draft never holds secrets.** It has no env, MCP or runtime-config fields.
+  Name what the member must add after creating (for example, which environment
+  variables) in your reply instead.
+- **Work that needs the agent waits for it.** Binding more skills, MCP servers,
+  autopilots or squad membership happens after `status` is `created`;
+  `created_agent_id` is then the new agent's id.
+
+`multica agent draft list` shows the member's pending drafts and
+`multica agent draft discard <draft-id>` closes one.
 
 ## Core model
 
@@ -344,11 +392,15 @@ capability belongs in a bound skill, not pasted into `instructions`.
 
 ## Side effects needing approval
 
-Read-only (safe): `agent get`, `agent skills list`, `agent env get`.
+Read-only (safe): `agent get`, `agent skills list`, `agent env get`,
+`agent draft get`, `agent draft list`.
 
 State-changing (require an explicit instruction — do not run speculatively):
 
-- `multica agent create` — creates a new agent.
+- `multica agent draft create` / `set` / `discard` — write a proposal the
+  member still has to confirm. This is the default answer to "create an agent".
+- `multica agent create` — creates a new agent immediately, with no
+  confirmation step.
 - `multica agent copy` — creates a new agent (a fork of an existing one); the
   source is left untouched.
 - `multica agent skills add` / `set` — mutate bindings (`set` is destructive:
