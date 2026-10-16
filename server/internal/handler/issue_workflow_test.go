@@ -7,9 +7,11 @@ import (
 	"strings"
 	"testing"
 	"time"
+	"unicode/utf8"
 
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/multica-ai/multica/server/internal/featureflags"
+	"github.com/multica-ai/multica/server/internal/issueworkflow"
 	"github.com/multica-ai/multica/server/internal/service"
 	"github.com/multica-ai/multica/server/internal/testutil"
 	"github.com/multica-ai/multica/server/internal/util"
@@ -514,6 +516,69 @@ func TestMoveIntoWorkflowProjectKeepsEquivalentStatusWithoutHandoff(t *testing.T
 	}
 	if assigneeType != "" || taskCountFor(t, issueID, agentID) != 0 {
 		t.Fatal("moving an issue into a project must not hand it off")
+	}
+
+	// A move confirmed in the UI enters the column it lands on.
+	entering := dbfx.Issue(t, "entering", testutil.Cols{"status": "in_progress"})
+	var preview WorkflowHandoffPreviewResponse
+	req := withURLParam(newRequest("GET", "/api/issues/"+entering+"/workflow-handoff?project_id="+projectID, nil), "id", entering)
+	testutil.Call(t, testHandler.PreviewWorkflowHandoff, req).Want(http.StatusOK).JSON(&preview)
+	if !preview.Handoff || preview.ToStatus != "in_review" || preview.HandlerID != agentID {
+		t.Fatalf("move preview = %+v, want a handoff to in_review's agent", preview)
+	}
+	updateIssueForTest(t, entering, map[string]any{"project_id": projectID, "enter_workflow_step": true}).Want(http.StatusOK)
+	status, assigneeType, assigneeID := issueStatusAndAssignee(t, entering)
+	if status != "in_review" || assigneeType != "agent" || assigneeID != agentID || taskCountFor(t, entering, agentID) != 1 {
+		t.Fatalf("entering move = %s %s/%s, want in_review handed to the agent with one run", status, assigneeType, assigneeID)
+	}
+}
+
+// Saving a shared workflow's handoff for one project copies the workflow for
+// that project; the other projects keep the original.
+func TestWorkflowHandoffCopyForProject(t *testing.T) {
+	seedTestCatalog(t)
+	agentID := seededReadyAgentID(t)
+	withFeatureFlag(t, testHandler, featureflags.ProjectWorkflowsV1, true)
+	wf := createTestWorkflow(t, "Shared "+workflowTestSuffix(), "in_progress")
+	mine := createWorkflowTestProject(t, "Workflow copy mine")
+	theirs := createWorkflowTestProject(t, "Workflow copy theirs")
+	elsewhere := createWorkflowTestProject(t, "Workflow copy elsewhere")
+	setProjectWorkflow(t, mine, map[string]any{"workflow_id": wf.ID}).Want(http.StatusOK)
+	setProjectWorkflow(t, theirs, map[string]any{"workflow_id": wf.ID}).Want(http.StatusOK)
+
+	body := handToAgent(agentID, "Only here")
+	body["copy_for_project_id"] = elsewhere
+	setWorkflowHandoff(t, wf.ID, "in_progress", body).Want(http.StatusConflict)
+
+	body["copy_for_project_id"] = mine
+	var copied IssueWorkflowResponse
+	setWorkflowHandoff(t, wf.ID, "in_progress", body).Want(http.StatusCreated).JSON(&copied)
+	if copied.ID == wf.ID || !strings.HasPrefix(copied.Name, wf.Name+" (") || len(copied.ProjectIDs) != 1 || copied.ProjectIDs[0] != mine {
+		t.Fatalf("copy = %+v, want a new workflow used only by the project", copied)
+	}
+	handlerOf := func(id string) string {
+		var steps string
+		dbfx.QueryRow(t, `SELECT steps::text FROM issue_workflow WHERE id = $1`, id).Scan(&steps)
+		return steps
+	}
+	if !strings.Contains(handlerOf(copied.ID), agentID) || strings.Contains(handlerOf(wf.ID), agentID) {
+		t.Fatal("the handoff must land on the copy only")
+	}
+	var theirsWorkflow string
+	dbfx.QueryRow(t, `SELECT workflow_id::text FROM project WHERE id = $1`, theirs).Scan(&theirsWorkflow)
+	if theirsWorkflow != wf.ID {
+		t.Fatalf("the other project moved to %s", theirsWorkflow)
+	}
+}
+
+func TestProjectCopyName(t *testing.T) {
+	taken := map[string]bool{"delivery (payments)": true}
+	if got := projectCopyName("Delivery", "Payments", taken); got != "Delivery (Payments 2)" {
+		t.Fatalf("name = %q", got)
+	}
+	long := strings.Repeat("x", 70)
+	if got := projectCopyName(long, "P", nil); utf8.RuneCountInString(got) > issueworkflow.MaxNameRunes || !strings.HasSuffix(got, " (P)") {
+		t.Fatalf("long name = %q", got)
 	}
 }
 

@@ -24,7 +24,8 @@ import (
 //   - entering a column the project hands off, through an ordinary status
 //     change of an issue that stays in its project, assigns the issue to that
 //     handler and starts its run with the step's instructions. A write that
-//     sets the assignee itself keeps its explicit choice.
+//     sets the assignee itself keeps its explicit choice. A project move
+//     enters the column it lands on only when the caller asks for it.
 //
 // Handoffs reuse assignment wholesale: the resolved handler goes through the
 // same permission gate as a hand-picked assignee, and the run starts through
@@ -40,10 +41,11 @@ type workflowHandoff struct {
 // applyIssueWorkflow enforces prev's (possibly new) project workflow on one
 // prospective update and may rewrite params: the status of an issue moving
 // into the project, and the assignee when the write enters a handoff step.
+// enterOnMove makes a project move enter the step the issue lands on.
 // run is the calling agent's run on this issue (nil for members): it may only
 // move the issue from the step it works on. It returns the handoff that write
 // triggers, or nil.
-func (h *Handler) applyIssueWorkflow(ctx context.Context, prev db.Issue, params *db.UpdateIssueParams, statusExplicit, assigneeTouched bool, run *db.AgentTaskQueue) (*workflowHandoff, error) {
+func (h *Handler) applyIssueWorkflow(ctx context.Context, prev db.Issue, params *db.UpdateIssueParams, statusExplicit, assigneeTouched, enterOnMove bool, run *db.AgentTaskQueue) (*workflowHandoff, error) {
 	def, project, err := issueworkflow.ForProject(ctx, h.Queries, prev.WorkspaceID, params.ProjectID)
 	if err != nil || def == nil {
 		return nil, err
@@ -66,13 +68,24 @@ func (h *Handler) applyIssueWorkflow(ctx context.Context, prev db.Issue, params 
 		statusExplicit && params.Status.Valid && params.Status.String != prev.Status {
 		return nil, h.stepMovedError(ctx, prev, run.WorkflowStep.String)
 	}
-	// A project move is administrative, and re-selecting the current status
-	// is a no-op: neither hands the issue off.
-	if projectMoving || !statusExplicit || assigneeTouched || prev.TriageState.Valid ||
-		!params.Status.Valid || params.Status.String == prev.Status {
+	if assigneeTouched || prev.TriageState.Valid {
 		return nil, nil
 	}
-	step, ok := def.Step(params.Status.String)
+	entering := ""
+	switch {
+	case projectMoving && enterOnMove:
+		entering = prev.Status
+		if params.Status.Valid {
+			entering = params.Status.String
+		}
+	// A project move is administrative unless the caller opted in, and
+	// re-selecting the current status is a no-op: neither hands the issue off.
+	case !projectMoving && statusExplicit && params.Status.Valid && params.Status.String != prev.Status:
+		entering = params.Status.String
+	default:
+		return nil, nil
+	}
+	step, ok := def.Step(entering)
 	if !ok || !step.HandsOff() {
 		return nil, nil
 	}

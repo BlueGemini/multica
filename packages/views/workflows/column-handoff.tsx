@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Plus } from "lucide-react";
+import { Plus, Workflow } from "lucide-react";
 import { useWorkspaceId } from "@multica/core/hooks";
 import { statusAcceptsHandoff, workflowStep } from "@multica/core/issue-workflows";
 import { useActorName } from "@multica/core/workspace/hooks";
@@ -10,7 +10,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@multica/ui/components/
 import { ActorAvatar } from "../common/actor-avatar";
 import { useStatusLabel } from "../issues/utils/status-label";
 import { useT } from "../i18n";
-import { WorkflowHandoffForm } from "./handoff-form";
+import { useWorkflowSharing, WorkflowHandoffForm } from "./handoff-form";
 import { useWorkflowPermissions } from "./permissions";
 import { stepHandlerActor, useStepHandlerLabel } from "./step-handler";
 
@@ -35,6 +35,7 @@ export function ColumnHandoff({
   const { getActorName } = useActorName();
   const { isAdmin } = useWorkflowPermissions(project);
   const [open, setOpen] = useState(false);
+  const sharing = useWorkflowSharing(workflow, project.id);
   const step = workflowStep(workflow, status);
   if (!step || !statusAcceptsHandoff(status)) return null;
   const label = handlerLabel(step);
@@ -69,15 +70,20 @@ export function ColumnHandoff({
       <PopoverContent align="end" className="w-[26rem] max-w-[calc(100vw-2rem)] p-4">
         <div className="mb-3 space-y-0.5">
           <p className="text-body font-medium">{t(($) => $.workflows.handoff.title, { status: labelOf(status) })}</p>
-          <p className="text-caption text-muted-foreground">
-            {t(($) => $.workflows.handoff.scope_note, { workflow: workflow.name, count: Math.max(workflow.project_ids.length, 1) })}
+          <p className="flex items-start gap-1.5 text-caption text-muted-foreground">
+            <Workflow aria-hidden className="mt-0.5 size-3 shrink-0" />
+            <span>
+              {sharing.others.length > 0
+                ? t(($) => $.workflows.handoff.scope_line_shared, { workflow: workflow.name, projects: sharing.label })
+                : t(($) => $.workflows.handoff.scope_line, { workflow: workflow.name })}
+            </span>
           </p>
         </div>
         <WorkflowHandoffForm
           workflow={workflow}
           statusKey={status}
           canEdit={isAdmin}
-          projectId={project.id}
+          project={project}
           onSaved={() => setOpen(false)}
         />
       </PopoverContent>

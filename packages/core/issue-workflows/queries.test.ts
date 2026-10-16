@@ -2,6 +2,7 @@
 import { describe, expect, it } from "vitest";
 import type { IssueWorkflow, IssueWorkflowStep } from "../types";
 import {
+  projectMoveMayHandOff,
   resolveProjectWorkflow,
   stepHandsOff,
   statusAcceptsHandoff,
@@ -85,5 +86,26 @@ describe("workflow helpers (MUL-7420)", () => {
     expect(workflowNextStatus(own, "drafting")).toBe("done");
     expect(workflowNextStatus(content, "cancelled")).toBe("");
     expect(workflowNextStatus(content, "missing")).toBe("");
+  });
+});
+
+describe("projectMoveMayHandOff", () => {
+  const handsOffDrafting: IssueWorkflow = {
+    ...content,
+    steps: content.steps.map((s) => (s.status_key === "drafting" ? { ...s, handler: { type: "agent", id: "a-1" } } : s)),
+  };
+
+  it("checks the column the issue keeps", () => {
+    expect(projectMoveMayHandOff(handsOffDrafting, "drafting")).toBe(true);
+    expect(projectMoveMayHandOff(handsOffDrafting, "todo")).toBe(false);
+  });
+
+  it("asks the server when the issue lands on another column", () => {
+    expect(projectMoveMayHandOff(handsOffDrafting, "in_progress")).toBe(true);
+    expect(projectMoveMayHandOff(content, "in_progress")).toBe(false);
+  });
+
+  it("never asks without a workflow", () => {
+    expect(projectMoveMayHandOff(null, "todo")).toBe(false);
   });
 });

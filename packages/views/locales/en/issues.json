@@ -1501,7 +1501,7 @@
       "name_placeholder": "e.g. Delivery",
       "description": "Description",
       "steps": "Steps",
-      "add_step": "Add column",
+      "add_step": "Add step",
       "start": "Start",
       "set_start": "Make starting step",
       "move_up": "Move up",
@@ -1551,7 +1551,13 @@
       "default_note": "Default is the board of every project that doesn’t pick a workflow, and of views outside a project.",
       "new_badge": "New",
       "columns": "Columns",
-      "include_status": "Include {{status}}"
+      "include_status": "Include {{status}}",
+      "step_off_short": "Off",
+      "step_off": "Switched off: this workflow leaves the status out. Turn it on in the step list to use it.",
+      "status_new_hint": "A new status. It is added to the status library when you save.",
+      "no_other_status": "Every status is already a step.",
+      "no_handoff_step": "This step doesn't hand off: issues entering it keep their assignee and start no run.",
+      "new_step_handoff": "Save the workflow first; the new status can hand off after that."
     },
     "mapping": {
       "title": "Move issues into {{name}}",
@@ -1616,7 +1622,9 @@
       "hours_one": "{{count}} hour",
       "hours_other": "{{count}} hours",
       "under_minute": "under a minute",
-      "error": "Couldn’t move the issue"
+      "error": "Couldn’t move the issue",
+      "project_title": "Move {{issue}} to {{project}}?",
+      "project_confirm": "Move to {{project}}"
     },
     "board": {
       "drop_hint_run": "Drop to hand to {{name}} and start the run",
@@ -1648,8 +1656,6 @@
       "then": "When done, moves to {{status}}",
       "then_none": "When done, the handler picks the next status",
       "more": "More options",
-      "scope_note_one": "Part of the {{workflow}} workflow: applies to the {{count}} project using it.",
-      "scope_note_other": "Part of the {{workflow}} workflow: applies to all {{count}} projects using it.",
       "mode_none": "No handoff",
       "mode_none_hint": "The assignee stays the same",
       "mode_agent": "Hand to an agent",
@@ -1661,7 +1667,16 @@
       "pick_member": "Choose a member",
       "search_agents": "Search agents",
       "search_members": "Search members",
-      "instructions": "What this step does"
+      "instructions": "What this step does",
+      "scope_line": "Part of the {{workflow}} workflow",
+      "scope_line_shared": "Part of {{workflow}}, also used by {{projects}}",
+      "scope_more": "{{names}} and {{count}} more",
+      "scope_question": "Where should this change apply?",
+      "scope_all": "All {{count}} projects using {{workflow}}",
+      "scope_all_hint": "{{projects}} all use the new handoff",
+      "scope_project": "Only {{project}}",
+      "scope_project_hint": "Copies the workflow as “{{copy}}” for {{project}}; other projects stay as they are",
+      "saved_copy": "Saved to “{{workflow}}”, used only by {{project}}"
     },
     "columns": {
       "new_status": "New status…",

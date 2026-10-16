@@ -84,6 +84,11 @@ export interface UpdateIssueRequest {
    *  also stop the active runs of the agent it was taken from (MUL-7420).
    *  Control field — strip from optimistic cache patches. */
   stop_previous_assignee_runs?: boolean;
+  /** With a project move: enter the destination workflow's column the issue
+   *  lands on, handing it off like a status change (MUL-7420). Without it a
+   *  project move is administrative. Control field — strip from optimistic
+   *  cache patches. */
+  enter_workflow_step?: boolean;
   /** Marks this issue as a duplicate of another issue (MUL-7349). The server
    *  also sets status to cancelled; any later status change away from
    *  cancelled removes the mark. Write-only — read it back through

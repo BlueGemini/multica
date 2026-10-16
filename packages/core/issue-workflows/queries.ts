@@ -14,18 +14,19 @@ import type { IssueWorkflow, IssueWorkflowStep, Project } from "../types";
 export const issueWorkflowKeys = {
   all: (wsId: string) => ["issue-workflows", wsId] as const,
   list: (wsId: string) => [...issueWorkflowKeys.all(wsId), "list"] as const,
-  handoffPreview: (wsId: string, issueId: string, status: string) =>
-    [...issueWorkflowKeys.all(wsId), "handoff-preview", issueId, status] as const,
+  handoffPreview: (wsId: string, issueId: string, status: string, projectId = "") =>
+    [...issueWorkflowKeys.all(wsId), "handoff-preview", issueId, status, projectId] as const,
 };
 
 /**
- * What moving an issue to `status` would do. Short-lived: the answer depends
- * on the issue's assignee and runs, which change under it.
+ * What moving an issue to `status` — or into project `projectId` — would do.
+ * Short-lived: the answer depends on the issue's assignee and runs, which
+ * change under it.
  */
-export function workflowHandoffPreviewOptions(wsId: string, issueId: string, status: string) {
+export function workflowHandoffPreviewOptions(wsId: string, issueId: string, status: string, projectId?: string) {
   return queryOptions({
-    queryKey: issueWorkflowKeys.handoffPreview(wsId, issueId, status),
-    queryFn: () => api.previewWorkflowHandoff(issueId, status),
+    queryKey: issueWorkflowKeys.handoffPreview(wsId, issueId, status, projectId),
+    queryFn: () => api.previewWorkflowHandoff(issueId, status, projectId),
     staleTime: 0,
     gcTime: 30_000,
   });
@@ -127,6 +128,18 @@ export function workflowAllowsStatus(
 ): boolean {
   if (!workflow || workflow.is_default) return true;
   return workflow.steps.some((s) => s.status_key === statusKey);
+}
+
+/**
+ * Whether moving an issue on `statusKey` into a project using `workflow` may
+ * hand it off, when the move enters the column it lands on: the column it
+ * keeps hands off, or it lands on another column and some column does. The
+ * server preview has the final word.
+ */
+export function projectMoveMayHandOff(workflow: IssueWorkflow | null | undefined, statusKey: string): boolean {
+  if (!workflow) return false;
+  if (workflowAllowsStatus(workflow, statusKey)) return stepHandsOff(workflowStep(workflow, statusKey));
+  return workflow.steps.some(stepHandsOff);
 }
 
 /** Steps whose entry reassigns the issue. */

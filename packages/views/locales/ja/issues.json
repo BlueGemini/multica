@@ -1449,7 +1449,7 @@
       "name_placeholder": "例：開発フロー",
       "description": "説明",
       "steps": "ステップ",
-      "add_step": "列を追加",
+      "add_step": "ステップを追加",
       "start": "開始",
       "set_start": "開始ステップにする",
       "move_up": "上へ移動",
@@ -1498,7 +1498,13 @@
       "default_note": "Default は、ワークフローを選んでいないプロジェクトと、プロジェクト外のビューで使うボードです。",
       "new_badge": "新規",
       "columns": "列",
-      "include_status": "{{status}} を含める"
+      "include_status": "{{status}} を含める",
+      "step_off_short": "オフ",
+      "step_off": "オフ：このワークフローはこのステータスを使いません。左のリストでオンにすると使えます。",
+      "status_new_hint": "新しいステータスです。保存時にステータスライブラリに追加されます。",
+      "no_other_status": "すべてのステータスがすでにステップです。",
+      "no_handoff_step": "このステップは引き継ぎません。入っても担当者は変わらず、実行も始まりません。",
+      "new_step_handoff": "先にワークフローを保存してください。保存後に新しいステータスの引き継ぎを設定できます。"
     },
     "mapping": {
       "title": "タスクを「{{name}}」に移動",
@@ -1554,7 +1560,9 @@
       "minutes_other": "{{count}} 分",
       "hours_other": "{{count}} 時間",
       "under_minute": "1 分未満",
-      "error": "タスクを移動できませんでした"
+      "error": "タスクを移動できませんでした",
+      "project_title": "{{issue}} を「{{project}}」に移動しますか？",
+      "project_confirm": "{{project}} に移動"
     },
     "board": {
       "drop_hint_run": "ドロップすると {{name}} に引き継いで実行を開始",
@@ -1586,7 +1594,6 @@
       "then": "完了後は「{{status}}」へ",
       "then_none": "完了後の行き先は担当者が決めます",
       "more": "その他のオプション",
-      "scope_note_other": "「{{workflow}}」ワークフローの一部です。使用している {{count}} 件のプロジェクトすべてに適用されます。",
       "mode_none": "引き継がない",
       "mode_none_hint": "担当者はそのまま",
       "mode_agent": "エージェントに渡す",
@@ -1598,7 +1605,16 @@
       "pick_member": "メンバーを選択",
       "search_agents": "エージェントを検索",
       "search_members": "メンバーを検索",
-      "instructions": "このステップでやること"
+      "instructions": "このステップでやること",
+      "scope_line": "「{{workflow}}」ワークフローの一部",
+      "scope_line_shared": "「{{workflow}}」の一部。{{projects}} でも使用中",
+      "scope_more": "{{names}} ほか {{count}} 件",
+      "scope_question": "この変更をどこに適用しますか？",
+      "scope_all": "「{{workflow}}」を使う {{count}} 件のプロジェクト",
+      "scope_all_hint": "{{projects}} すべてに新しい引き継ぎを適用",
+      "scope_project": "{{project}} のみ",
+      "scope_project_hint": "「{{copy}}」としてコピーし {{project}} で使用。他のプロジェクトは変わりません",
+      "saved_copy": "「{{workflow}}」に保存しました（{{project}} のみ使用）"
     },
     "columns": {
       "new_status": "新しいステータス…",

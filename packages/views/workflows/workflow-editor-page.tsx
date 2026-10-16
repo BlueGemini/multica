@@ -19,7 +19,17 @@ import {
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { ChevronRight, Copy, GripVertical, MoreHorizontal, Plus, Trash2, X } from "lucide-react";
+import {
+  ChevronDown,
+  ChevronRight,
+  Copy,
+  CornerDownRight,
+  GripVertical,
+  MoreHorizontal,
+  Plus,
+  Trash2,
+  UserRound,
+} from "lucide-react";
 import { toast } from "sonner";
 import { ApiError, clientErrorMessage } from "@multica/core/api";
 import { useWorkspaceId } from "@multica/core/hooks";
@@ -34,7 +44,9 @@ import {
   useIssueWorkflows,
   useUpdateIssueWorkflow,
   workflowMiddleKeys,
+  workflowNextStatus,
 } from "@multica/core/issue-workflows";
+import { useActorName } from "@multica/core/workspace/hooks";
 import { projectListOptions } from "@multica/core/projects/queries";
 import type {
   IssueWorkflow,
@@ -53,7 +65,6 @@ import {
 import { Input } from "@multica/ui/components/ui/input";
 import { Spinner } from "@multica/ui/components/ui/spinner";
 import { Switch } from "@multica/ui/components/ui/switch";
-import { Textarea } from "@multica/ui/components/ui/textarea";
 import { cn } from "@multica/ui/lib/utils";
 import { StatusIcon } from "../issues/components/status-icon";
 import { useStatusLabel } from "../issues/utils/status-label";
@@ -221,7 +232,8 @@ export function WorkflowEditorPage({
   const targetKeys = columns.flatMap((c) => ("status_key" in c ? [c.status_key] : []));
   // Next and back can only name statuses that exist before the save.
   const flow = { steps: targetKeys.map((status_key) => ({ status_key, ...NO_HANDOFF })) };
-  const selectedColumn = columns.find((c) => c.id === selected && "status_key" in c && statusAcceptsHandoff(c.status_key));
+  const selectedId = selected ?? "todo";
+  const selectedColumn = columns.find((c) => c.id === selectedId && "status_key" in c && statusAcceptsHandoff(c.status_key));
   const selectedStep: IssueWorkflowStep | null =
     selectedColumn && "status_key" in selectedColumn
       ? { status_key: selectedColumn.status_key, ...(draft.handoffs[selectedColumn.id] ?? NO_HANDOFF) }
@@ -308,97 +320,125 @@ export function WorkflowEditorPage({
   }
 
   const title = draft.name.trim() || t(($) => $.workflows.editor.create_title);
-  const fixedRow = (column: DraftColumn, off = false) => {
-    if (!("status_key" in column)) return null;
-    const key = column.status_key;
+  const middleIds = new Set(ids);
+  const isOff = (column: DraftColumn) =>
+    "status_key" in column &&
+    ((column.status_key === "backlog" && !draft.backlog) || (column.status_key === "blocked" && !draft.blocked));
+  const listed: DraftColumn[] = [
+    { id: "backlog", status_key: "backlog" },
+    { id: "todo", status_key: "todo" },
+    ...draft.middle,
+    { id: "blocked", status_key: "blocked" },
+    { id: "done", status_key: "done" },
+    { id: "cancelled", status_key: "cancelled" },
+  ];
+  const current = listed.find((c) => c.id === selectedId) ?? listed[1]!;
+  const nextOf = (key: string, h: Handoff | undefined) => h?.next_status_key ?? workflowNextStatus(flow, key);
+  const card = (column: DraftColumn) => {
+    const key = "status_key" in column ? column.status_key : null;
     const optional = key === "backlog" || key === "blocked";
+    const off = isOff(column);
+    const props = {
+      column,
+      off,
+      start: key === "todo",
+      handoff: off ? undefined : draft.handoffs[column.id],
+      next: key && !off ? nextOf(key, draft.handoffs[column.id]) : undefined,
+      selected: current.id === column.id,
+      onSelect: () => setSelected(column.id),
+      toggle: optional
+        ? { checked: !off, disabled: !canEdit, onChange: (on: boolean) => setDraft((d) => ({ ...d, [key]: on })) }
+        : undefined,
+    };
     return (
       <li key={column.id}>
-        <ColumnRowView
-          column={column}
-          muted={off}
-          handoff={off ? undefined : draft.handoffs[column.id]}
-          selected={!off && selected === column.id}
-          onSelect={!off && statusAcceptsHandoff(key) ? () => setSelected(column.id) : undefined}
-          toggle={
-            optional
-              ? {
-                  checked: !off,
-                  disabled: !canEdit,
-                  onChange: (on) => setDraft((d) => ({ ...d, [key]: on })),
-                }
-              : undefined
-          }
-        />
+        {middleIds.has(column.id) ? <SortableStepCard {...props} draggable={canEdit} /> : <StepCard {...props} />}
       </li>
     );
+  };
+  const replaceStatus = (column: DraftColumn, key: string) => {
+    setDraft((d) => {
+      const { [column.id]: moved, ...rest } = d.handoffs;
+      return {
+        ...d,
+        middle: d.middle.map((c) => (c.id === column.id ? { id: key, status_key: key } : c)),
+        handoffs: moved ? { ...rest, [key]: moved } : rest,
+      };
+    });
+    setSelected(key);
+  };
+  const removeColumn = (column: DraftColumn) => {
+    setDraft((d) => ({ ...d, middle: d.middle.filter((c) => c.id !== column.id) }));
+    setSelected("todo");
   };
 
   return (
     <div className="space-y-6">
-      <Breadcrumb onBack={onBack} current={title} />
-      <div className="flex items-start gap-3">
-        <div className="min-w-0 flex-1 space-y-1">
-          <h2 className="truncate text-title-lg font-semibold tracking-tight">{title}</h2>
-          <p className="text-body text-muted-foreground">
-            {isDefault
-              ? t(($) => $.workflows.editor.default_note)
-              : usedBy.length > 0
-                ? t(($) => $.workflows.editor.used_by_note, {
-                    count: usedBy.length,
-                    names: usedBy.map((p) => p.title).join(t(($) => $.workflows.list_separator)),
-                  })
-                : t(($) => $.workflows.editor.unused_note)}
-          </p>
-        </div>
-        {canEdit && (
-          <div className="flex shrink-0 items-center gap-2">
-            {dirty && workflowId && (
-              <span className="text-caption text-muted-foreground">{t(($) => $.workflows.editor.unsaved)}</span>
-            )}
-            {workflowId && (
-              <Button variant="outline" className="gap-1.5" onClick={() => onOpen({ duplicateOf: workflowId })}>
-                <Copy className="size-3.5" />
-                {t(($) => $.workflows.editor.duplicate)}
-              </Button>
-            )}
-            <Button onClick={() => void save()} disabled={!canSave} aria-busy={pending}>
-              {pending && <Spinner className="size-3.5" />}
-              {workflowId ? t(($) => $.workflows.editor.save) : t(($) => $.workflows.editor.create)}
-            </Button>
-            {workflowId && !isDefault && (
-              <DropdownMenu>
-                <DropdownMenuTrigger
-                  render={
-                    <Button variant="ghost" size="icon" aria-label={t(($) => $.workflows.editor.more)}>
-                      <MoreHorizontal className="size-4" />
-                    </Button>
-                  }
-                />
-                <DropdownMenuContent align="end" className="w-56">
-                  <DropdownMenuItem
-                    variant="destructive"
-                    disabled={usedBy.length > 0 || deleteWorkflow.isPending}
-                    onClick={() => void remove()}
-                  >
-                    <Trash2 className="size-3.5" />
-                    {t(($) => $.workflows.settings.delete)}
-                  </DropdownMenuItem>
-                  {usedBy.length > 0 && (
-                    <p className="px-2 pb-1.5 text-caption text-muted-foreground">
-                      {t(($) => $.workflows.settings.delete_in_use)}
-                    </p>
-                  )}
-                </DropdownMenuContent>
-              </DropdownMenu>
-            )}
+      <div className="space-y-3">
+        <Breadcrumb onBack={onBack} current={title} />
+        <div className="flex items-start gap-3">
+          <div className="min-w-0 flex-1 space-y-1">
+            <h2 className="truncate text-title-lg font-semibold tracking-tight">{title}</h2>
+            <p className="text-body text-muted-foreground">
+              {isDefault
+                ? t(($) => $.workflows.editor.default_note)
+                : usedBy.length > 0
+                  ? t(($) => $.workflows.editor.used_by_note, {
+                      count: usedBy.length,
+                      names: usedBy.map((p) => p.title).join(t(($) => $.workflows.list_separator)),
+                    })
+                  : t(($) => $.workflows.editor.unused_note)}
+            </p>
           </div>
-        )}
+          {canEdit && (
+            <div className="flex shrink-0 items-center gap-2">
+              {dirty && workflowId && (
+                <span className="text-caption text-muted-foreground">{t(($) => $.workflows.editor.unsaved)}</span>
+              )}
+              {workflowId && (
+                <Button variant="outline" className="gap-1.5" onClick={() => onOpen({ duplicateOf: workflowId })}>
+                  <Copy className="size-3.5" />
+                  {t(($) => $.workflows.editor.duplicate)}
+                </Button>
+              )}
+              <Button onClick={() => void save()} disabled={!canSave} aria-busy={pending}>
+                {pending && <Spinner className="size-3.5" />}
+                {workflowId ? t(($) => $.workflows.editor.save) : t(($) => $.workflows.editor.create)}
+              </Button>
+              {workflowId && !isDefault && (
+                <DropdownMenu>
+                  <DropdownMenuTrigger
+                    render={
+                      <Button variant="ghost" size="icon" aria-label={t(($) => $.workflows.editor.more)}>
+                        <MoreHorizontal className="size-4" />
+                      </Button>
+                    }
+                  />
+                  <DropdownMenuContent align="end" className="w-56">
+                    <DropdownMenuItem
+                      variant="destructive"
+                      disabled={usedBy.length > 0 || deleteWorkflow.isPending}
+                      onClick={() => void remove()}
+                    >
+                      <Trash2 className="size-3.5" />
+                      {t(($) => $.workflows.settings.delete)}
+                    </DropdownMenuItem>
+                    {usedBy.length > 0 && (
+                      <p className="px-2 pb-1.5 text-caption text-muted-foreground">
+                        {t(($) => $.workflows.settings.delete_in_use)}
+                      </p>
+                    )}
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              )}
+            </div>
+          )}
+        </div>
       </div>
 
-      <div className="grid max-w-xl gap-4">
+      <div className="grid gap-4 sm:grid-cols-[minmax(0,18rem)_minmax(0,1fr)]">
         <div className="space-y-1.5">
-          <label htmlFor="workflow-name" className="block text-caption font-medium">
+          <label htmlFor="workflow-name" className="block text-caption font-medium text-muted-foreground">
             {t(($) => $.workflows.editor.name)}
           </label>
           <Input
@@ -411,12 +451,11 @@ export function WorkflowEditorPage({
           />
         </div>
         <div className="space-y-1.5">
-          <label htmlFor="workflow-description" className="block text-caption font-medium">
+          <label htmlFor="workflow-description" className="block text-caption font-medium text-muted-foreground">
             {t(($) => $.workflows.editor.description)}
           </label>
-          <Textarea
+          <Input
             id="workflow-description"
-            rows={2}
             value={draft.description}
             maxLength={256}
             readOnly={!canEdit}
@@ -426,40 +465,24 @@ export function WorkflowEditorPage({
         </div>
       </div>
 
-      <div className="grid items-start gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,0.8fr)]">
+      <div className="grid items-start gap-5 lg:grid-cols-[minmax(0,20rem)_minmax(0,1fr)]">
         <div className="min-w-0">
-          <p className="mb-2 text-caption font-medium">{t(($) => $.workflows.editor.columns)}</p>
-          <ol className="space-y-1.5">
-            {fixedRow({ id: "backlog", status_key: "backlog" }, !draft.backlog)}
-            {fixedRow({ id: "todo", status_key: "todo" })}
+          <ol className="space-y-2">
+            {card(listed[0]!)}
+            {card(listed[1]!)}
             <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={onDragEnd}>
               <SortableContext items={ids} strategy={verticalListSortingStrategy}>
-                {draft.middle.map((column) => (
-                  <li key={column.id}>
-                    <SortableColumnRow
-                      column={column}
-                      draggable={canEdit}
-                      handoff={draft.handoffs[column.id]}
-                      selected={selected === column.id}
-                      onSelect={"status_key" in column ? () => setSelected(column.id) : undefined}
-                      onRemove={
-                        canEdit ? () => setDraft((d) => ({ ...d, middle: d.middle.filter((c) => c.id !== column.id) })) : undefined
-                      }
-                    />
-                  </li>
-                ))}
+                {draft.middle.map(card)}
               </SortableContext>
             </DndContext>
-            {fixedRow({ id: "blocked", status_key: "blocked" }, !draft.blocked)}
-            {fixedRow({ id: "done", status_key: "done" })}
-            {fixedRow({ id: "cancelled", status_key: "cancelled" })}
+            {listed.slice(-3).map(card)}
           </ol>
           {canEdit && (
             <div className="mt-3 flex flex-wrap items-center gap-2">
               <DropdownMenu>
                 <DropdownMenuTrigger
                   render={
-                    <Button variant="outline" className="gap-1.5">
+                    <Button variant="outline" size="sm" className="gap-1.5">
                       <Plus className="size-3.5" />
                       {t(($) => $.workflows.editor.add_step)}
                     </Button>
@@ -469,7 +492,10 @@ export function WorkflowEditorPage({
                   {addable.map((key) => (
                     <DropdownMenuItem
                       key={key}
-                      onClick={() => setDraft((d) => ({ ...d, middle: [...d.middle, { id: key, status_key: key }] }))}
+                      onClick={() => {
+                        setDraft((d) => ({ ...d, middle: [...d.middle, { id: key, status_key: key }] }));
+                        setSelected(key);
+                      }}
                     >
                       <StatusIcon
                         status={key}
@@ -494,7 +520,7 @@ export function WorkflowEditorPage({
                     autoFocus
                     maxLength={64}
                     value={newName}
-                    className="h-8 w-48"
+                    className="h-8 w-44"
                     placeholder={t(($) => $.workflows.columns.name_placeholder)}
                     onChange={(e) => setNewName(e.target.value)}
                     onKeyDown={(e) => {
@@ -509,40 +535,29 @@ export function WorkflowEditorPage({
               )}
             </div>
           )}
-          <p className="mt-2.5 text-caption text-muted-foreground">{t(($) => $.workflows.editor.steps_hint)}</p>
+          <p className="mt-2.5 text-caption leading-5 text-muted-foreground">{t(($) => $.workflows.editor.steps_hint)}</p>
         </div>
 
-        <div className="min-w-0 rounded-xl border border-surface-border bg-card p-5 lg:sticky lg:top-4">
-          {selectedStep && selectedColumn ? (
-            <div className="space-y-4">
-              <div className="space-y-0.5">
-                <p className="text-body font-medium">
-                  {t(($) => $.workflows.handoff.title, { status: labelOf(selectedStep.status_key) })}
-                </p>
-                {!isDefault && saved && saved.project_ids.length > 1 && (
-                  <p className="text-caption text-muted-foreground">
-                    {t(($) => $.workflows.handoff.scope_note, { workflow: draft.name, count: saved.project_ids.length })}
-                  </p>
-                )}
-              </div>
-              <HandoffFields
-                key={selectedColumn.id}
-                step={selectedStep}
-                workflow={flow}
-                canEdit={canEdit}
-                onPatch={(patch) => patchHandoff(selectedColumn.id, patch)}
-                onPreview={
-                  saved?.steps.some((s) => s.status_key === selectedStep.status_key) ? () => setPreviewOpen(true) : undefined
-                }
-              />
-              {saved && (
-                <BriefPreviewDialog open={previewOpen} onOpenChange={setPreviewOpen} workflowId={saved.id} step={selectedStep} />
-              )}
-            </div>
-          ) : (
-            <p className="text-caption leading-5 text-muted-foreground">{t(($) => $.workflows.editor.select_step)}</p>
-          )}
-        </div>
+        <StepDetail
+          key={current.id}
+          column={current}
+          off={isOff(current)}
+          handoff={draft.handoffs[current.id]}
+          flow={flow}
+          canEdit={canEdit}
+          statusOptions={middleIds.has(current.id) && "status_key" in current ? addable : null}
+          onReplaceStatus={(key) => replaceStatus(current, key)}
+          onRemove={canEdit && middleIds.has(current.id) ? () => removeColumn(current) : undefined}
+          onPatch={(patch) => patchHandoff(current.id, patch)}
+          onPreview={
+            saved && "status_key" in current && saved.steps.some((s) => s.status_key === current.status_key)
+              ? () => setPreviewOpen(true)
+              : undefined
+          }
+        />
+        {saved && selectedStep && (
+          <BriefPreviewDialog open={previewOpen} onOpenChange={setPreviewOpen} workflowId={saved.id} step={selectedStep} />
+        )}
       </div>
 
       <WorkflowMappingDialog
@@ -582,32 +597,28 @@ function Breadcrumb({ onBack, current }: { onBack: () => void; current: string }
   );
 }
 
-function SortableColumnRow({
-  column,
-  draggable,
-  handoff,
-  selected,
-  onSelect,
-  onRemove,
-}: {
+interface StepCardProps {
   column: DraftColumn;
-  draggable: boolean;
+  /** Backlog or blocked switched off: the workflow leaves the status out. */
+  off: boolean;
+  /** The step new issues start on. */
+  start: boolean;
   handoff: Handoff | undefined;
+  /** Where the handler is told to move the issue next. */
+  next: string | undefined;
   selected: boolean;
-  onSelect?: () => void;
-  onRemove?: () => void;
-}) {
+  onSelect: () => void;
+  toggle?: { checked: boolean; disabled: boolean; onChange: (on: boolean) => void };
+}
+
+function SortableStepCard({ draggable, ...props }: StepCardProps & { draggable: boolean }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
-    id: column.id,
+    id: props.column.id,
     disabled: !draggable,
   });
   return (
-    <ColumnRowView
-      column={column}
-      handoff={handoff}
-      selected={selected}
-      onSelect={onSelect}
-      onRemove={onRemove}
+    <StepCard
+      {...props}
       sortable={{
         ref: setNodeRef,
         style: { transform: CSS.Transform.toString(transform), transition },
@@ -619,27 +630,20 @@ function SortableColumnRow({
 }
 
 /**
- * One column of the editor. Middle columns drag and can be removed; backlog
- * and blocked switch on and off; columns that can hand off open their
- * handoff in the side panel.
+ * One step of the editor's list: its status and what entering it does.
+ * Middle steps drag; backlog and blocked switch on and off.
  */
-function ColumnRowView({
+function StepCard({
   column,
+  off,
+  start,
   handoff,
+  next,
   selected,
-  muted,
   onSelect,
-  onRemove,
   toggle,
   sortable,
-}: {
-  column: DraftColumn;
-  handoff: Handoff | undefined;
-  selected: boolean;
-  muted?: boolean;
-  onSelect?: () => void;
-  onRemove?: () => void;
-  toggle?: { checked: boolean; disabled: boolean; onChange: (on: boolean) => void };
+}: StepCardProps & {
   sortable?: {
     ref: (node: HTMLElement | null) => void;
     style: React.CSSProperties;
@@ -652,6 +656,7 @@ function ColumnRowView({
   const catalog = useIssueStatuses(wsId);
   const labelOf = useStatusLabel(wsId);
   const handlerLabel = useStepHandlerLabel(null);
+  const { getActorName } = useActorName();
   const label = "status_key" in column ? labelOf(column.status_key) : column.new_name;
   const step = handoff && "status_key" in column ? { status_key: column.status_key, ...handoff } : undefined;
   const who = handlerLabel(step);
@@ -662,9 +667,9 @@ function ColumnRowView({
       ref={sortable?.ref}
       style={sortable?.style}
       className={cn(
-        "flex items-center gap-2 rounded-lg border bg-card px-2.5 py-2",
-        selected ? "border-brand ring-1 ring-brand/30" : "border-surface-border",
-        muted && "border-dashed bg-transparent",
+        "flex items-start gap-1 rounded-lg border px-2 py-2.5 transition-colors",
+        selected ? "border-foreground/20 bg-accent" : "border-surface-border bg-card hover:bg-accent/50",
+        off && !selected && "border-dashed bg-transparent",
         sortable?.dragging && "z-10 shadow-[var(--surface-shadow)]",
       )}
     >
@@ -672,59 +677,208 @@ function ColumnRowView({
         <button
           type="button"
           aria-label={t(($) => $.workflows.editor.reorder, { name: label })}
-          className="flex size-5 shrink-0 touch-none items-center justify-center rounded-xs cursor-grab text-muted-foreground active:cursor-grabbing"
+          className="flex h-5 w-4 shrink-0 touch-none items-center justify-center rounded-xs cursor-grab text-muted-foreground active:cursor-grabbing"
           {...sortable.handle}
         >
           <GripVertical className="size-3.5" />
         </button>
       ) : (
-        <span className="size-5 shrink-0" />
+        <span className="h-5 w-4 shrink-0" />
       )}
       <button
         type="button"
-        disabled={!onSelect}
         onClick={onSelect}
-        aria-pressed={onSelect ? selected : undefined}
-        className={cn("flex min-w-0 flex-1 items-center gap-2 text-left disabled:cursor-default", muted && "opacity-50")}
+        aria-pressed={selected}
+        className={cn("min-w-0 flex-1 text-left", off && "opacity-60")}
       >
-        {"status_key" in column ? (
-          <StatusIcon
-            status={column.status_key}
-            category={catalog.categoryOf(column.status_key)}
-            color={catalog.colorOf(column.status_key)}
-            icon={catalog.iconOf(column.status_key)}
-            className="h-4 w-4 shrink-0"
-          />
-        ) : (
-          <Plus aria-hidden className="size-4 shrink-0 text-muted-foreground" />
-        )}
-        <span className="min-w-0 flex-1 truncate text-body font-medium">{label}</span>
-        {!("status_key" in column) && (
-          <span className="shrink-0 rounded-xs bg-muted px-1.5 py-0.5 text-micro text-muted-foreground">
-            {t(($) => $.workflows.editor.new_badge)}
-          </span>
-        )}
-        {who && (
-          <span className="flex min-w-0 max-w-40 items-center gap-1 text-caption text-muted-foreground">
-            {actor && <ActorAvatar actorType={actor.type} actorId={actor.id} size="xs" profileLink={false} />}
-            <span className="truncate">{who}</span>
-          </span>
-        )}
+        <span className="flex h-5 items-center gap-2">
+          {"status_key" in column ? (
+            <StatusIcon
+              status={column.status_key}
+              category={catalog.categoryOf(column.status_key)}
+              color={catalog.colorOf(column.status_key)}
+              icon={catalog.iconOf(column.status_key)}
+              className="h-3.5 w-3.5 shrink-0"
+            />
+          ) : (
+            <Plus aria-hidden className="size-3.5 shrink-0 text-muted-foreground" />
+          )}
+          <span className="min-w-0 truncate text-body font-medium">{label}</span>
+          {start && <Badge>{t(($) => $.workflows.editor.start)}</Badge>}
+          {!("status_key" in column) && <Badge>{t(($) => $.workflows.editor.new_badge)}</Badge>}
+        </span>
+        <span className="mt-1 flex min-w-0 items-center gap-1 text-caption text-muted-foreground">
+          {off ? (
+            <span className="truncate">{t(($) => $.workflows.editor.step_off_short)}</span>
+          ) : who ? (
+            <>
+              <CornerDownRight aria-hidden className="size-3 shrink-0" />
+              <span className="shrink-0">{t(($) => $.workflows.editor.card_hand_to)}</span>
+              {actor && <ActorAvatar actorType={actor.type} actorId={actor.id} size="xs" profileLink={false} />}
+              <span className="min-w-0 truncate text-foreground">{actor ? getActorName(actor.type, actor.id) : who}</span>
+              {handoff?.handler.type === "agent" && next && (
+                <span className="shrink-0 truncate">· {t(($) => $.workflows.editor.card_then, { status: labelOf(next) })}</span>
+              )}
+            </>
+          ) : (
+            <>
+              <UserRound aria-hidden className="size-3 shrink-0" />
+              <span className="truncate">{t(($) => $.workflows.handler.none)}</span>
+            </>
+          )}
+        </span>
       </button>
       {toggle && (
         <Switch
           size="sm"
+          className="mt-0.5"
           checked={toggle.checked}
           disabled={toggle.disabled}
           onCheckedChange={toggle.onChange}
           aria-label={t(($) => $.workflows.editor.include_status, { status: label })}
         />
       )}
-      {onRemove && (
-        <Button variant="ghost" size="icon-sm" aria-label={t(($) => $.workflows.editor.remove)} onClick={onRemove}>
-          <X className="size-3.5" />
-        </Button>
-      )}
+    </div>
+  );
+}
+
+function Badge({ children }: { children: React.ReactNode }) {
+  return (
+    <span className="shrink-0 rounded-xs bg-muted px-1.5 py-0.5 text-micro text-muted-foreground">{children}</span>
+  );
+}
+
+/** The selected step: its status and its handoff. */
+function StepDetail({
+  column,
+  off,
+  handoff,
+  flow,
+  canEdit,
+  statusOptions,
+  onReplaceStatus,
+  onRemove,
+  onPatch,
+  onPreview,
+}: {
+  column: DraftColumn;
+  off: boolean;
+  handoff: Handoff | undefined;
+  flow: Pick<IssueWorkflow, "steps">;
+  canEdit: boolean;
+  /** Statuses a middle step can switch to; null for fixed steps. */
+  statusOptions: string[] | null;
+  onReplaceStatus: (key: string) => void;
+  onRemove?: () => void;
+  onPatch: (patch: Partial<Handoff>) => void;
+  onPreview?: () => void;
+}) {
+  const { t } = useT("issues");
+  const wsId = useWorkspaceId();
+  const catalog = useIssueStatuses(wsId);
+  const labelOf = useStatusLabel(wsId);
+  const key = "status_key" in column ? column.status_key : null;
+  const label = key ? labelOf(key) : "new_name" in column ? column.new_name : "";
+  const icon = (statusKey: string, className = "h-3.5 w-3.5 shrink-0") => (
+    <StatusIcon
+      status={statusKey}
+      category={catalog.categoryOf(statusKey)}
+      color={catalog.colorOf(statusKey)}
+      icon={catalog.iconOf(statusKey)}
+      className={className}
+    />
+  );
+  const statusField = (
+    <span className="flex min-w-0 items-center gap-2">
+      {key ? icon(key) : <Plus aria-hidden className="size-3.5 shrink-0 text-muted-foreground" />}
+      <span className="truncate">{label}</span>
+    </span>
+  );
+
+  return (
+    <section className="min-w-0 rounded-xl border border-surface-border bg-card lg:sticky lg:top-4">
+      <header className="flex items-center gap-2 border-b border-surface-border px-5 py-3.5">
+        {key ? icon(key, "h-4 w-4 shrink-0") : <Plus aria-hidden className="size-4 shrink-0 text-muted-foreground" />}
+        <h3 className="min-w-0 truncate text-body font-semibold">{label}</h3>
+        {key ? (
+          <code className="truncate font-mono text-caption text-muted-foreground">{key}</code>
+        ) : (
+          <Badge>{t(($) => $.workflows.editor.new_badge)}</Badge>
+        )}
+        {onRemove && (
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            className="ml-auto text-muted-foreground"
+            aria-label={t(($) => $.workflows.editor.remove)}
+            onClick={onRemove}
+          >
+            <Trash2 className="size-3.5" />
+          </Button>
+        )}
+      </header>
+      <div className="space-y-6 p-5">
+        <DetailField label={t(($) => $.workflows.editor.status)} hint={key ? t(($) => $.workflows.editor.status_hint) : t(($) => $.workflows.editor.status_new_hint)}>
+          {statusOptions && canEdit ? (
+            <DropdownMenu>
+              <DropdownMenuTrigger
+                render={
+                  <button
+                    type="button"
+                    className="flex h-8 w-full max-w-sm items-center justify-between gap-2 rounded-md border border-input bg-background px-2.5 text-body transition-colors hover:bg-accent/50"
+                  />
+                }
+              >
+                {statusField}
+                <ChevronDown aria-hidden className="size-3.5 shrink-0 text-muted-foreground" />
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="start" className="max-h-80 w-(--anchor-width) overflow-y-auto">
+                {statusOptions.length === 0 ? (
+                  <p className="px-2 py-1.5 text-caption text-muted-foreground">{t(($) => $.workflows.editor.no_other_status)}</p>
+                ) : (
+                  statusOptions.map((option) => (
+                    <DropdownMenuItem key={option} onClick={() => onReplaceStatus(option)}>
+                      {icon(option)}
+                      <span className="truncate">{labelOf(option)}</span>
+                    </DropdownMenuItem>
+                  ))
+                )}
+              </DropdownMenuContent>
+            </DropdownMenu>
+          ) : (
+            <div className="flex h-8 w-full max-w-sm items-center rounded-md border border-input bg-muted/40 px-2.5 text-body">
+              {statusField}
+            </div>
+          )}
+        </DetailField>
+        <DetailField label={t(($) => $.workflows.editor.on_enter)}>
+          {off ? (
+            <p className="text-caption leading-5 text-muted-foreground">{t(($) => $.workflows.editor.step_off)}</p>
+          ) : key && statusAcceptsHandoff(key) ? (
+            <HandoffFields
+              step={{ status_key: key, ...(handoff ?? NO_HANDOFF) }}
+              workflow={flow}
+              canEdit={canEdit}
+              onPatch={onPatch}
+              onPreview={onPreview}
+            />
+          ) : (
+            <p className="text-caption leading-5 text-muted-foreground">
+              {key ? t(($) => $.workflows.editor.no_handoff_step) : t(($) => $.workflows.editor.new_step_handoff)}
+            </p>
+          )}
+        </DetailField>
+      </div>
+    </section>
+  );
+}
+
+function DetailField({ label, hint, children }: { label: string; hint?: string; children: React.ReactNode }) {
+  return (
+    <div className="space-y-2">
+      <p className="text-caption font-medium">{label}</p>
+      {children}
+      {hint && <p className="text-caption leading-5 text-muted-foreground">{hint}</p>}
     </div>
   );
 }

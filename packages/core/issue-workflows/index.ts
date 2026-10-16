@@ -14,6 +14,7 @@ export {
   workflowStep,
   stepHandsOff,
   workflowAllowsStatus,
+  projectMoveMayHandOff,
   workflowHandoffPreviewOptions,
   handoffStepCount,
 } from "./queries";

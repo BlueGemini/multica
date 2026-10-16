@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"net/http"
 	"sort"
+	"strconv"
 	"strings"
 	"unicode/utf8"
 
@@ -1031,10 +1032,20 @@ func (h *Handler) SetProjectWorkflow(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// SetIssueWorkflowHandoffRequest is a column's handoff. CopyForProjectID,
+// when set, leaves the workflow as it is and saves the handoff on a copy of
+// it that only that project uses.
+type SetIssueWorkflowHandoffRequest struct {
+	IssueWorkflowStepPayload
+	CopyForProjectID string `json:"copy_for_project_id,omitempty"`
+}
+
 // SetIssueWorkflowHandoff saves what a workflow does when an issue enters
 // one of its columns: who it is handed to, the instructions their run gets,
 // and where the handler moves it next. It applies to every project using the
-// workflow.
+// workflow, unless the caller asks for a copy for one project: the project
+// then switches to the copy in the same transaction. The copy lists the same
+// statuses, so no issue moves.
 func (h *Handler) SetIssueWorkflowHandoff(w http.ResponseWriter, r *http.Request) {
 	workspaceID := h.resolveWorkspaceID(r)
 	wsUUID, ok := parseUUIDOrBadRequest(w, workspaceID, "workspace id")
@@ -1049,14 +1060,21 @@ func (h *Handler) SetIssueWorkflowHandoff(w http.ResponseWriter, r *http.Request
 	if !ok {
 		return
 	}
-	var req IssueWorkflowStepPayload
+	var req SetIssueWorkflowHandoffRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid request body")
 		return
 	}
-	step := issueworkflow.NormalizeHandoff(payloadToStep(chi.URLParam(r, "status"), req))
-	if step.HandsOff() && !h.requireProjectWorkflowsV1(w, r) {
+	step := issueworkflow.NormalizeHandoff(payloadToStep(chi.URLParam(r, "status"), req.IssueWorkflowStepPayload))
+	if (step.HandsOff() || req.CopyForProjectID != "") && !h.requireProjectWorkflowsV1(w, r) {
 		return
+	}
+	var copyFor pgtype.UUID
+	if req.CopyForProjectID != "" {
+		copyFor, ok = parseUUIDOrBadRequest(w, req.CopyForProjectID, "copy_for_project_id")
+		if !ok {
+			return
+		}
 	}
 	ctx := r.Context()
 	tx, err := h.TxStarter.Begin(ctx)
@@ -1098,6 +1116,10 @@ func (h *Handler) SetIssueWorkflowHandoff(w http.ResponseWriter, r *http.Request
 		writeError(w, http.StatusInternalServerError, "failed to save handoff")
 		return
 	}
+	if copyFor.Valid {
+		h.saveHandoffOnProjectCopy(w, r, qtx, tx, member, workspaceID, current, raw, copyFor)
+		return
+	}
 	row, err := qtx.UpdateIssueWorkflow(ctx, db.UpdateIssueWorkflowParams{
 		ID:               current.ID,
 		WorkspaceID:      wsUUID,
@@ -1116,6 +1138,82 @@ func (h *Handler) SetIssueWorkflowHandoff(w http.ResponseWriter, r *http.Request
 	}
 	h.publishIssueWorkflowChanged(workspaceID, member, "updated")
 	h.writeIssueWorkflow(w, r, http.StatusOK, row)
+}
+
+// saveHandoffOnProjectCopy finishes SetIssueWorkflowHandoff for a copy:
+// steps already carry the new handoff. The caller holds the exclusive catalog
+// lock in tx.
+func (h *Handler) saveHandoffOnProjectCopy(w http.ResponseWriter, r *http.Request, qtx *db.Queries, tx pgx.Tx, member db.Member, workspaceID string, source db.IssueWorkflow, steps []byte, projectID pgtype.UUID) {
+	ctx := r.Context()
+	if source.IsDefault {
+		writeErrorCode(w, http.StatusBadRequest, "invalid_handoff", "the Default workflow cannot be copied for one project")
+		return
+	}
+	project, err := qtx.LockProjectForWorkflowChange(ctx, db.LockProjectForWorkflowChangeParams{ID: projectID, WorkspaceID: source.WorkspaceID})
+	if err != nil {
+		writeError(w, http.StatusNotFound, "project not found")
+		return
+	}
+	if project.WorkflowID != source.ID {
+		writeErrorCode(w, http.StatusConflict, "invalid_handoff", "the project does not use this workflow")
+		return
+	}
+	existing, err := qtx.ListIssueWorkflows(ctx, source.WorkspaceID)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to save handoff")
+		return
+	}
+	taken := make(map[string]bool, len(existing))
+	for _, row := range existing {
+		taken[strings.ToLower(row.Name)] = true
+	}
+	row, err := qtx.CreateIssueWorkflow(ctx, db.CreateIssueWorkflowParams{
+		WorkspaceID:      source.WorkspaceID,
+		Name:             projectCopyName(source.Name, project.Title, taken),
+		Description:      source.Description,
+		InitialStatusKey: issueworkflow.StartStatus,
+		Steps:            steps,
+	})
+	if err != nil {
+		slog.Warn("SetIssueWorkflowHandoff copy failed", append(logger.RequestAttrs(r), "error", err)...)
+		writeError(w, http.StatusInternalServerError, "failed to save handoff")
+		return
+	}
+	updated, err := qtx.SetProjectWorkflow(ctx, db.SetProjectWorkflowParams{ID: project.ID, WorkspaceID: source.WorkspaceID, WorkflowID: row.ID})
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to save handoff")
+		return
+	}
+	if err := tx.Commit(ctx); err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to save handoff")
+		return
+	}
+	h.publishIssueWorkflowChanged(workspaceID, member, "created")
+	h.publishProjectWorkflowUpdate(ctx, workspaceID, member, updated)
+	h.writeIssueWorkflow(w, r, http.StatusCreated, row)
+}
+
+// projectCopyName names a workflow copied for one project, "Workflow
+// (Project)", numbered when that name is taken and cut to the name limit.
+func projectCopyName(workflow, project string, taken map[string]bool) string {
+	for n := 1; ; n++ {
+		suffix := " (" + project + ")"
+		if n > 1 {
+			suffix = " (" + project + " " + strconv.Itoa(n) + ")"
+		}
+		base := []rune(workflow)
+		if room := issueworkflow.MaxNameRunes - utf8.RuneCountInString(suffix); room < len(base) {
+			if room < 1 {
+				suffix = " " + strconv.Itoa(n)
+				room = issueworkflow.MaxNameRunes - len(suffix)
+			}
+			base = base[:room]
+		}
+		name := strings.TrimSpace(string(base)) + suffix
+		if !taken[strings.ToLower(name)] {
+			return name
+		}
+	}
 }
 
 // PreviewIssueWorkflowBriefRequest is a handoff being edited. ProjectID, when
@@ -1227,16 +1325,53 @@ type WorkflowHandoffPreviewResponse struct {
 // PreviewWorkflowHandoff says what moving an issue to a status would do under
 // its project's workflow, for the confirmation shown before a handoff: who
 // the issue would go to, which runs of its current agent are still active,
-// and the brief the new handler would receive. It writes nothing.
+// and the brief the new handler would receive. With project_id it previews
+// moving the issue into that project and entering the step it lands on
+// (status then optional). It writes nothing.
 func (h *Handler) PreviewWorkflowHandoff(w http.ResponseWriter, r *http.Request) {
 	issue, ok := h.loadIssueForUser(w, r, chi.URLParam(r, "id"))
 	if !ok {
 		return
 	}
 	status := r.URL.Query().Get("status")
-	if status == "" {
+	projectParam := r.URL.Query().Get("project_id")
+	if status == "" && projectParam == "" {
 		writeError(w, http.StatusBadRequest, "status is required")
 		return
+	}
+	params := db.UpdateIssueParams{
+		ProjectID:    issue.ProjectID,
+		AssigneeType: issue.AssigneeType,
+		AssigneeID:   issue.AssigneeID,
+	}
+	if status != "" {
+		params.Status = pgtype.Text{String: status, Valid: true}
+	}
+	enterOnMove := false
+	if projectParam != "" {
+		projectID, ok := parseUUIDOrBadRequest(w, projectParam, "project_id")
+		if !ok {
+			return
+		}
+		if _, err := h.Queries.GetProjectInWorkspace(r.Context(), db.GetProjectInWorkspaceParams{ID: projectID, WorkspaceID: issue.WorkspaceID}); err != nil {
+			writeError(w, http.StatusNotFound, "project not found")
+			return
+		}
+		params.ProjectID = projectID
+		enterOnMove = true
+	}
+	hand, err := h.applyIssueWorkflow(r.Context(), issue, &params, status != "", false, enterOnMove, nil)
+	if err != nil {
+		if writeIssueWorkflowError(w, err) {
+			return
+		}
+		writeError(w, http.StatusInternalServerError, "failed to resolve project workflow")
+		return
+	}
+	if params.Status.Valid {
+		status = params.Status.String
+	} else {
+		status = issue.Status
 	}
 	resp := WorkflowHandoffPreviewResponse{
 		FromStatus:           issue.Status,
@@ -1244,20 +1379,6 @@ func (h *Handler) PreviewWorkflowHandoff(w http.ResponseWriter, r *http.Request)
 		PreviousAssigneeType: textToPtr(issue.AssigneeType),
 		PreviousAssigneeID:   uuidToPtr(issue.AssigneeID),
 		PreviousRuns:         []WorkflowHandoffRun{},
-	}
-	params := db.UpdateIssueParams{
-		ProjectID:    issue.ProjectID,
-		Status:       pgtype.Text{String: status, Valid: true},
-		AssigneeType: issue.AssigneeType,
-		AssigneeID:   issue.AssigneeID,
-	}
-	hand, err := h.applyIssueWorkflow(r.Context(), issue, &params, true, false, nil)
-	if err != nil {
-		if writeIssueWorkflowError(w, err) {
-			return
-		}
-		writeError(w, http.StatusInternalServerError, "failed to resolve project workflow")
-		return
 	}
 	if hand == nil {
 		writeJSON(w, http.StatusOK, resp)
@@ -1269,6 +1390,7 @@ func (h *Handler) PreviewWorkflowHandoff(w http.ResponseWriter, r *http.Request)
 	resp.HandlerID = uuidToString(params.AssigneeID)
 	next := issue
 	next.Status = status
+	next.ProjectID = params.ProjectID
 	next.AssigneeType = params.AssigneeType
 	next.AssigneeID = params.AssigneeID
 	resp.Brief = h.workflowHandoffNote(r.Context(), next, hand)

@@ -223,7 +223,7 @@ function FlowRow({
       </button>
       {expanded && accepts && (
         <div className="border-t border-surface-border px-3 py-3">
-          <WorkflowHandoffForm workflow={workflow} statusKey={statusKey} canEdit={canEdit} projectId={project.id} />
+          <WorkflowHandoffForm workflow={workflow} statusKey={statusKey} canEdit={canEdit} project={project} />
         </div>
       )}
     </li>

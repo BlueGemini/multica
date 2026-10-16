@@ -72,17 +72,32 @@ export function useSetProjectWorkflow() {
   });
 }
 
-/** Saves a workflow's handoff for one column, for every project using it. */
+/**
+ * Saves a workflow's handoff for one column, for every project using it — or,
+ * with `copyForProjectId`, on a copy only that project uses.
+ */
 export function useSetWorkflowHandoff() {
   const qc = useQueryClient();
   const wsId = useWorkspaceId();
   return useMutation({
-    mutationFn: ({ workflowId, statusKey, ...data }: { workflowId: string; statusKey: string } & SetWorkflowHandoffRequest) =>
-      api.setWorkflowHandoff(workflowId, statusKey, data),
-    onSuccess: (saved) => {
+    mutationFn: ({
+      workflowId,
+      statusKey,
+      copyForProjectId,
+      ...data
+    }: { workflowId: string; statusKey: string; copyForProjectId?: string } & SetWorkflowHandoffRequest) =>
+      api.setWorkflowHandoff(workflowId, statusKey, data, copyForProjectId),
+    onSuccess: (saved, { workflowId, copyForProjectId }) => {
       if (!saved.id) return;
+      if (copyForProjectId) {
+        // A new workflow row, and the project now points at it.
+        qc.invalidateQueries({ queryKey: issueWorkflowKeys.all(wsId) });
+        qc.invalidateQueries({ queryKey: projectKeys.list(wsId) });
+        qc.invalidateQueries({ queryKey: projectKeys.detail(wsId, copyForProjectId) });
+        return;
+      }
       qc.setQueryData<ListIssueWorkflowsResponse>(issueWorkflowKeys.list(wsId), (old) =>
-        old && { ...old, workflows: old.workflows.map((w) => (w.id === saved.id ? saved : w)) },
+        old && { ...old, workflows: old.workflows.map((w) => (w.id === workflowId ? saved : w)) },
       );
     },
     onError: () => {

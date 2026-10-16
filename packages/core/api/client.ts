@@ -4199,16 +4199,20 @@ export class ApiClient {
 
   /**
    * Saves a workflow's handoff for one column, for every project using it;
-   * handler "none" clears it. Admin only.
+   * handler "none" clears it. With `copyForProjectId` the workflow stays as
+   * it is: the handoff lands on a copy that project switches to, and the copy
+   * is returned. Admin only.
    */
   async setWorkflowHandoff(
     workflowId: string,
     statusKey: string,
     data: SetWorkflowHandoffRequest,
+    copyForProjectId?: string,
   ): Promise<IssueWorkflow> {
+    const body = copyForProjectId ? { ...data, copy_for_project_id: copyForProjectId } : data;
     const raw = await this.fetch<unknown>(
       `/api/issue-workflows/${workflowId}/handoffs/${encodeURIComponent(statusKey)}`,
-      { method: "PUT", body: JSON.stringify(data) },
+      { method: "PUT", body: JSON.stringify(body) },
     );
     return parseWithFallback(raw, IssueWorkflowSchema, EMPTY_ISSUE_WORKFLOW, {
       endpoint: "PUT /api/issue-workflows/{id}/handoffs/{status}",
@@ -4218,12 +4222,15 @@ export class ApiClient {
   /**
    * What moving an issue to `status` would do under its project's workflow:
    * who it goes to, the current agent's active runs, and the brief. Writes
-   * nothing; a status outside the workflow answers 400.
+   * nothing; a status outside the workflow answers 400. With `projectId` it
+   * previews moving the issue into that project instead, entering the column
+   * it lands on (`status` may then be empty).
    */
-  async previewWorkflowHandoff(issueId: string, status: string): Promise<WorkflowHandoffPreview> {
-    const raw = await this.fetch<unknown>(
-      `/api/issues/${issueId}/workflow-handoff?status=${encodeURIComponent(status)}`,
-    );
+  async previewWorkflowHandoff(issueId: string, status: string, projectId?: string): Promise<WorkflowHandoffPreview> {
+    const query = new URLSearchParams();
+    if (status) query.set("status", status);
+    if (projectId) query.set("project_id", projectId);
+    const raw = await this.fetch<unknown>(`/api/issues/${issueId}/workflow-handoff?${query.toString()}`);
     return parseWithFallback(raw, WorkflowHandoffPreviewSchema, EMPTY_WORKFLOW_HANDOFF_PREVIEW, {
       endpoint: "GET /api/issues/{id}/workflow-handoff",
     });

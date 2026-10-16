@@ -1501,7 +1501,7 @@
       "name_placeholder": "ex. Livraison",
       "description": "Description",
       "steps": "Étapes",
-      "add_step": "Ajouter une colonne",
+      "add_step": "Ajouter une étape",
       "start": "Début",
       "set_start": "Définir comme étape de départ",
       "move_up": "Monter",
@@ -1551,7 +1551,13 @@
       "default_note": "Default est le tableau de tout projet sans workflow choisi, et des vues hors projet.",
       "new_badge": "Nouveau",
       "columns": "Colonnes",
-      "include_status": "Inclure {{status}}"
+      "include_status": "Inclure {{status}}",
+      "step_off_short": "Désactivé",
+      "step_off": "Désactivé : ce workflow n’utilise pas ce statut. Activez-le dans la liste des étapes pour l’utiliser.",
+      "status_new_hint": "Nouveau statut. Il sera ajouté à la bibliothèque de statuts à l’enregistrement.",
+      "no_other_status": "Tous les statuts sont déjà des étapes.",
+      "no_handoff_step": "Cette étape ne relaie pas : le responsable ne change pas et aucune exécution ne démarre.",
+      "new_step_handoff": "Enregistrez d’abord le workflow ; le nouveau statut pourra relayer ensuite."
     },
     "mapping": {
       "title": "Déplacer les tâches vers {{name}}",
@@ -1616,7 +1622,9 @@
       "hours_one": "{{count}} heure",
       "hours_other": "{{count}} heures",
       "under_minute": "moins d’une minute",
-      "error": "Impossible de déplacer la tâche"
+      "error": "Impossible de déplacer la tâche",
+      "project_title": "Déplacer {{issue}} vers {{project}} ?",
+      "project_confirm": "Déplacer vers {{project}}"
     },
     "board": {
       "drop_hint_run": "Déposer pour confier à {{name}} et lancer l’exécution",
@@ -1648,8 +1656,6 @@
       "then": "Une fois terminé, passe à « {{status}} »",
       "then_none": "Une fois terminé, le responsable choisit la suite",
       "more": "Plus d’options",
-      "scope_note_one": "Fait partie du workflow {{workflow}} : s’applique au {{count}} projet qui l’utilise.",
-      "scope_note_other": "Fait partie du workflow {{workflow}} : s’applique aux {{count}} projets qui l’utilisent.",
       "mode_none": "Pas de relais",
       "mode_none_hint": "L’assigné reste le même",
       "mode_agent": "Confier à un agent",
@@ -1661,7 +1667,16 @@
       "pick_member": "Choisir un membre",
       "search_agents": "Rechercher des agents",
       "search_members": "Rechercher des membres",
-      "instructions": "Ce que fait cette étape"
+      "instructions": "Ce que fait cette étape",
+      "scope_line": "Fait partie du workflow {{workflow}}",
+      "scope_line_shared": "Fait partie de {{workflow}}, aussi utilisé par {{projects}}",
+      "scope_more": "{{names}} et {{count}} autres",
+      "scope_question": "Où appliquer cette modification ?",
+      "scope_all": "Les {{count}} projets qui utilisent {{workflow}}",
+      "scope_all_hint": "{{projects}} suivent tous le nouveau relais",
+      "scope_project": "Seulement {{project}}",
+      "scope_project_hint": "Copie le workflow sous « {{copy}} » pour {{project}} ; les autres projets ne changent pas",
+      "saved_copy": "Enregistré dans « {{workflow}} », utilisé seulement par {{project}}"
     },
     "columns": {
       "new_status": "Nouvel état…",

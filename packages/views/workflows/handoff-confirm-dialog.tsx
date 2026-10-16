@@ -53,18 +53,24 @@ function useDuration() {
  * option to stop it), and the brief the new handler receives. The facts come
  * from the server preview, so they match what the write will do.
  *
+ * With `toProject` it confirms moving the issue into that project instead:
+ * the issue enters the column it lands on there.
+ *
  * When the preview finds no handoff after all (the handler cannot be resolved,
  * or the workflow changed), the move applies without asking.
  */
 export function WorkflowHandoffConfirmDialog({
   issue,
   toStatus,
+  toProject,
   onCancel,
   onConfirm,
 }: {
   /** The issue being moved; null keeps the dialog closed. */
   issue: { id: string; identifier: string } | null;
+  /** The status being moved to; ignored with `toProject`. */
   toStatus: string;
+  toProject?: { id: string; title: string } | null;
   onCancel: () => void;
   onConfirm: (options: { stopPreviousRuns: boolean }) => void;
 }) {
@@ -78,16 +84,17 @@ export function WorkflowHandoffConfirmDialog({
   const [briefOpen, setBriefOpen] = useState(false);
   const open = issue !== null;
   const { data: preview, isPending, isError } = useQuery({
-    ...workflowHandoffPreviewOptions(wsId, issue?.id ?? "", toStatus),
+    ...workflowHandoffPreviewOptions(wsId, issue?.id ?? "", toProject ? "" : toStatus, toProject?.id),
     enabled: open,
   });
+  const target = toProject ? (preview?.to_status ?? "") : toStatus;
 
   useEffect(() => {
     if (open) {
       setStop(true);
       setBriefOpen(false);
     }
-  }, [open, issue?.id, toStatus]);
+  }, [open, issue?.id, toStatus, toProject?.id]);
 
   // Nothing to confirm: apply as an ordinary status change.
   useEffect(() => {
@@ -151,12 +158,14 @@ export function WorkflowHandoffConfirmDialog({
       <DialogContent className="sm:max-w-xl">
         <DialogHeader>
           <DialogTitle>
-            {t(($) => $.workflows.confirm.title, { issue: issue?.identifier ?? "", status: labelOf(toStatus) })}
+            {toProject
+              ? t(($) => $.workflows.confirm.project_title, { issue: issue?.identifier ?? "", project: toProject.title })
+              : t(($) => $.workflows.confirm.title, { issue: issue?.identifier ?? "", status: labelOf(toStatus) })}
           </DialogTitle>
           <DialogDescription className="flex flex-wrap items-center gap-1.5">
-            {preview && status(preview.from_status)}
-            {preview && <ArrowRight aria-hidden className="size-3" />}
-            {status(toStatus)}
+            {preview && preview.from_status !== target && status(preview.from_status)}
+            {preview && preview.from_status !== target && <ArrowRight aria-hidden className="size-3" />}
+            {target && status(target)}
             {preview?.workflow_name && (
               <>
                 <span aria-hidden className="text-muted-foreground">·</span>
@@ -225,7 +234,9 @@ export function WorkflowHandoffConfirmDialog({
             disabled={isPending || isError}
             onClick={() => onConfirm({ stopPreviousRuns: stop && runs.length > 0 && !sameHandler })}
           >
-            {t(($) => $.workflows.confirm.confirm, { status: labelOf(toStatus) })}
+            {toProject
+              ? t(($) => $.workflows.confirm.project_confirm, { project: toProject.title })
+              : t(($) => $.workflows.confirm.confirm, { status: labelOf(toStatus) })}
           </Button>
         </DialogFooter>
       </DialogContent>
