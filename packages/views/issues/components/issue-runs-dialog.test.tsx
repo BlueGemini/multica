@@ -268,6 +268,30 @@ describe("IssueRunsDialog", () => {
     expect(screen.getByText("per run · by agent")).toBeInTheDocument();
   });
 
+  // Review repro (PR #9288): segments used dollar amounts as flex-grow, and
+  // grow factors summing below 1 leave free space unfilled — a $0.10 bar drew
+  // a tenth of its height. jsdom does not lay out, so pin the factors instead.
+  it("splits bars by share, so costs under $1 still fill them", () => {
+    open([
+      makeTask({ id: "a", agent_id: "agent-a", usage: [usage({ output_tokens: 4_000 })] }),
+      makeTask({ id: "b", agent_id: "agent-b", started_at: "2026-09-27T11:00:00", usage: [usage({ output_tokens: 16_000 })] }),
+    ]);
+    const grow = (el: Element) => Number((el as HTMLElement).style.flexGrow);
+
+    const bar = screen.getByRole("img").querySelector('[data-run="a"]')!;
+    expect(Array.from(bar.children, grow)).toEqual([1]);
+
+    // $0.40 and $0.10 of $0.50.
+    const band = within(screen.getByRole("region", { name: "By agent" })).getByText("By agent").nextElementSibling!;
+    expect(Array.from(band.children, grow)).toEqual([0.8, 0.2]);
+
+    const toggle = screen.getAllByRole("button", { name: "Run details" })[0]!;
+    fireEvent.click(toggle);
+    const details = document.getElementById(toggle.getAttribute("aria-controls")!)!;
+    const split = details.querySelector('[aria-hidden="true"]')!;
+    expect(Array.from(split.children, grow)).toEqual([1]);
+  });
+
   it("expands a run's details from a real button", () => {
     open([makeTask({ usage: [usage()] })]);
 

@@ -71,6 +71,17 @@ const SERIES_SWATCHES = ["bg-chart-1", "bg-chart-2", "bg-chart-3", "bg-chart-4"]
 const OTHERS_SWATCH = "bg-chart-5";
 const OTHERS_KEY = "__others__";
 
+// Flex grow factors that sum below 1 fill only that fraction of the free
+// space (CSS Flexbox §7.1), so splitting a bar by raw dollar amounts under $1
+// would draw it short. As shares of the total they always sum to 1.
+function shareStyle(value: number, total: number): React.CSSProperties {
+  return { flexGrow: total > 0 ? value / total : 0, flexBasis: 0 };
+}
+
+function sumOf(values: readonly number[]): number {
+  return values.reduce((sum, v) => sum + v, 0);
+}
+
 function useCostPartLabel(): (key: CostPartKey) => string {
   const { t } = useT("issues");
   return (key) => {
@@ -445,9 +456,13 @@ function RunActivityChart({ timeline }: { timeline: RunTimeline }) {
                       )}
                       style={{ height: Math.max(2, (total / yMax) * PLOT_HEIGHT) }}
                     >
-                      {segmentsOf(run).map((s) =>
+                      {segmentsOf(run).map((s, _, all) =>
                         s.value > 0 ? (
-                          <span key={s.key} className={cn("min-h-px", s.swatch)} style={{ flexGrow: s.value, flexBasis: 0 }} />
+                          <span
+                            key={s.key}
+                            className={cn("min-h-px", s.swatch)}
+                            style={shareStyle(s.value, sumOf(all.map((x) => x.value)))}
+                          />
                         ) : null,
                       )}
                     </span>
@@ -668,13 +683,14 @@ function ShareBand({
       : []),
   ].filter((e) => e.cost > 0);
   if (entries.length === 0) return null;
+  const entriesTotal = sumOf(entries.map((e) => e.cost));
 
   return (
     <section aria-label={title} className="min-w-0">
       <div className="text-micro font-medium uppercase tracking-wider text-muted-foreground">{title}</div>
       <div aria-hidden className="mt-1.5 mb-1.5 flex h-1.5 gap-0.5 overflow-hidden rounded-full">
         {entries.map((e) => (
-          <span key={e.key} className={e.swatch} style={{ flexGrow: e.cost, flexBasis: 0 }} />
+          <span key={e.key} className={e.swatch} style={shareStyle(e.cost, entriesTotal)} />
         ))}
       </div>
       <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-caption tabular-nums text-muted-foreground">
@@ -946,7 +962,11 @@ function RunDetails({ id, run, reason }: { id: string; run: TimelineRun; reason:
           <div aria-hidden className="mb-2.5 flex h-1.5 gap-0.5 overflow-hidden rounded-full">
             {COST_PARTS.map((part) =>
               breakdown[part.key] > 0 ? (
-                <span key={part.key} className={part.swatch} style={{ flexGrow: breakdown[part.key], flexBasis: 0 }} />
+                <span
+                  key={part.key}
+                  className={part.swatch}
+                  style={shareStyle(breakdown[part.key], sumOf(COST_PARTS.map((p) => breakdown[p.key])))}
+                />
               ) : null,
             )}
           </div>
