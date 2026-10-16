@@ -141,6 +141,20 @@ multica skill import --url <skill-url> --on-conflict skip
 
 `overwrite` is only allowed for the skill's creator and preserves the original ID and agent bindings.
 
+### Agent drafts
+
+An agent draft proposes an agent without creating it. Members and agents can both write drafts; only the member who owns a draft can create the agent from it, from the draft card in a chat or comment, or from the Agents page.
+
+```bash
+multica agent draft create --name "PR reviewer" --instructions-file ./instructions.md
+multica agent draft set <draft-id> --description "Reviews frontend pull requests"
+multica agent draft get <draft-id>
+multica agent draft list
+multica agent draft discard <draft-id>
+```
+
+`set` changes only the flags you pass. Post the draft's `mention` link on a line of its own to show it as a card.
+
 ### Agent run history
 
 `multica agent tasks <agent-id> --limit 200` returns the newest page of runs.

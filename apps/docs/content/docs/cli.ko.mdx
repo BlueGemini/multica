@@ -141,6 +141,20 @@ multica skill import --url <skill-url> --on-conflict skip
 
 `overwrite`는 스킬 생성자만 사용할 수 있으며 기존 ID와 에이전트 연결을 유지합니다.
 
+### 에이전트 초안
+
+에이전트 초안은 에이전트를 바로 만들지 않고 제안하는 방법입니다. 멤버와 에이전트 모두 초안을 작성할 수 있지만, 초안으로 에이전트를 만들 수 있는 사람은 초안을 소유한 멤버뿐입니다. 채팅이나 댓글의 초안 카드, 또는 에이전트 페이지에서 만듭니다.
+
+```bash
+multica agent draft create --name "PR reviewer" --instructions-file ./instructions.md
+multica agent draft set <draft-id> --description "Reviews frontend pull requests"
+multica agent draft get <draft-id>
+multica agent draft list
+multica agent draft discard <draft-id>
+```
+
+`set`은 전달한 플래그만 변경합니다. 초안의 `mention` 링크를 한 줄에 단독으로 올리면 카드로 표시됩니다.
+
 ## 데몬과 런타임
 
 ```bash

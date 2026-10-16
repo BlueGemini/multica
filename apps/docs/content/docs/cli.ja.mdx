@@ -141,6 +141,20 @@ multica skill import --url <skill-url> --on-conflict skip
 
 `overwrite` はスキルの作成者だけが使え、元の ID とエージェントの紐付けを維持します。
 
+### エージェントの下書き
+
+エージェントの下書きは、エージェントを作成せずに提案するためのものです。メンバーもエージェントも下書きを書けますが、エージェントを作成できるのは下書きを所有するメンバーだけです。チャットやコメント内の下書きカード、またはエージェントページから作成します。
+
+```bash
+multica agent draft create --name "PR reviewer" --instructions-file ./instructions.md
+multica agent draft set <draft-id> --description "Reviews frontend pull requests"
+multica agent draft get <draft-id>
+multica agent draft list
+multica agent draft discard <draft-id>
+```
+
+`set` は渡したフラグだけを変更します。下書きの `mention` リンクを単独の行に置いて投稿すると、カードとして表示されます。
+
 ## デーモンとランタイム
 
 ```bash

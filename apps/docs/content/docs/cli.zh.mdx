@@ -141,6 +141,20 @@ multica skill import --url <skill-url> --on-conflict skip
 
 `overwrite` 只允许 skill 的创建者使用，并保留原来的 ID 与智能体绑定关系。
 
+### 智能体草稿
+
+智能体草稿用来提议一个智能体，但不会直接创建。成员和智能体都可以写草稿，只有草稿所属的成员可以把它创建成智能体：在对话或评论里的草稿卡片上，或者在智能体页面。
+
+```bash
+multica agent draft create --name "PR reviewer" --instructions-file ./instructions.md
+multica agent draft set <draft-id> --description "Reviews frontend pull requests"
+multica agent draft get <draft-id>
+multica agent draft list
+multica agent draft discard <draft-id>
+```
+
+`set` 只修改你传入的参数。把草稿的 `mention` 链接单独放一行发出来，就会显示成卡片。
+
 ## 守护进程和运行时
 
 ```bash
