@@ -2,13 +2,14 @@
 import { describe, expect, it } from "vitest";
 import type { AgentTask, TaskUsage } from "@multica/core/types";
 import {
+  bucketRuns,
+  bucketUnitFor,
   buildRunTimeline,
-  cumulativeCostAt,
+  cacheHitRate,
   groupRunsByDay,
-  idleSpanAround,
   niceTicks,
   runIndexAt,
-  stepCurvePath,
+  shortModelName,
   timeTicks,
 } from "./issue-run-timeline";
 
@@ -94,25 +95,49 @@ describe("buildRunTimeline", () => {
     expect(timeline.runs).toHaveLength(0);
   });
 
-  it("steps the cumulative cost at completion, in completion order", () => {
-    // `a` starts first but finishes last; the curve must still only rise.
+  it("totals cost, tokens and the priciest run over priced runs only", () => {
     const timeline = buildRunTimeline(
       [
-        makeTask({ id: "a", started_at: "2026-09-24T10:00:00", completed_at: "2026-09-24T12:00:00", usage: usage(400_000) }),
-        makeTask({ id: "b", started_at: "2026-09-24T10:30:00", completed_at: "2026-09-24T11:00:00", usage: usage(200_000) }),
+        makeTask({ id: "a", usage: usage(400_000) }),
+        makeTask({ id: "b", started_at: "2026-09-24T11:00:00", completed_at: "2026-09-24T11:30:00", usage: usage(200_000) }),
         makeTask({ id: "unpriced", started_at: "2026-09-24T13:00:00", completed_at: "2026-09-24T13:05:00" }),
       ],
       NOW,
     );
 
-    expect(timeline.cumulative.map((s) => s.cost)).toEqual([5, 15]);
-    expect(timeline.cumulative.map((s) => s.t)).toEqual([
-      new Date("2026-09-24T11:00:00").getTime(),
-      new Date("2026-09-24T12:00:00").getTime(),
-    ]);
     expect(timeline.totalCost).toBe(15);
     expect(timeline.pricedCount).toBe(2);
     expect(timeline.maxRunCost).toBe(10);
+    expect(timeline.tokens).toEqual({ input: 0, output: 600_000, cacheRead: 0, cacheWrite: 0, total: 600_000 });
+  });
+
+  it("splits the spend by agent and by model, largest first", () => {
+    const timeline = buildRunTimeline(
+      [
+        makeTask({ id: "a", agent_id: "agent-a", usage: usage(200_000) }),
+        makeTask({
+          id: "b",
+          agent_id: "agent-b",
+          started_at: "2026-09-24T11:00:00",
+          usage: [
+            ...usage(400_000),
+            // claude-sonnet-5 at 2 / 10: 2M output = $20.
+            { provider: "anthropic", model: "claude-sonnet-5", input_tokens: 0, output_tokens: 2_000_000, cache_read_tokens: 0, cache_write_tokens: 0 },
+          ],
+        }),
+      ],
+      NOW,
+    );
+
+    expect(timeline.costByAgent).toEqual([
+      { key: "agent-b", cost: 30 },
+      { key: "agent-a", cost: 5 },
+    ]);
+    // A run that used two models counts toward each at its own rate.
+    expect(timeline.costByModel).toEqual([
+      { key: "claude-sonnet-5", cost: 20 },
+      { key: "claude-opus-5", cost: 15 },
+    ]);
   });
 
   it("keeps a run without usage at no figure, not $0", () => {
@@ -143,31 +168,6 @@ describe("buildRunTimeline", () => {
     ]);
   });
 
-  it("names a peak only when one run moved the total enough", () => {
-    const dominant = buildRunTimeline(
-      [
-        makeTask({ id: "big", usage: usage(800_000) }),
-        makeTask({ id: "small", started_at: "2026-09-24T11:00:00", completed_at: "2026-09-24T11:10:00", usage: usage(200_000) }),
-      ],
-      NOW,
-    );
-    expect(dominant.peak?.task.id).toBe("big");
-
-    // Ten equal runs: the biggest is 10% of the total, which explains nothing.
-    const even = buildRunTimeline(
-      Array.from({ length: 10 }, (_, i) =>
-        makeTask({
-          id: `run-${i}`,
-          started_at: `2026-09-24T1${i}:00:00`,
-          completed_at: `2026-09-24T1${i}:10:00`,
-          usage: usage(100_000),
-        }),
-      ),
-      NOW,
-    );
-    expect(even.peak).toBeNull();
-  });
-
   it("counts failed and cancelled runs", () => {
     const timeline = buildRunTimeline(
       [makeTask({ status: "failed" }), makeTask({ status: "cancelled" }), makeTask({ status: "cancelled" })],
@@ -175,32 +175,83 @@ describe("buildRunTimeline", () => {
     );
     expect([timeline.failedCount, timeline.cancelledCount]).toEqual([1, 2]);
   });
+});
 
-  it("widens a short span so a single run does not fill the axis", () => {
-    const timeline = buildRunTimeline(
-      [makeTask({ started_at: "2026-09-24T10:00:00", completed_at: "2026-09-24T10:00:14" })],
-      NOW,
-    );
-    const [d0, d1] = timeline.domain;
-    expect(d1 - d0).toBeGreaterThanOrEqual(60 * 60 * 1000);
+describe("cacheHitRate", () => {
+  it("is the share of prompt tokens served from cache", () => {
+    expect(cacheHitRate({ input: 100, cacheRead: 800, cacheWrite: 100 })).toBe(0.8);
+  });
+
+  it("has no rate without prompt tokens", () => {
+    expect(cacheHitRate({ input: 0, cacheRead: 0, cacheWrite: 0 })).toBeNull();
   });
 });
 
-describe("costSoFar", () => {
-  it("reads the curve at each run's end, unpriced runs included", () => {
+describe("bucketRuns", () => {
+  const ms = (iso: string) => new Date(iso).getTime();
+
+  it("picks hours, days or weeks from the span that holds runs", () => {
+    expect(bucketUnitFor(6 * 60 * 60 * 1000)).toBe("hour");
+    expect(bucketUnitFor(60 * 60 * 60 * 1000)).toBe("hour");
+    expect(bucketUnitFor(5 * 24 * 60 * 60 * 1000)).toBe("day");
+    expect(bucketUnitFor(90 * 24 * 60 * 60 * 1000)).toBe("week");
+  });
+
+  it("counts each run in the hour it started, padded towards now", () => {
     const timeline = buildRunTimeline(
       [
-        makeTask({ id: "a", started_at: "2026-09-24T10:00:00", completed_at: "2026-09-24T10:30:00", usage: usage(400_000) }),
-        makeTask({ id: "gap", status: "cancelled", started_at: "2026-09-24T11:00:00", completed_at: "2026-09-24T11:00:05" }),
-        makeTask({ id: "b", started_at: "2026-09-24T12:00:00", completed_at: "2026-09-24T12:30:00", usage: usage(200_000) }),
+        makeTask({ id: "a", started_at: "2026-09-24T10:10:00", completed_at: "2026-09-24T10:40:00", usage: usage(400_000) }),
+        // Starts in the 10:00 bucket, ends in 11:00 — it still counts at 10:00.
+        makeTask({ id: "b", started_at: "2026-09-24T10:50:00", completed_at: "2026-09-24T11:20:00", usage: usage(200_000) }),
+        makeTask({ id: "c", started_at: "2026-09-24T13:00:00", completed_at: "2026-09-24T13:10:00" }),
+      ],
+      ms("2026-09-24T15:30:00"),
+    );
+    const { unit, buckets, domain } = bucketRuns(timeline, ms("2026-09-24T15:30:00"));
+
+    expect(unit).toBe("hour");
+    expect(buckets).toHaveLength(12);
+    // Forward to now's hour first, then back from the first run.
+    expect(domain).toEqual([ms("2026-09-24T04:00:00"), ms("2026-09-24T16:00:00")]);
+    const at = (iso: string) => buckets.find((b) => b.startMs === ms(iso))!;
+    expect(at("2026-09-24T10:00:00").runs.map((r) => r.task.id)).toEqual(["a", "b"]);
+    expect(at("2026-09-24T10:00:00").cost).toBe(15);
+    expect(at("2026-09-24T10:00:00").tokens.output).toBe(600_000);
+    expect(at("2026-09-24T10:00:00").agentMs).toBe(60 * 60 * 1000);
+    expect(at("2026-09-24T10:00:00").byAgent.get("agent-1")).toEqual({ cost: 15, agentMs: 60 * 60 * 1000 });
+    expect(at("2026-09-24T11:00:00").runs).toHaveLength(0);
+    // An unpriced run still lands in its bucket, at no cost.
+    expect(at("2026-09-24T13:00:00").runs.map((r) => r.task.id)).toEqual(["c"]);
+    expect(at("2026-09-24T13:00:00").cost).toBe(0);
+  });
+
+  it("buckets a multi-day issue by local day", () => {
+    const timeline = buildRunTimeline(
+      [
+        makeTask({ id: "a", started_at: "2026-09-20T23:30:00", completed_at: "2026-09-21T00:10:00" }),
+        makeTask({ id: "b", started_at: "2026-09-24T09:00:00", completed_at: "2026-09-24T09:10:00" }),
       ],
       NOW,
     );
-    expect(timeline.runs.map((r) => [r.task.id, r.costSoFar])).toEqual([
-      ["a", 10],
-      ["gap", 10],
-      ["b", 15],
-    ]);
+    const { unit, buckets } = bucketRuns(timeline, NOW);
+
+    expect(unit).toBe("day");
+    expect(buckets.every((b) => new Date(b.startMs).getHours() === 0)).toBe(true);
+    expect(buckets.find((b) => b.runs.some((r) => r.task.id === "a"))!.startMs).toBe(ms("2026-09-20T00:00:00"));
+  });
+
+  it("starts weeks on Monday", () => {
+    const timeline = buildRunTimeline(
+      [
+        makeTask({ id: "a", started_at: "2026-06-03T10:00:00", completed_at: "2026-06-03T10:10:00" }),
+        makeTask({ id: "b", started_at: "2026-09-24T10:00:00", completed_at: "2026-09-24T10:10:00" }),
+      ],
+      NOW,
+    );
+    const { unit, buckets } = bucketRuns(timeline, NOW);
+
+    expect(unit).toBe("week");
+    expect(buckets.every((b) => new Date(b.startMs).getDay() === 1)).toBe(true);
   });
 });
 
@@ -281,72 +332,6 @@ describe("runIndexAt", () => {
   });
 });
 
-describe("cumulativeCostAt", () => {
-  const timeline = buildRunTimeline(
-    [
-      makeTask({ id: "a", started_at: "2026-09-24T10:00:00", completed_at: "2026-09-24T10:30:00", usage: usage(400_000) }),
-      makeTask({ id: "b", started_at: "2026-09-24T11:00:00", completed_at: "2026-09-24T11:30:00", usage: usage(200_000) }),
-    ],
-    NOW,
-  );
-  const at = (iso: string) => cumulativeCostAt(timeline.cumulative, new Date(iso).getTime());
-
-  it("reads the curve: flat until a run finishes, then up by its cost", () => {
-    expect(at("2026-09-24T09:00:00")).toBe(0);
-    // Mid-run nothing has been billed yet — usage lands at completion.
-    expect(at("2026-09-24T10:15:00")).toBe(0);
-    expect(at("2026-09-24T10:30:00")).toBe(10);
-    expect(at("2026-09-24T10:45:00")).toBe(10);
-    expect(at("2026-09-24T12:00:00")).toBe(15);
-  });
-});
-
-describe("idleSpanAround", () => {
-  const { runs } = buildRunTimeline(
-    [
-      makeTask({ id: "a", agent_id: "agent-lambda", started_at: "2026-09-24T10:00:00", completed_at: "2026-09-24T10:30:00" }),
-      makeTask({ id: "b", agent_id: "agent-emacs", started_at: "2026-09-24T11:00:00", completed_at: "2026-09-24T11:10:00" }),
-      makeTask({ id: "c", agent_id: "agent-lambda", started_at: "2026-09-24T12:00:00", completed_at: "2026-09-24T12:30:00" }),
-    ],
-    NOW,
-  );
-  const ms = (iso: string) => new Date(iso).getTime();
-
-  it("spans from the last run's end to the next run's start", () => {
-    expect(idleSpanAround(runs, ms("2026-09-24T10:45:00"))).toEqual({
-      fromMs: ms("2026-09-24T10:30:00"),
-      toMs: ms("2026-09-24T11:00:00"),
-    });
-  });
-
-  it("reads one lane's quiet stretch", () => {
-    expect(idleSpanAround(runs, ms("2026-09-24T10:45:00"), "agent-lambda")).toEqual({
-      fromMs: ms("2026-09-24T10:30:00"),
-      toMs: ms("2026-09-24T12:00:00"),
-    });
-  });
-
-  it("leaves an open side before the first run and after the last", () => {
-    expect(idleSpanAround(runs, ms("2026-09-24T09:00:00")).fromMs).toBeNull();
-    expect(idleSpanAround(runs, ms("2026-09-24T13:00:00")).toMs).toBeNull();
-  });
-});
-
-describe("stepCurvePath", () => {
-  it("rises at each step and holds flat to the right edge", () => {
-    const { line, area } = stepCurvePath(
-      [
-        { t: 250, cost: 5 },
-        { t: 750, cost: 10 },
-      ],
-      [0, 1000],
-      10,
-    );
-    expect(line).toBe("M0,100 L250.00,100.00 L250.00,50.00 L750.00,50.00 L750.00,0.00 L1000,0.00");
-    expect(area).toBe(`${line} L1000,100 L0,100 Z`);
-  });
-});
-
 describe("niceTicks", () => {
   it("steps in clean values and tops out at or above the max", () => {
     expect(niceTicks(166)).toEqual([50, 100, 150, 200]);
@@ -404,5 +389,19 @@ describe("groupRunsByDay", () => {
     expect(groups.map((g) => g.runs.map((r) => r.task.id))).toEqual([["d2-a"], ["d1-b", "d1-a"]]);
     expect(groups[1]!.cost).toBe(15);
     expect(groups[1]!.agentMs).toBe(40 * 60 * 1000);
+  });
+});
+
+describe("shortModelName", () => {
+  it("shortens the families it knows", () => {
+    expect(shortModelName("claude-opus-5-5-high")).toBe("Opus 5.5 high");
+    expect(shortModelName("claude-sonnet-4-5-20250929")).toBe("Sonnet 4.5");
+    expect(shortModelName("anthropic/claude-opus-5[1m]")).toBe("Opus 5");
+    expect(shortModelName("gpt-6.1-sol")).toBe("GPT-6.1 Sol");
+    expect(shortModelName("gemini-2.5-pro")).toBe("Gemini 2.5 Pro");
+  });
+
+  it("leaves an unfamiliar id as it is", () => {
+    expect(shortModelName("kimi-k2")).toBe("kimi-k2");
   });
 });
