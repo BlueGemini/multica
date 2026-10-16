@@ -733,6 +733,35 @@ func TestPreviewIssueWorkflowBriefUsesTheDraft(t *testing.T) {
 	preview(map[string]any{"status_key": "no_such_column"}).Want(http.StatusBadRequest)
 }
 
+func TestPreviewIssueWorkflowBriefRejectsMemberOutsideWorkspace(t *testing.T) {
+	seedTestCatalog(t)
+	projectID := createWorkflowTestProject(t, "Workflow brief member project")
+	workflowID := projectWorkflowID(t, projectID)
+	preview := func(userID string) *testutil.Response {
+		body := map[string]any{"status_key": "in_review", "handler": map[string]any{"type": "member", "id": userID}}
+		req := withURLParam(workflowRequest("POST", "/api/issue-workflows/"+workflowID+"/brief", body), "id", workflowID)
+		return testutil.Call(t, testHandler.PreviewIssueWorkflowBrief, req)
+	}
+
+	const outsiderName = "Workflow Brief Outsider"
+	outsiderID := dbfx.User(t, outsiderName, fmt.Sprintf("brief-outsider-%d@example.com", time.Now().UnixNano()))
+	resp := preview(outsiderID).Want(http.StatusBadRequest)
+	if strings.Contains(resp.Body.String(), outsiderName) {
+		t.Fatalf("preview leaked the name of a user outside the workspace: %s", resp.Body.String())
+	}
+
+	const memberName = "Workflow Brief Member"
+	memberID := dbfx.User(t, memberName, fmt.Sprintf("brief-member-%d@example.com", time.Now().UnixNano()))
+	dbfx.Member(t, testWorkspaceID, memberID, "member")
+	var got struct {
+		Brief string `json:"brief"`
+	}
+	preview(memberID).Want(http.StatusOK).JSON(&got)
+	if !strings.Contains(got.Brief, memberName) {
+		t.Fatalf("brief does not name the workspace member:\n%s", got.Brief)
+	}
+}
+
 // agentUpdateIssue changes an issue as the agent running taskID, the way a
 // task token reaches the handler.
 func agentUpdateIssue(t *testing.T, issueID, agentID, taskID string, body map[string]any) *testutil.Response {
