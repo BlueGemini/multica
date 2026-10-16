@@ -1,5 +1,12 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
+import { ApiError } from "@multica/core/api";
 import { I18nProvider } from "@multica/core/i18n/react";
 import enCommon from "../locales/en/common.json";
 import enOnboarding from "../locales/en/onboarding.json";
@@ -21,12 +28,18 @@ vi.mock("sonner", () => ({ toast: { error: mockToastError } }));
 
 vi.mock("../auth", () => ({ useLogout: () => vi.fn() }));
 
-vi.mock("@multica/core/api", () => ({
-  api: {
-    getBaseUrl: () => "https://multica.ai",
-    createIssue: (...args: unknown[]) => mockCreateIssue(...args),
-  },
-}));
+vi.mock("@multica/core/api", async () => {
+  const actual = await vi.importActual<Record<string, unknown>>(
+    "@multica/core/api",
+  );
+  return {
+    ...actual,
+    api: {
+      getBaseUrl: () => "https://multica.ai",
+      createIssue: (...args: unknown[]) => mockCreateIssue(...args),
+    },
+  };
+});
 
 vi.mock("@multica/core/auth", () => ({
   useAuthStore: Object.assign(
@@ -88,6 +101,23 @@ function renderAtRuntimeStep() {
   );
   fireEvent.click(screen.getByRole("button", { name: "create workspace" }));
   return { onComplete, skip: screen.getByRole("button", { name: "skip runtime" }) };
+}
+
+function duplicateGuideConflict(body?: unknown) {
+  return new ApiError(
+    "Active duplicate issue exists",
+    409,
+    "Conflict",
+    body ?? {
+      code: "active_duplicate_issue",
+      error: "An active issue with this title already exists",
+      issue: {
+        id: "issue-existing",
+        identifier: "NEW-1",
+        title: "Connect a runtime to start with Mika",
+      },
+    },
+  );
 }
 
 beforeEach(() => {
@@ -169,5 +199,65 @@ describe("OnboardingFlow — skipping runtime setup", () => {
       });
     });
     expect(mockCreateIssue).toHaveBeenCalledTimes(1);
+  });
+
+  // A reload drops the in-memory guide id while onboarding is still
+  // incomplete, so the next Skip hits the server's duplicate guard.
+  it("opens the existing guide after a reload between creating it and completing onboarding", async () => {
+    mockCreateIssue
+      .mockResolvedValueOnce({ id: "issue-existing" })
+      .mockRejectedValueOnce(duplicateGuideConflict());
+    mockCompleteOnboarding
+      .mockRejectedValueOnce(new Error("network down"))
+      .mockResolvedValueOnce(undefined);
+
+    const first = renderAtRuntimeStep();
+    fireEvent.click(first.skip);
+    await waitFor(() => expect(mockToastError).toHaveBeenCalledOnce());
+    cleanup();
+
+    const reloaded = renderAtRuntimeStep();
+    fireEvent.click(reloaded.skip);
+    await waitFor(() => {
+      expect(reloaded.onComplete).toHaveBeenCalledWith(NEW_WORKSPACE, {
+        kind: "issue",
+        issueId: "issue-existing",
+      });
+    });
+    expect(mockCompleteOnboarding).toHaveBeenCalledTimes(2);
+    expect(mockToastError).toHaveBeenCalledOnce();
+  });
+
+  it("opens the existing guide when the create response was lost", async () => {
+    mockCreateIssue
+      .mockRejectedValueOnce(new TypeError("Failed to fetch"))
+      .mockRejectedValueOnce(duplicateGuideConflict());
+    mockCompleteOnboarding.mockResolvedValue(undefined);
+    const { onComplete, skip } = renderAtRuntimeStep();
+
+    fireEvent.click(skip);
+    await waitFor(() => expect(mockToastError).toHaveBeenCalledOnce());
+    expect(mockCompleteOnboarding).not.toHaveBeenCalled();
+
+    fireEvent.click(skip);
+    await waitFor(() => {
+      expect(onComplete).toHaveBeenCalledWith(NEW_WORKSPACE, {
+        kind: "issue",
+        issueId: "issue-existing",
+      });
+    });
+  });
+
+  it("does not treat a 409 without a valid duplicate body as the guide", async () => {
+    mockCreateIssue.mockRejectedValueOnce(
+      duplicateGuideConflict({ code: "active_duplicate_issue" }),
+    );
+    const { onComplete, skip } = renderAtRuntimeStep();
+
+    fireEvent.click(skip);
+
+    await waitFor(() => expect(mockToastError).toHaveBeenCalledOnce());
+    expect(mockCompleteOnboarding).not.toHaveBeenCalled();
+    expect(onComplete).not.toHaveBeenCalled();
   });
 });

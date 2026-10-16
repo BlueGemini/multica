@@ -2,7 +2,13 @@
 
 import { useCallback, useRef, useState } from "react";
 import { toast } from "sonner";
-import { api } from "@multica/core/api";
+import {
+  api,
+  ApiError,
+  DuplicateIssueErrorBodySchema,
+  type DuplicateIssueErrorBody,
+  parseWithFallback,
+} from "@multica/core/api";
 import { useAuthStore } from "@multica/core/auth";
 import {
   completeOnboarding,
@@ -313,11 +319,26 @@ export function OnboardingFlow({
             workspace.slug,
           );
           issueId = issue.id;
-          guideIssueRef.current = { workspaceId: workspace.id, issueId };
-        } catch {
-          toast.error(t(($) => $.errors.guide_failed));
-          return;
+        } catch (err) {
+          // A reload, or a create whose response was lost, leaves the guide
+          // from an earlier attempt in place; the duplicate guard then
+          // answers with that issue, which is the one to open.
+          const duplicate =
+            err instanceof ApiError && err.status === 409
+              ? parseWithFallback<DuplicateIssueErrorBody | null>(
+                  err.body,
+                  DuplicateIssueErrorBodySchema,
+                  null,
+                  { endpoint: "POST /api/issues (active_duplicate_issue)" },
+                )
+              : null;
+          if (!duplicate) {
+            toast.error(t(($) => $.errors.guide_failed));
+            return;
+          }
+          issueId = duplicate.issue.id;
         }
+        guideIssueRef.current = { workspaceId: workspace.id, issueId };
       }
       try {
         await completeOnboarding("runtime_skipped", workspace.id);
