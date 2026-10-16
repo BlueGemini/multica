@@ -173,3 +173,94 @@ func TestAgentDraftFromAgentIsConfirmedOnlyByItsMember(t *testing.T) {
 		t.Fatalf("a consumed draft still created an agent")
 	}
 }
+
+func TestAgentDraftRevisionsRecordOnlyAgentWrites(t *testing.T) {
+	if testHandler == nil {
+		t.Skip("database not available")
+	}
+	cleanupAgentDrafts(t)
+
+	authorID := createHandlerTestAgent(t, "draft-revision-agent", nil)
+	issueID := dbfx.Issue(t, "Need a PR reviewer")
+	taskID := dbfx.Task(t, authorID, testutil.Cols{"issue_id": issueID, "runtime_id": testRuntimeID})
+	patch := func(req *http.Request) AgentDraftResponse {
+		var out AgentDraftResponse
+		testutil.Call(t, testHandler.UpdateAgentDraft, req).Want(http.StatusOK).JSON(&out)
+		return out
+	}
+
+	draft := createDraftAs(t, asTaskAgent(newRequest(http.MethodPost, "/api/agent-drafts", map[string]any{
+		"config":     map[string]any{"name": "PR reviewer", "instructions": "Comment only."},
+		"follow_ups": []map[string]string{{"kind": "env", "label": "GITHUB_TOKEN", "hint": "Only you can fill it in"}},
+	}), authorID, taskID))
+	if draft.Revision != 1 || len(draft.Revisions) != 1 || draft.Mention != "[PR reviewer](mention://agent-draft/"+draft.ID+"?rev=1)" {
+		t.Fatalf("first revision: rev=%d revisions=%d mention=%q", draft.Revision, len(draft.Revisions), draft.Mention)
+	}
+	if len(draft.FollowUps) != 1 || draft.FollowUps[0].Label != "GITHUB_TOKEN" {
+		t.Fatalf("follow_ups = %+v", draft.FollowUps)
+	}
+
+	// The member's own edit changes the draft but is not a revision.
+	edited := patch(withURLParam(newRequest(http.MethodPatch, "/api/agent-drafts/"+draft.ID, map[string]any{
+		"config": map[string]any{"description": "Reviews frontend PRs"},
+	}), "id", draft.ID))
+	if edited.Revision != 1 || edited.Version != draft.Version+1 {
+		t.Fatalf("member edit: rev=%d version=%d", edited.Revision, edited.Version)
+	}
+
+	// The agent's change is revision 2 and records what it replaced.
+	revised := patch(asTaskAgent(withURLParam(newRequest(http.MethodPatch, "/api/agent-drafts/"+draft.ID, map[string]any{
+		"config": map[string]any{"instructions": "Request changes for accessibility issues."},
+	}), "id", draft.ID), authorID, taskID))
+	if revised.Revision != 2 || len(revised.Revisions) != 2 {
+		t.Fatalf("agent revision: rev=%d revisions=%d", revised.Revision, len(revised.Revisions))
+	}
+	latest := revised.Revisions[1]
+	if string(latest.Previous["instructions"]) != `"Comment only."` || len(latest.Previous) != 1 {
+		t.Fatalf("previous = %v", latest.Previous)
+	}
+	if revised.FollowUps[0].Label != "GITHUB_TOKEN" {
+		t.Fatalf("follow_ups dropped by a config-only write: %+v", revised.FollowUps)
+	}
+
+	// An agent write that changes nothing is not a revision either.
+	same := patch(asTaskAgent(withURLParam(newRequest(http.MethodPatch, "/api/agent-drafts/"+draft.ID, map[string]any{
+		"config": map[string]any{"instructions": "Request changes for accessibility issues."},
+	}), "id", draft.ID), authorID, taskID))
+	if same.Revision != 2 {
+		t.Fatalf("no-op agent write bumped revision to %d", same.Revision)
+	}
+
+	var list ListAgentDraftsResponse
+	testutil.Call(t, testHandler.ListAgentDrafts, newRequest(http.MethodGet, "/api/agent-drafts", nil)).Want(http.StatusOK).JSON(&list)
+	if len(list.Drafts) != 1 || list.Drafts[0].Revisions != nil {
+		t.Fatalf("list should omit revision history: %+v", list.Drafts)
+	}
+
+	var rejected AgentDraftResponse
+	testutil.Call(t, testHandler.DiscardAgentDraft, withURLParam(newRequest(http.MethodPost, "/api/agent-drafts/"+draft.ID+"/discard", map[string]any{
+		"reason": "We already have a reviewer",
+	}), "id", draft.ID)).Want(http.StatusOK).JSON(&rejected)
+	if rejected.Status != "discarded" || rejected.DiscardReason != "We already have a reviewer" {
+		t.Fatalf("rejected = %+v", rejected)
+	}
+}
+
+func TestAgentDraftRejectsInvalidFollowUps(t *testing.T) {
+	if testHandler == nil {
+		t.Skip("database not available")
+	}
+	cleanupAgentDrafts(t)
+
+	for name, items := range map[string][]map[string]string{
+		"bad kind":    {{"kind": "secret", "label": "X"}},
+		"bad env key": {{"kind": "env", "label": "NOT A KEY"}},
+		"empty label": {{"kind": "note", "label": "  "}},
+	} {
+		t.Run(name, func(t *testing.T) {
+			testutil.Call(t, testHandler.CreateAgentDraft, newRequest(http.MethodPost, "/api/agent-drafts", map[string]any{
+				"config": map[string]any{"name": "x"}, "follow_ups": items,
+			})).Want(http.StatusBadRequest)
+		})
+	}
+}

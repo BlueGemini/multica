@@ -5,8 +5,11 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
+	"regexp"
 	"strings"
+	"time"
 	"unicode/utf8"
 
 	"github.com/go-chi/chi/v5"
@@ -20,10 +23,17 @@ import (
 )
 
 const (
-	maxAgentDraftConfigBytes = 256 * 1024
-	maxAgentDraftNameLength  = 255
-	maxAgentDraftListIDs     = 100
+	maxAgentDraftConfigBytes   = 256 * 1024
+	maxAgentDraftNameLength    = 255
+	maxAgentDraftListIDs       = 100
+	maxAgentDraftRevisions     = 10
+	maxAgentDraftFollowUps     = 10
+	maxAgentDraftFollowUpLabel = 120
+	maxAgentDraftFollowUpHint  = 200
+	maxAgentDraftDiscardReason = 500
 )
+
+var agentDraftEnvKeyPattern = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
 
 // AgentDraftConfig is the configuration a draft carries. Field names match the
 // create API where they overlap; access is expressed the way the editors show
@@ -45,6 +55,26 @@ type AgentDraftConfig struct {
 	TeamIDs              []string                   `json:"team_ids"`
 }
 
+// AgentDraftFollowUp is something the member still does once the agent
+// exists: an environment variable only they can fill in ("env", label is the
+// key), or anything else the author wants confirmed ("note").
+type AgentDraftFollowUp struct {
+	Kind  string `json:"kind"`
+	Label string `json:"label"`
+	Hint  string `json:"hint"`
+}
+
+// AgentDraftRevision is one write an agent made: the config it left, and the
+// previous value of each field it changed (absent when the field was unset).
+type AgentDraftRevision struct {
+	Revision   int32                      `json:"revision"`
+	AuthorType string                     `json:"author_type"`
+	AuthorID   string                     `json:"author_id"`
+	CreatedAt  string                     `json:"created_at"`
+	Config     AgentDraftConfig           `json:"config"`
+	Previous   map[string]json.RawMessage `json:"previous"`
+}
+
 type AgentDraftResponse struct {
 	ID                  string           `json:"id"`
 	WorkspaceID         string           `json:"workspace_id"`
@@ -56,7 +86,13 @@ type AgentDraftResponse struct {
 	Status              string           `json:"status"`
 	Config              AgentDraftConfig `json:"config"`
 	Version             int32            `json:"version"`
-	CreatedAgentID      *string          `json:"created_agent_id"`
+	// Revision is the latest revision an agent proposed; 0 for a draft no
+	// agent has written. Revisions is omitted from lists.
+	Revision       int32                `json:"revision"`
+	Revisions      []AgentDraftRevision `json:"revisions,omitempty"`
+	FollowUps      []AgentDraftFollowUp `json:"follow_ups"`
+	DiscardReason  string               `json:"discard_reason"`
+	CreatedAgentID *string              `json:"created_agent_id"`
 	CreatedAt           string           `json:"created_at"`
 	UpdatedAt           string           `json:"updated_at"`
 	// Mention is the Markdown link that renders this draft as a card in chat
@@ -70,19 +106,56 @@ type ListAgentDraftsResponse struct {
 
 type AgentDraftWriteRequest struct {
 	Config map[string]json.RawMessage `json:"config"`
+	// FollowUps replaces the list when present.
+	FollowUps *[]AgentDraftFollowUp `json:"follow_ups"`
+}
+
+type DiscardAgentDraftRequest struct {
+	Reason string `json:"reason"`
 }
 
 var agentDraftMentionLabelEscaper = strings.NewReplacer("[", "", "]", "", "\n", " ", "\r", " ")
 
-func agentDraftMention(id, name string) string {
+// agentDraftMention links a draft at its current revision, so a card posted
+// before a later revision can say it was superseded.
+func agentDraftMention(id, name string, revision int32) string {
 	label := strings.TrimSpace(agentDraftMentionLabelEscaper.Replace(name))
 	if label == "" {
 		label = "Agent draft"
 	}
+	if revision > 0 {
+		return fmt.Sprintf("[%s](mention://agent-draft/%s?rev=%d)", label, id, revision)
+	}
 	return fmt.Sprintf("[%s](mention://agent-draft/%s)", label, id)
 }
 
+func decodeAgentDraftRevisions(raw []byte) []AgentDraftRevision {
+	revisions := []AgentDraftRevision{}
+	_ = json.Unmarshal(raw, &revisions)
+	for i := range revisions {
+		normaliseAgentDraftSlices(&revisions[i].Config)
+		if revisions[i].Previous == nil {
+			revisions[i].Previous = map[string]json.RawMessage{}
+		}
+	}
+	return revisions
+}
+
+func decodeAgentDraftFollowUps(raw []byte) []AgentDraftFollowUp {
+	followUps := []AgentDraftFollowUp{}
+	_ = json.Unmarshal(raw, &followUps)
+	return followUps
+}
+
 func agentDraftToResponse(d db.AgentDraft) AgentDraftResponse {
+	resp := agentDraftSummaryToResponse(d)
+	resp.Revisions = decodeAgentDraftRevisions(d.Revisions)
+	return resp
+}
+
+// agentDraftSummaryToResponse leaves out the revision history, which only a
+// single draft's card needs.
+func agentDraftSummaryToResponse(d db.AgentDraft) AgentDraftResponse {
 	var cfg AgentDraftConfig
 	_ = json.Unmarshal(d.Config, &cfg)
 	normaliseAgentDraftSlices(&cfg)
@@ -98,11 +171,75 @@ func agentDraftToResponse(d db.AgentDraft) AgentDraftResponse {
 		Status:              d.Status,
 		Config:              cfg,
 		Version:             d.Version,
+		Revision:            d.Revision,
+		FollowUps:           decodeAgentDraftFollowUps(d.FollowUps),
+		DiscardReason:       d.DiscardReason,
 		CreatedAgentID:      uuidToPtr(d.CreatedAgentID),
 		CreatedAt:           timestampToString(d.CreatedAt),
 		UpdatedAt:           timestampToString(d.UpdatedAt),
-		Mention:             agentDraftMention(id, cfg.Name),
+		Mention:             agentDraftMention(id, cfg.Name, d.Revision),
 	}
+}
+
+func validateAgentDraftFollowUps(items []AgentDraftFollowUp) ([]AgentDraftFollowUp, error) {
+	if len(items) > maxAgentDraftFollowUps {
+		return nil, fmt.Errorf("follow_ups must contain at most %d items", maxAgentDraftFollowUps)
+	}
+	out := make([]AgentDraftFollowUp, 0, len(items))
+	for i, item := range items {
+		item.Label = strings.TrimSpace(item.Label)
+		item.Hint = strings.TrimSpace(item.Hint)
+		if item.Label == "" {
+			return nil, fmt.Errorf("follow_ups[%d].label is required", i)
+		}
+		if utf8.RuneCountInString(item.Label) > maxAgentDraftFollowUpLabel {
+			return nil, fmt.Errorf("follow_ups[%d].label must be %d characters or fewer", i, maxAgentDraftFollowUpLabel)
+		}
+		if utf8.RuneCountInString(item.Hint) > maxAgentDraftFollowUpHint {
+			return nil, fmt.Errorf("follow_ups[%d].hint must be %d characters or fewer", i, maxAgentDraftFollowUpHint)
+		}
+		switch item.Kind {
+		case "env":
+			if !agentDraftEnvKeyPattern.MatchString(item.Label) {
+				return nil, fmt.Errorf("follow_ups[%d].label must be an environment variable name", i)
+			}
+		case "note":
+		default:
+			return nil, fmt.Errorf("follow_ups[%d].kind must be env or note", i)
+		}
+		out = append(out, item)
+	}
+	return out, nil
+}
+
+// agentDraftChangedFields returns the previous value of every config field
+// that differs between before and after.
+func agentDraftChangedFields(before, after AgentDraftConfig) map[string]json.RawMessage {
+	toMap := func(cfg AgentDraftConfig) map[string]json.RawMessage {
+		raw, _ := json.Marshal(cfg)
+		fields := map[string]json.RawMessage{}
+		_ = json.Unmarshal(raw, &fields)
+		return fields
+	}
+	prev, next := toMap(before), toMap(after)
+	changed := map[string]json.RawMessage{}
+	for key, value := range next {
+		if !bytes.Equal(prev[key], value) {
+			changed[key] = prev[key]
+		}
+	}
+	return changed
+}
+
+// appendAgentDraftRevision records an agent's write, keeping the newest
+// maxAgentDraftRevisions.
+func appendAgentDraftRevision(stored []byte, rev AgentDraftRevision) ([]byte, error) {
+	revisions := decodeAgentDraftRevisions(stored)
+	revisions = append(revisions, rev)
+	if len(revisions) > maxAgentDraftRevisions {
+		revisions = revisions[len(revisions)-maxAgentDraftRevisions:]
+	}
+	return json.Marshal(revisions)
 }
 
 func normaliseAgentDraftSlices(cfg *AgentDraftConfig) {
@@ -297,6 +434,15 @@ func (h *Handler) CreateAgentDraft(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	followUps := []AgentDraftFollowUp{}
+	if req.FollowUps != nil {
+		if followUps, err = validateAgentDraftFollowUps(*req.FollowUps); err != nil {
+			writeError(w, http.StatusBadRequest, err.Error())
+			return
+		}
+	}
+	storedFollowUps, _ := json.Marshal(followUps)
+
 	actorType, actorID := h.resolveActor(r, userID, workspaceID)
 	params := db.CreateAgentDraftParams{
 		ID:          dbid.NewV7(),
@@ -305,9 +451,24 @@ func (h *Handler) CreateAgentDraft(w http.ResponseWriter, r *http.Request) {
 		AuthorType:  actorType,
 		AuthorID:    parseUUID(actorID),
 		Config:      stored,
+		Revisions:   []byte("[]"),
+		FollowUps:   storedFollowUps,
 	}
 	if actorType == "agent" {
 		params.SourceIssueID, params.SourceChatSessionID = h.agentDraftTaskSource(r)
+		params.Revision = 1
+		params.Revisions, err = appendAgentDraftRevision(nil, AgentDraftRevision{
+			Revision:   1,
+			AuthorType: actorType,
+			AuthorID:   actorID,
+			CreatedAt:  time.Now().UTC().Format(time.RFC3339),
+			Config:     cfg,
+			Previous:   map[string]json.RawMessage{},
+		})
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, "failed to encode draft")
+			return
+		}
 	}
 	draft, err := h.Queries.CreateAgentDraft(r.Context(), params)
 	if err != nil {
@@ -350,7 +511,7 @@ func (h *Handler) ListAgentDrafts(w http.ResponseWriter, r *http.Request) {
 	}
 	drafts := make([]AgentDraftResponse, 0, len(rows))
 	for _, row := range rows {
-		drafts = append(drafts, agentDraftToResponse(row))
+		drafts = append(drafts, agentDraftSummaryToResponse(row))
 	}
 	writeJSON(w, http.StatusOK, ListAgentDraftsResponse{Drafts: drafts})
 }
@@ -467,9 +628,46 @@ func (h *Handler) UpdateAgentDraft(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "failed to encode draft")
 		return
 	}
+	storedFollowUps := locked.FollowUps
+	if req.FollowUps != nil {
+		followUps, err := validateAgentDraftFollowUps(*req.FollowUps)
+		if err != nil {
+			writeError(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		storedFollowUps, _ = json.Marshal(followUps)
+	}
+
+	// Only an agent's write is a revision: it is what the member reviews. The
+	// member's own edits change the draft in place.
+	actorType, actorID := h.resolveActor(r, userID, workspaceID)
+	revision, revisions := locked.Revision, locked.Revisions
+	if actorType == "agent" {
+		var before AgentDraftConfig
+		_ = json.Unmarshal(locked.Config, &before)
+		normaliseAgentDraftSlices(&before)
+		if changed := agentDraftChangedFields(before, cfg); len(changed) > 0 {
+			revision++
+			revisions, err = appendAgentDraftRevision(locked.Revisions, AgentDraftRevision{
+				Revision:   revision,
+				AuthorType: actorType,
+				AuthorID:   actorID,
+				CreatedAt:  time.Now().UTC().Format(time.RFC3339),
+				Config:     cfg,
+				Previous:   changed,
+			})
+			if err != nil {
+				writeError(w, http.StatusInternalServerError, "failed to encode draft")
+				return
+			}
+		}
+	}
 	updated, err := qtx.UpdateAgentDraftConfig(r.Context(), db.UpdateAgentDraftConfigParams{
-		ID:     locked.ID,
-		Config: stored,
+		ID:        locked.ID,
+		Config:    stored,
+		FollowUps: storedFollowUps,
+		Revision:  revision,
+		Revisions: revisions,
 	})
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to update agent draft")
@@ -479,16 +677,33 @@ func (h *Handler) UpdateAgentDraft(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "failed to update agent draft")
 		return
 	}
-	actorType, actorID := h.resolveActor(r, userID, workspaceID)
 	h.publishAgentDraftEvent(protocol.EventAgentDraftUpdated, workspaceID, actorType, actorID, updated)
 	writeJSON(w, http.StatusOK, agentDraftToResponse(updated))
 }
 
-// DiscardAgentDraft closes a pending draft without creating an agent.
+// DiscardAgentDraft closes a pending draft without creating an agent. An
+// optional reason is kept on the draft for its author to read.
 func (h *Handler) DiscardAgentDraft(w http.ResponseWriter, r *http.Request) {
 	workspaceID := h.resolveWorkspaceID(r)
 	userID, ok := requireUserID(w, r)
 	if !ok {
+		return
+	}
+	var req DiscardAgentDraftRequest
+	body, err := io.ReadAll(http.MaxBytesReader(w, r.Body, 16*1024))
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+	if trimmed := bytes.TrimSpace(body); len(trimmed) > 0 && !bytes.Equal(trimmed, []byte("null")) {
+		if err := json.Unmarshal(trimmed, &req); err != nil {
+			writeError(w, http.StatusBadRequest, "invalid request body")
+			return
+		}
+	}
+	req.Reason = strings.TrimSpace(req.Reason)
+	if utf8.RuneCountInString(req.Reason) > maxAgentDraftDiscardReason {
+		writeError(w, http.StatusBadRequest, fmt.Sprintf("reason must be %d characters or fewer", maxAgentDraftDiscardReason))
 		return
 	}
 	tx, err := h.TxStarter.Begin(r.Context())
@@ -503,7 +718,10 @@ func (h *Handler) DiscardAgentDraft(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	discarded, err := qtx.DiscardAgentDraft(r.Context(), locked.ID)
+	discarded, err := qtx.DiscardAgentDraft(r.Context(), db.DiscardAgentDraftParams{
+		ID:            locked.ID,
+		DiscardReason: req.Reason,
+	})
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to discard agent draft")
 		return

@@ -74,6 +74,10 @@ type AgentDraft struct {
 	Status              string             `json:"status"`
 	Config              []byte             `json:"config"`
 	Version             int32              `json:"version"`
+	Revision            int32              `json:"revision"`
+	Revisions           []byte             `json:"revisions"`
+	FollowUps           []byte             `json:"follow_ups"`
+	DiscardReason       string             `json:"discard_reason"`
 	CreatedAgentID      pgtype.UUID        `json:"created_agent_id"`
 	CreatedAt           pgtype.Timestamptz `json:"created_at"`
 	UpdatedAt           pgtype.Timestamptz `json:"updated_at"`

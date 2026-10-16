@@ -15,14 +15,15 @@ const createAgentDraft = `-- name: CreateAgentDraft :one
 
 INSERT INTO agent_draft (
     id, workspace_id, owner_id, author_type, author_id,
-    source_issue_id, source_chat_session_id, config
+    source_issue_id, source_chat_session_id, config, revision, revisions, follow_ups
 ) VALUES (
     $1, $2, $3,
     $4, $5,
     $6, $7,
-    $8::jsonb
+    $8::jsonb, $9, $10::jsonb,
+    $11::jsonb
 )
-RETURNING id, workspace_id, owner_id, author_type, author_id, source_issue_id, source_chat_session_id, status, config, version, created_agent_id, created_at, updated_at
+RETURNING id, workspace_id, owner_id, author_type, author_id, source_issue_id, source_chat_session_id, status, config, version, revision, revisions, follow_ups, discard_reason, created_agent_id, created_at, updated_at
 `
 
 type CreateAgentDraftParams struct {
@@ -34,6 +35,9 @@ type CreateAgentDraftParams struct {
 	SourceIssueID       pgtype.UUID `json:"source_issue_id"`
 	SourceChatSessionID pgtype.UUID `json:"source_chat_session_id"`
 	Config              []byte      `json:"config"`
+	Revision            int32       `json:"revision"`
+	Revisions           []byte      `json:"revisions"`
+	FollowUps           []byte      `json:"follow_ups"`
 }
 
 // Agent drafts (MUL-8048): the configuration of an agent that does not exist
@@ -48,6 +52,9 @@ func (q *Queries) CreateAgentDraft(ctx context.Context, arg CreateAgentDraftPara
 		arg.SourceIssueID,
 		arg.SourceChatSessionID,
 		arg.Config,
+		arg.Revision,
+		arg.Revisions,
+		arg.FollowUps,
 	)
 	var i AgentDraft
 	err := row.Scan(
@@ -61,6 +68,10 @@ func (q *Queries) CreateAgentDraft(ctx context.Context, arg CreateAgentDraftPara
 		&i.Status,
 		&i.Config,
 		&i.Version,
+		&i.Revision,
+		&i.Revisions,
+		&i.FollowUps,
+		&i.DiscardReason,
 		&i.CreatedAgentID,
 		&i.CreatedAt,
 		&i.UpdatedAt,
@@ -71,13 +82,19 @@ func (q *Queries) CreateAgentDraft(ctx context.Context, arg CreateAgentDraftPara
 const discardAgentDraft = `-- name: DiscardAgentDraft :one
 UPDATE agent_draft
 SET status = 'discarded',
+    discard_reason = $1,
     updated_at = now()
-WHERE id = $1 AND status = 'pending'
-RETURNING id, workspace_id, owner_id, author_type, author_id, source_issue_id, source_chat_session_id, status, config, version, created_agent_id, created_at, updated_at
+WHERE id = $2 AND status = 'pending'
+RETURNING id, workspace_id, owner_id, author_type, author_id, source_issue_id, source_chat_session_id, status, config, version, revision, revisions, follow_ups, discard_reason, created_agent_id, created_at, updated_at
 `
 
-func (q *Queries) DiscardAgentDraft(ctx context.Context, id pgtype.UUID) (AgentDraft, error) {
-	row := q.db.QueryRow(ctx, discardAgentDraft, id)
+type DiscardAgentDraftParams struct {
+	DiscardReason string      `json:"discard_reason"`
+	ID            pgtype.UUID `json:"id"`
+}
+
+func (q *Queries) DiscardAgentDraft(ctx context.Context, arg DiscardAgentDraftParams) (AgentDraft, error) {
+	row := q.db.QueryRow(ctx, discardAgentDraft, arg.DiscardReason, arg.ID)
 	var i AgentDraft
 	err := row.Scan(
 		&i.ID,
@@ -90,6 +107,10 @@ func (q *Queries) DiscardAgentDraft(ctx context.Context, id pgtype.UUID) (AgentD
 		&i.Status,
 		&i.Config,
 		&i.Version,
+		&i.Revision,
+		&i.Revisions,
+		&i.FollowUps,
+		&i.DiscardReason,
 		&i.CreatedAgentID,
 		&i.CreatedAt,
 		&i.UpdatedAt,
@@ -98,7 +119,7 @@ func (q *Queries) DiscardAgentDraft(ctx context.Context, id pgtype.UUID) (AgentD
 }
 
 const getAgentDraftInWorkspace = `-- name: GetAgentDraftInWorkspace :one
-SELECT id, workspace_id, owner_id, author_type, author_id, source_issue_id, source_chat_session_id, status, config, version, created_agent_id, created_at, updated_at FROM agent_draft
+SELECT id, workspace_id, owner_id, author_type, author_id, source_issue_id, source_chat_session_id, status, config, version, revision, revisions, follow_ups, discard_reason, created_agent_id, created_at, updated_at FROM agent_draft
 WHERE id = $1 AND workspace_id = $2
 `
 
@@ -121,6 +142,10 @@ func (q *Queries) GetAgentDraftInWorkspace(ctx context.Context, arg GetAgentDraf
 		&i.Status,
 		&i.Config,
 		&i.Version,
+		&i.Revision,
+		&i.Revisions,
+		&i.FollowUps,
+		&i.DiscardReason,
 		&i.CreatedAgentID,
 		&i.CreatedAt,
 		&i.UpdatedAt,
@@ -129,7 +154,7 @@ func (q *Queries) GetAgentDraftInWorkspace(ctx context.Context, arg GetAgentDraf
 }
 
 const listAgentDraftsByOwner = `-- name: ListAgentDraftsByOwner :many
-SELECT id, workspace_id, owner_id, author_type, author_id, source_issue_id, source_chat_session_id, status, config, version, created_agent_id, created_at, updated_at FROM agent_draft
+SELECT id, workspace_id, owner_id, author_type, author_id, source_issue_id, source_chat_session_id, status, config, version, revision, revisions, follow_ups, discard_reason, created_agent_id, created_at, updated_at FROM agent_draft
 WHERE workspace_id = $1
   AND owner_id = $2
   AND status = $3
@@ -163,6 +188,10 @@ func (q *Queries) ListAgentDraftsByOwner(ctx context.Context, arg ListAgentDraft
 			&i.Status,
 			&i.Config,
 			&i.Version,
+			&i.Revision,
+			&i.Revisions,
+			&i.FollowUps,
+			&i.DiscardReason,
 			&i.CreatedAgentID,
 			&i.CreatedAt,
 			&i.UpdatedAt,
@@ -178,7 +207,7 @@ func (q *Queries) ListAgentDraftsByOwner(ctx context.Context, arg ListAgentDraft
 }
 
 const lockAgentDraftForUpdate = `-- name: LockAgentDraftForUpdate :one
-SELECT id, workspace_id, owner_id, author_type, author_id, source_issue_id, source_chat_session_id, status, config, version, created_agent_id, created_at, updated_at FROM agent_draft
+SELECT id, workspace_id, owner_id, author_type, author_id, source_issue_id, source_chat_session_id, status, config, version, revision, revisions, follow_ups, discard_reason, created_agent_id, created_at, updated_at FROM agent_draft
 WHERE id = $1 AND workspace_id = $2
 FOR UPDATE
 `
@@ -204,6 +233,10 @@ func (q *Queries) LockAgentDraftForUpdate(ctx context.Context, arg LockAgentDraf
 		&i.Status,
 		&i.Config,
 		&i.Version,
+		&i.Revision,
+		&i.Revisions,
+		&i.FollowUps,
+		&i.DiscardReason,
 		&i.CreatedAgentID,
 		&i.CreatedAt,
 		&i.UpdatedAt,
@@ -217,7 +250,7 @@ SET status = 'created',
     created_agent_id = $1,
     updated_at = now()
 WHERE id = $2 AND status = 'pending'
-RETURNING id, workspace_id, owner_id, author_type, author_id, source_issue_id, source_chat_session_id, status, config, version, created_agent_id, created_at, updated_at
+RETURNING id, workspace_id, owner_id, author_type, author_id, source_issue_id, source_chat_session_id, status, config, version, revision, revisions, follow_ups, discard_reason, created_agent_id, created_at, updated_at
 `
 
 type MarkAgentDraftCreatedParams struct {
@@ -239,6 +272,10 @@ func (q *Queries) MarkAgentDraftCreated(ctx context.Context, arg MarkAgentDraftC
 		&i.Status,
 		&i.Config,
 		&i.Version,
+		&i.Revision,
+		&i.Revisions,
+		&i.FollowUps,
+		&i.DiscardReason,
 		&i.CreatedAgentID,
 		&i.CreatedAt,
 		&i.UpdatedAt,
@@ -249,19 +286,31 @@ func (q *Queries) MarkAgentDraftCreated(ctx context.Context, arg MarkAgentDraftC
 const updateAgentDraftConfig = `-- name: UpdateAgentDraftConfig :one
 UPDATE agent_draft
 SET config = $1::jsonb,
+    follow_ups = $2::jsonb,
+    revision = $3,
+    revisions = $4::jsonb,
     version = version + 1,
     updated_at = now()
-WHERE id = $2 AND status = 'pending'
-RETURNING id, workspace_id, owner_id, author_type, author_id, source_issue_id, source_chat_session_id, status, config, version, created_agent_id, created_at, updated_at
+WHERE id = $5 AND status = 'pending'
+RETURNING id, workspace_id, owner_id, author_type, author_id, source_issue_id, source_chat_session_id, status, config, version, revision, revisions, follow_ups, discard_reason, created_agent_id, created_at, updated_at
 `
 
 type UpdateAgentDraftConfigParams struct {
-	Config []byte      `json:"config"`
-	ID     pgtype.UUID `json:"id"`
+	Config    []byte      `json:"config"`
+	FollowUps []byte      `json:"follow_ups"`
+	Revision  int32       `json:"revision"`
+	Revisions []byte      `json:"revisions"`
+	ID        pgtype.UUID `json:"id"`
 }
 
 func (q *Queries) UpdateAgentDraftConfig(ctx context.Context, arg UpdateAgentDraftConfigParams) (AgentDraft, error) {
-	row := q.db.QueryRow(ctx, updateAgentDraftConfig, arg.Config, arg.ID)
+	row := q.db.QueryRow(ctx, updateAgentDraftConfig,
+		arg.Config,
+		arg.FollowUps,
+		arg.Revision,
+		arg.Revisions,
+		arg.ID,
+	)
 	var i AgentDraft
 	err := row.Scan(
 		&i.ID,
@@ -274,6 +323,10 @@ func (q *Queries) UpdateAgentDraftConfig(ctx context.Context, arg UpdateAgentDra
 		&i.Status,
 		&i.Config,
 		&i.Version,
+		&i.Revision,
+		&i.Revisions,
+		&i.FollowUps,
+		&i.DiscardReason,
 		&i.CreatedAgentID,
 		&i.CreatedAt,
 		&i.UpdatedAt,

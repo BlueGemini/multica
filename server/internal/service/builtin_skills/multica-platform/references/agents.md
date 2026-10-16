@@ -53,9 +53,14 @@ multica agent draft create --name <name> \
 ```
 
 The response carries `id` and `mention`. Put the `mention` value — the whole
-Markdown link, `[Name](mention://agent-draft/<id>)` — on its own line in your
-reply. That link is what renders the card; without it the member has nothing to
-confirm. It is inert: it enqueues no run and notifies nobody.
+Markdown link, `[Name](mention://agent-draft/<id>?rev=<n>)` — on its own line
+in your reply. That link is what renders the card; without it the member has
+nothing to confirm. It is inert: it enqueues no run and notifies nobody.
+
+Each `draft create` / `draft set` that changes something is a new **revision**,
+and its `mention` carries that revision. Post the new `mention` after every
+revision: the card for it shows what changed, and the cards for earlier
+revisions in the conversation collapse to "superseded".
 
 Contracts:
 
@@ -74,8 +79,13 @@ Contracts:
   a private runtime is usable only by its owner, so when unsure leave it unset
   and the card selects the member's first online runtime.
 - **A draft never holds secrets.** It has no env, MCP or runtime-config fields.
-  Name what the member must add after creating (for example, which environment
-  variables) in your reply instead.
+  List what the member must do after creating as follow-ups instead: they show
+  as a checklist on the card. `--needs-env KEY=why` for an environment variable
+  only they can fill in, `--follow-up "text=detail"` for anything else (an
+  autopilot you will set up once they confirm). Both repeat; passing either
+  replaces the draft's whole follow-up list.
+- **A rejection carries a reason.** When `draft get` returns `status:
+  discarded`, read `discard_reason` before proposing again.
 - **Work that needs the agent waits for it.** Binding more skills, MCP servers,
   autopilots or squad membership happens after `status` is `created`;
   `created_agent_id` is then the new agent's id.

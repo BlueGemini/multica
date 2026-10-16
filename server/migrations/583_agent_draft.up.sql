@@ -14,6 +14,18 @@
 -- queries individual fields; the handler validates its shape. No foreign keys
 -- by project rule.
 --
+-- version counts every write, for the editors' merge. revision counts only
+-- what an agent proposed: each agent write that changes something appends to
+-- revisions (bounded, newest last) the config it left and the previous values
+-- of the fields it changed, so a card can show what a revision changed and an
+-- older card in the conversation knows it was superseded. A member's own edits
+-- do not make revisions.
+--
+-- follow_ups are what the member still has to do once the agent exists (fill
+-- in an environment variable, approve an autopilot); they are not config and
+-- never reach the created agent. discard_reason is what the member told the
+-- author when rejecting the draft.
+--
 -- id is attached as the primary key in 585 from the index built CONCURRENTLY
 -- in 584 (repo convention, see 332-334).
 CREATE TABLE IF NOT EXISTS agent_draft (
@@ -27,6 +39,10 @@ CREATE TABLE IF NOT EXISTS agent_draft (
     status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'created', 'discarded')),
     config JSONB NOT NULL DEFAULT '{}'::jsonb CHECK (jsonb_typeof(config) = 'object'),
     version INTEGER NOT NULL DEFAULT 1,
+    revision INTEGER NOT NULL DEFAULT 0,
+    revisions JSONB NOT NULL DEFAULT '[]'::jsonb CHECK (jsonb_typeof(revisions) = 'array'),
+    follow_ups JSONB NOT NULL DEFAULT '[]'::jsonb CHECK (jsonb_typeof(follow_ups) = 'array'),
+    discard_reason TEXT NOT NULL DEFAULT '',
     created_agent_id UUID,
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
