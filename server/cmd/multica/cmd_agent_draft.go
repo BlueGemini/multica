@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/url"
 	"os"
+	"strings"
 
 	"github.com/spf13/cobra"
 
@@ -70,6 +71,7 @@ func init() {
 	agentDraftGetCmd.Flags().String("output", "json", "Output format: table or json")
 	agentDraftListCmd.Flags().String("status", "pending", "Draft status: pending, created or discarded")
 	agentDraftListCmd.Flags().String("output", "table", "Output format: table or json")
+	agentDraftDiscardCmd.Flags().String("reason", "", "Why the draft is rejected; kept on the draft for its author")
 	agentDraftDiscardCmd.Flags().String("output", "json", "Output format: table or json")
 }
 
@@ -89,7 +91,34 @@ func addAgentDraftConfigFlags(c *cobra.Command) {
 	c.Flags().StringSlice("skill-ids", nil, "Workspace skill ids to attach (comma-separated; replaces the draft's list)")
 	c.Flags().String("access", "", "Who can use the agent: private, workspace or members")
 	c.Flags().StringSlice("member-ids", nil, "Member user ids for --access members (comma-separated; replaces the draft's list)")
+	c.Flags().StringArray("needs-env", nil, "An environment variable the member fills in after creating, as KEY or KEY=why (repeatable; with --follow-up, replaces the draft's follow-ups)")
+	c.Flags().StringArray("follow-up", nil, "Something else the member confirms after creating, as text or text=detail (repeatable; with --needs-env, replaces the draft's follow-ups)")
 	c.Flags().String("output", "json", "Output format: table or json")
+}
+
+// agentDraftFollowUpsFromFlags returns the follow-up list when either flag was
+// passed, nil otherwise so the draft's list stays as it is.
+func agentDraftFollowUpsFromFlags(cmd *cobra.Command) []map[string]string {
+	if !cmd.Flags().Changed("needs-env") && !cmd.Flags().Changed("follow-up") {
+		return nil
+	}
+	items := []map[string]string{}
+	for flag, kind := range map[string]string{"needs-env": "env", "follow-up": "note"} {
+		values, _ := cmd.Flags().GetStringArray(flag)
+		for _, v := range values {
+			label, hint, _ := strings.Cut(v, "=")
+			items = append(items, map[string]string{"kind": kind, "label": strings.TrimSpace(label), "hint": strings.TrimSpace(hint)})
+		}
+	}
+	return items
+}
+
+func agentDraftWriteBody(cmd *cobra.Command, config map[string]any) map[string]any {
+	body := map[string]any{"config": config}
+	if followUps := agentDraftFollowUpsFromFlags(cmd); followUps != nil {
+		body["follow_ups"] = followUps
+	}
+	return body
 }
 
 // agentDraftConfigFromFlags collects only the flags the caller passed, so
@@ -143,6 +172,9 @@ func printAgentDraft(cmd *cobra.Command, draft map[string]any) error {
 	if strVal(draft, "status") == "pending" {
 		fmt.Printf("Put this link in your reply so the member can review and create it:\n%s\n", strVal(draft, "mention"))
 	}
+	if reason := strVal(draft, "discard_reason"); reason != "" {
+		fmt.Printf("Rejected: %s\n", reason)
+	}
 	return nil
 }
 
@@ -158,7 +190,7 @@ func runAgentDraftCreate(cmd *cobra.Command, _ []string) error {
 	ctx, cancel := cli.APIContext(context.Background())
 	defer cancel()
 	var draft map[string]any
-	if err := client.PostJSON(ctx, "/api/agent-drafts", map[string]any{"config": config}, &draft); err != nil {
+	if err := client.PostJSON(ctx, "/api/agent-drafts", agentDraftWriteBody(cmd, config), &draft); err != nil {
 		return fmt.Errorf("create agent draft: %w", err)
 	}
 	return printAgentDraft(cmd, draft)
@@ -169,7 +201,7 @@ func runAgentDraftSet(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return err
 	}
-	if len(config) == 0 {
+	if len(config) == 0 && agentDraftFollowUpsFromFlags(cmd) == nil {
 		return fmt.Errorf("pass at least one field flag to change")
 	}
 	client, err := newAPIClient(cmd)
@@ -179,7 +211,7 @@ func runAgentDraftSet(cmd *cobra.Command, args []string) error {
 	ctx, cancel := cli.APIContext(context.Background())
 	defer cancel()
 	var draft map[string]any
-	if err := client.PatchJSON(ctx, "/api/agent-drafts/"+url.PathEscape(args[0]), map[string]any{"config": config}, &draft); err != nil {
+	if err := client.PatchJSON(ctx, "/api/agent-drafts/"+url.PathEscape(args[0]), agentDraftWriteBody(cmd, config), &draft); err != nil {
 		return fmt.Errorf("update agent draft: %w", err)
 	}
 	return printAgentDraft(cmd, draft)
@@ -207,7 +239,8 @@ func runAgentDraftDiscard(cmd *cobra.Command, args []string) error {
 	ctx, cancel := cli.APIContext(context.Background())
 	defer cancel()
 	var draft map[string]any
-	if err := client.PostJSON(ctx, "/api/agent-drafts/"+url.PathEscape(args[0])+"/discard", nil, &draft); err != nil {
+	reason, _ := cmd.Flags().GetString("reason")
+	if err := client.PostJSON(ctx, "/api/agent-drafts/"+url.PathEscape(args[0])+"/discard", map[string]any{"reason": reason}, &draft); err != nil {
 		return fmt.Errorf("discard agent draft: %w", err)
 	}
 	return printAgentDraft(cmd, draft)

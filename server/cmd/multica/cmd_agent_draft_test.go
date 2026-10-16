@@ -82,3 +82,44 @@ func TestRunAgentDraftSetRequiresAField(t *testing.T) {
 		t.Fatal("expected an error when no field flag is passed")
 	}
 }
+
+func TestRunAgentDraftSetSendsFollowUps(t *testing.T) {
+	t.Chdir(t.TempDir())
+	t.Setenv("MULTICA_AGENT_ID", "")
+	t.Setenv("MULTICA_TASK_ID", "")
+
+	var body map[string]json.RawMessage
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			t.Fatalf("decode body: %v", err)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{"id": "draft-1", "status": "pending"})
+	}))
+	defer srv.Close()
+	setCLITestServerEnv(t, srv.URL)
+
+	cmd := newAgentDraftSetTestCmd()
+	for flag, value := range map[string]string{
+		"needs-env": "SENTRY_TOKEN=Read-only token",
+		"follow-up": "Daily 09:00 autopilot",
+	} {
+		if err := cmd.Flags().Set(flag, value); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := captureStdout(t, func() error { return runAgentDraftSet(cmd, []string{"draft-1"}) }); err != nil {
+		t.Fatalf("runAgentDraftSet: %v", err)
+	}
+	var followUps []map[string]string
+	if err := json.Unmarshal(body["follow_ups"], &followUps); err != nil {
+		t.Fatalf("follow_ups: %v (%s)", err, body["follow_ups"])
+	}
+	got := map[string]map[string]string{}
+	for _, item := range followUps {
+		got[item["kind"]] = item
+	}
+	if got["env"]["label"] != "SENTRY_TOKEN" || got["env"]["hint"] != "Read-only token" || got["note"]["label"] != "Daily 09:00 autopilot" {
+		t.Fatalf("follow_ups = %+v", followUps)
+	}
+}
