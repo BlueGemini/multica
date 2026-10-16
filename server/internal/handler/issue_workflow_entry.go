@@ -64,7 +64,10 @@ func (h *Handler) applyIssueWorkflow(ctx context.Context, prev db.Issue, params 
 	}
 	// Someone else moved the issue while the run worked: the run's decision was
 	// made for a step the issue has left, and applying it would undo that move.
+	// Default without handoffs keeps the pre-workflow behavior, so workspaces
+	// that never adopt workflows see no change.
 	if run != nil && run.WorkflowStep.Valid && run.WorkflowStep.String != prev.Status &&
+		(!def.IsDefault || def.HandsOffAnywhere()) &&
 		statusExplicit && params.Status.Valid && params.Status.String != prev.Status {
 		return nil, h.stepMovedError(ctx, prev, run.WorkflowStep.String)
 	}

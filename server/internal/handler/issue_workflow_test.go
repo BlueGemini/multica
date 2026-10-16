@@ -837,6 +837,22 @@ func TestAgentStatusChangeRefusedAfterIssueMoved(t *testing.T) {
 	agentUpdateIssue(t, issueID, agentID, fresh, map[string]any{"status": "in_review"}).Want(http.StatusOK)
 }
 
+// A project on Default with no handoffs keeps the pre-workflow behavior: a run
+// may still change the status after someone else moved the issue.
+func TestAgentStatusChangeOnDefaultIgnoresStep(t *testing.T) {
+	seedTestCatalog(t)
+	agentID := seededReadyAgentID(t)
+	projectID := createWorkflowTestProject(t, "Workflow default step project")
+	issueID := dbfx.Issue(t, "default step", testutil.Cols{"project_id": projectID, "status": "blocked"})
+	var runtimeID string
+	dbfx.QueryRow(t, `SELECT runtime_id::text FROM agent WHERE id = $1`, agentID).Scan(&runtimeID)
+	taskID := dbfx.Task(t, agentID, testutil.Cols{
+		"issue_id": issueID, "runtime_id": runtimeID, "status": "running", "started_at": time.Now(), "workflow_step": "todo",
+	})
+
+	agentUpdateIssue(t, issueID, agentID, taskID, map[string]any{"status": "in_review"}).Want(http.StatusOK)
+}
+
 // Squads can't be handed to, but a handoff away from an issue a squad owns
 // offers to stop — and stops — the runs made on
 // the squad's behalf, recording who stopped them.

@@ -210,23 +210,20 @@ export function IssueStatusesTab({
     setInspectionOpen(true);
   };
 
+  // Offered only once the workspace has something archived. A permanently
+  // disabled "Show archived (0)" is a control that can never do anything.
+  const archivedToggle = archivedCount > 0 ? (
+    <label className="flex items-center justify-end gap-2 text-caption text-muted-foreground">
+      {t(($) => $.issue_statuses.show_archived, { count: archivedCount })}
+      <Switch checked={showArchived} onCheckedChange={setShowArchived} />
+    </label>
+  ) : undefined;
+
   const body = (
     <>
       {myRole && !isAdmin ? <SettingsReadOnlyNotice wsId={wsId} /> : null}
       <div className="space-y-4">
-        {/* Under Workflows the grips already say it. */}
-        {isAdmin && !embedded && (
-          <p className="text-caption text-muted-foreground">{t(($) => $.issue_statuses.reorder_hint)}</p>
-        )}
-        {/* Offered only once the workspace has something archived. A permanently
-            disabled "Show archived (0)" is a control that can never do
-            anything. */}
-        {archivedCount > 0 && (
-          <label className="flex items-center justify-end gap-2 text-caption text-muted-foreground">
-            {t(($) => $.issue_statuses.show_archived, { count: archivedCount })}
-            <Switch checked={showArchived} onCheckedChange={setShowArchived} />
-          </label>
-        )}
+        {embedded && archivedToggle}
 
         {isLoading ? (
           <div className="rounded-lg border border-surface-border bg-card px-4 py-12 text-center text-body text-muted-foreground">
@@ -286,7 +283,14 @@ export function IssueStatusesTab({
       {body}
     </section>
   ) : (
-    <SettingsTab title={t(($) => $.page.tabs.issue_statuses)} scope="workspace">{body}</SettingsTab>
+    <SettingsTab
+      title={t(($) => $.page.tabs.issue_statuses)}
+      description={isAdmin ? t(($) => $.issue_statuses.reorder_hint) : undefined}
+      scope="workspace"
+      actions={archivedToggle}
+    >
+      {body}
+    </SettingsTab>
   );
 }
 
