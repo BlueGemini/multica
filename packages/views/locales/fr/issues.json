@@ -1463,7 +1463,6 @@
     },
     "settings": {
       "title": "Workflows",
-      "description": "Un workflow est un processus complet : ses colonnes, et à qui chaque colonne transmet un ticket. Chaque workflow a Todo, Done et Cancelled ; Backlog et Blocked sont facultatives. Les projets choisissent un workflow.",
       "new": "Nouveau workflow",
       "projects_one": "{{count}} projet",
       "projects_other": "{{count}} projets",
@@ -1477,9 +1476,6 @@
       "deleted": "Workflow supprimé",
       "delete_error": "Impossible de supprimer le workflow",
       "statuses_title": "Bibliothèque d’états",
-      "section_title": "Workflows",
-      "section_description": "Plusieurs projets peuvent partager un workflow ; les modifications s’appliquent aussitôt à tous.",
-      "workspace_default": "Par défaut de l’espace",
       "statuses_one": "{{count}} état",
       "statuses_other": "{{count}} états",
       "handoffs_one": "{{count}} étape de passage",
@@ -1490,7 +1486,6 @@
       "used_by_default_one": "Utilisé par {{count}} projet : {{names}}, et les tâches sans projet",
       "used_by_default_other": "Utilisé par {{count}} projets : {{names}}, et les tâches sans projet",
       "used_by_default_none": "Utilisé par les tâches sans projet",
-      "statuses_description": "États partagés par tous les workflows. La key sert à l’API et au CLI (multica issue status <id> <key>) ; faites glisser dans une catégorie pour réordonner les colonnes du tableau global.",
       "new_blank": "Workflow vide",
       "from_template": "À partir d’un modèle"
     },

@@ -103,83 +103,67 @@ export function WorkflowsTab() {
   const defaultRow = workflows.find((w) => w.is_default);
 
   return (
-    <SettingsTab title={t(($) => $.workflows.settings.title)} description={t(($) => $.workflows.settings.description)}>
-      <section className="space-y-4">
-        <header className="flex items-end gap-4">
-          <div className="min-w-0 flex-1">
-            <h3 className="text-title-sm font-semibold">{t(($) => $.workflows.settings.section_title)}</h3>
-            <p className="mt-1 text-caption text-muted-foreground">{t(($) => $.workflows.settings.section_description)}</p>
-          </div>
-          {isAdmin && (
-            <DropdownMenu>
-              <DropdownMenuTrigger
-                render={
-                  <Button variant="outline" className="gap-1.5">
-                    <Plus className="size-3.5" />
-                    {t(($) => $.workflows.settings.new)}
-                    <ChevronDown className="size-3" />
-                  </Button>
-                }
-              />
-              <DropdownMenuContent align="end" className="w-72">
-                <DropdownMenuItem onClick={() => openEditor(NEW_WORKFLOW)}>
+    <SettingsTab
+      title={t(($) => $.workflows.settings.title)}
+      actions={
+        isAdmin && (
+          <DropdownMenu>
+            <DropdownMenuTrigger
+              render={
+                <Button variant="outline" className="gap-1.5">
                   <Plus className="size-3.5" />
-                  {t(($) => $.workflows.settings.new_blank)}
-                </DropdownMenuItem>
-                <DropdownMenuSeparator />
-                <DropdownMenuGroup>
-                  <DropdownMenuLabel>{t(($) => $.workflows.settings.from_template)}</DropdownMenuLabel>
-                  {WORKFLOW_TEMPLATES.map((tpl) => (
-                    <DropdownMenuItem key={tpl.id} className="items-start py-2" onClick={() => openEditor(NEW_WORKFLOW, tpl.id)}>
-                      <LayoutTemplate className="mt-0.5 size-3.5" />
-                      <span className="min-w-0">
-                        <span className="block font-medium">{t(($) => $.workflows.templates[tpl.id].name)}</span>
-                        <span className="block text-caption text-muted-foreground">
-                          {t(($) => $.workflows.templates[tpl.id].summary)}
-                        </span>
+                  {t(($) => $.workflows.settings.new)}
+                  <ChevronDown className="size-3" />
+                </Button>
+              }
+            />
+            <DropdownMenuContent align="end" className="w-72">
+              <DropdownMenuItem onClick={() => openEditor(NEW_WORKFLOW)}>
+                <Plus className="size-3.5" />
+                {t(($) => $.workflows.settings.new_blank)}
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuGroup>
+                <DropdownMenuLabel>{t(($) => $.workflows.settings.from_template)}</DropdownMenuLabel>
+                {WORKFLOW_TEMPLATES.map((tpl) => (
+                  <DropdownMenuItem key={tpl.id} className="items-start py-2" onClick={() => openEditor(NEW_WORKFLOW, tpl.id)}>
+                    <LayoutTemplate className="mt-0.5 size-3.5" />
+                    <span className="min-w-0">
+                      <span className="block font-medium">{t(($) => $.workflows.templates[tpl.id].name)}</span>
+                      <span className="block text-caption text-muted-foreground">
+                        {t(($) => $.workflows.templates[tpl.id].summary)}
                       </span>
-                    </DropdownMenuItem>
-                  ))}
-                </DropdownMenuGroup>
-              </DropdownMenuContent>
-            </DropdownMenu>
-          )}
-        </header>
-        <div className="divide-y divide-surface-border overflow-hidden rounded-lg border border-surface-border bg-card">
-          {defaultRow ? (
-            <WorkflowRow workflow={defaultRow} projects={defaultProjects} onOpen={() => openEditor(defaultRow.id)} />
-          ) : (
-            <DefaultWorkflowRow projects={defaultProjects} />
-          )}
-          {isLoaded &&
-            workflows.filter((w) => !w.is_default).map((workflow) => (
-              <WorkflowRow
-                key={workflow.id}
-                workflow={workflow}
-                projects={projects.filter((p) => workflow.project_ids.includes(p.id))}
-                onOpen={() => openEditor(workflow.id)}
-              />
-            ))}
-        </div>
-      </section>
+                    </span>
+                  </DropdownMenuItem>
+                ))}
+              </DropdownMenuGroup>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        )
+      }
+    >
+      <div className="divide-y divide-surface-border overflow-hidden rounded-lg border border-surface-border bg-card">
+        {defaultRow ? (
+          <WorkflowRow workflow={defaultRow} projects={defaultProjects} onOpen={() => openEditor(defaultRow.id)} />
+        ) : (
+          <DefaultWorkflowRow projects={defaultProjects} />
+        )}
+        {isLoaded &&
+          workflows.filter((w) => !w.is_default).map((workflow) => (
+            <WorkflowRow
+              key={workflow.id}
+              workflow={workflow}
+              projects={projects.filter((p) => workflow.project_ids.includes(p.id))}
+              onOpen={() => openEditor(workflow.id)}
+            />
+          ))}
+      </div>
 
       <IssueStatusesTab
-        embedded={{
-          title: t(($) => $.workflows.settings.statuses_title),
-          description: t(($) => $.workflows.settings.statuses_description),
-        }}
+        embedded={{ title: t(($) => $.workflows.settings.statuses_title) }}
         workflowUsage={usage}
       />
     </SettingsTab>
-  );
-}
-
-function RowMeta({ statuses }: { statuses: number }) {
-  const { t } = useT("issues");
-  return (
-    <span className="text-caption text-muted-foreground">
-      {t(($) => $.workflows.settings.statuses, { count: statuses })}
-    </span>
   );
 }
 
@@ -199,10 +183,6 @@ function DefaultWorkflowRow({ projects }: { projects: Project[] }) {
       <div className="min-w-0 flex-1 space-y-2">
         <div className="flex flex-wrap items-center gap-2">
           <span className="text-body font-semibold">{t(($) => $.workflows.default_name)}</span>
-          <span className="rounded-xs bg-muted px-1.5 py-0.5 text-micro text-muted-foreground">
-            {t(($) => $.workflows.settings.workspace_default)}
-          </span>
-          <RowMeta statuses={keys.length} />
         </div>
         <StepChain steps={keys.map((key) => ({ status_key: key, handler: { type: "none" }, instructions: "" }))} />
         <p className="text-caption text-muted-foreground">
@@ -239,14 +219,8 @@ function WorkflowRow({
       <div className="min-w-0 flex-1 space-y-2">
         <div className="flex flex-wrap items-center gap-2">
           <span className="text-body font-semibold">{workflow.name}</span>
-          {workflow.is_default && (
-            <span className="rounded-xs bg-muted px-1.5 py-0.5 text-micro text-muted-foreground">
-              {t(($) => $.workflows.settings.workspace_default)}
-            </span>
-          )}
-          <RowMeta statuses={workflow.steps.length} />
           {workflow.description && (
-            <span className="truncate text-caption text-muted-foreground">· {workflow.description}</span>
+            <span className="truncate text-caption text-muted-foreground">{workflow.description}</span>
           )}
         </div>
         <StepChain steps={workflow.steps} />

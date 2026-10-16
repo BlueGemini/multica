@@ -1463,7 +1463,6 @@
     },
     "settings": {
       "title": "Workflows",
-      "description": "A workflow is a whole pipeline: its columns, and who each column hands an issue to. Every workflow has Todo, Done and Cancelled; Backlog and Blocked are optional. Projects pick a workflow.",
       "new": "New workflow",
       "projects_one": "{{count}} project",
       "projects_other": "{{count}} projects",
@@ -1477,9 +1476,6 @@
       "deleted": "Workflow deleted",
       "delete_error": "Couldn't delete the workflow",
       "statuses_title": "Status library",
-      "section_title": "Workflows",
-      "section_description": "Several projects can share a workflow; edits apply to all of them at once.",
-      "workspace_default": "Workspace default",
       "statuses_one": "{{count}} status",
       "statuses_other": "{{count}} statuses",
       "handoffs_one": "{{count}} handoff step",
@@ -1490,7 +1486,6 @@
       "used_by_default_one": "Used by {{count}} project: {{names}}, and issues without a project",
       "used_by_default_other": "Used by {{count}} projects: {{names}}, and issues without a project",
       "used_by_default_none": "Used by issues without a project",
-      "statuses_description": "Statuses shared by every workflow. The key is what the API and CLI use (multica issue status <id> <key>); drag within a category to reorder the global board’s columns.",
       "new_blank": "Blank workflow",
       "from_template": "From a template"
     },

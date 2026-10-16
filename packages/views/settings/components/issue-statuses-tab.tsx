@@ -135,6 +135,9 @@ interface StatusDraft {
   icon: IssueStatusIcon | "";
 }
 
+/** Built-ins whose note says what moving an issue there does; the rest only restate the name. */
+const BEHAVIOR_STATUSES = new Set<string>(["backlog", "todo", "in_review"]);
+
 const EMPTY_DRAFT: StatusDraft = {
   name: "",
   description: "",
@@ -152,7 +155,7 @@ export function IssueStatusesTab({
   embedded,
   workflowUsage,
 }: {
-  embedded?: { title: string; description: string };
+  embedded?: { title: string };
   workflowUsage?: (statusKey: string) => number;
 } = {}) {
   const { t } = useT("settings");
@@ -211,7 +214,7 @@ export function IssueStatusesTab({
     <>
       {myRole && !isAdmin ? <SettingsReadOnlyNotice wsId={wsId} /> : null}
       <div className="space-y-4">
-        {/* Embedded under Workflows, the section description already covers reordering. */}
+        {/* Under Workflows the grips already say it. */}
         {isAdmin && !embedded && (
           <p className="text-caption text-muted-foreground">{t(($) => $.issue_statuses.reorder_hint)}</p>
         )}
@@ -279,10 +282,7 @@ export function IssueStatusesTab({
 
   return embedded ? (
     <section id="status-library" className="space-y-4">
-      <header>
-        <h3 className="text-title-sm font-semibold">{embedded.title}</h3>
-        <p className="mt-1 max-w-3xl text-caption leading-5 text-muted-foreground">{embedded.description}</p>
-      </header>
+      <h3 className="text-title-sm font-semibold">{embedded.title}</h3>
       {body}
     </section>
   ) : (
@@ -412,11 +412,14 @@ function CategorySection({
                   entry={entry}
                   mergeBadgeHref={entry.key === mergeTarget && !entry.archived_at ? mergeSettingsHref : null}
                   label={entry.is_system ? labelOf(entry.key) : entry.name}
-                  description={entry.is_system
-                    ? t(($) => $.issue_statuses.built_in_descriptions[entry.key as BuiltInIssueStatus])
-                    : entry.description}
+                  description={!entry.is_system
+                    ? entry.description
+                    : workflowUsage && !BEHAVIOR_STATUSES.has(entry.key)
+                      ? ""
+                      : t(($) => $.issue_statuses.built_in_descriptions[entry.key as BuiltInIssueStatus])}
                   canManage={canManage}
-                  workflowUsage={workflowUsage?.(entry.key)}
+                  workflowUsage={entry.is_system ? undefined : workflowUsage?.(entry.key)}
+                  showKey={Boolean(workflowUsage)}
                   canReorder={canReorder && !entry.archived_at}
                   isReordering={reorder.isPending}
                   onEdit={() => onEdit(entry)}
@@ -445,6 +448,7 @@ function StatusRow({
   description,
   canManage,
   workflowUsage,
+  showKey,
   canReorder,
   isReordering,
   onEdit,
@@ -459,8 +463,9 @@ function StatusRow({
   label: string;
   description: string;
   canManage: boolean;
-  /** How many workflows list this status; undefined outside Workflows. */
+  /** How many workflows list a custom status; undefined for built-ins and outside Workflows. */
   workflowUsage?: number;
+  showKey: boolean;
   canReorder: boolean;
   isReordering: boolean;
   onEdit: () => void;
@@ -508,12 +513,12 @@ function StatusRow({
       <div className="min-w-0 flex-1">
         <div className="flex min-w-0 items-center gap-2">
           <span className="truncate text-body font-medium">{label}</span>
-          {workflowUsage !== undefined && entry.is_system && (
+          {showKey && entry.is_system && (
             <span className="shrink-0 rounded-xs bg-muted px-1.5 py-0.5 text-micro text-muted-foreground">
               {t(($) => $.issue_statuses.builtin_badge)}
             </span>
           )}
-          {workflowUsage !== undefined && (
+          {showKey && (
             <span className="shrink-0 font-mono text-caption text-muted-foreground">{entry.key}</span>
           )}
           {mergeBadgeHref && (
