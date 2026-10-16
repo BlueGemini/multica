@@ -30,7 +30,8 @@ import {
   summarizeTaskUsageAcross,
 } from "../../runtimes/utils";
 import { TerminateTaskConfirmDialog } from "./terminate-task-confirm-dialog";
-import { IssueRunsDialog, RunTriggerLabel } from "./issue-runs-dialog";
+import { IssueRunsDialog } from "./issue-runs-dialog";
+import { RunTriggerLabel } from "./run-trigger-label";
 import {
   buildRunTimeline,
   shortModelName,

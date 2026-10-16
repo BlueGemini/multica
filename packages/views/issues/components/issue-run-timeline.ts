@@ -10,7 +10,7 @@ import { taskDurationMs } from "./task-run-labels";
 
 // Pure data for the issue's run timeline: the sidebar's per-run cost bars and
 // the Runs dialog they open. Everything the two surfaces draw — bar heights,
-// shares, day groups, totals — is derived here, so the rendering
+// the cumulative cost curve, shares, day groups, totals — is derived here, so the rendering
 // code only maps numbers to pixels and the arithmetic has one place to be
 // tested.
 
@@ -26,6 +26,11 @@ const TERMINAL_STATUSES = new Set<AgentTask["status"]>([
   "cancelled",
 ]);
 
+// A run has to cost at least this share of the issue before the cumulative
+// chart calls it out. Below it no single run explains the curve, and labelling
+// the biggest of many similar steps would point at noise.
+const PEAK_MIN_SHARE = 0.15;
+
 export interface TimelineRun {
   task: AgentTask;
   /** When the run started working; falls back to dispatch, then creation. */
@@ -38,6 +43,13 @@ export interface TimelineRun {
   /** Null when the run recorded no usage — "no figure", never "free". */
   usage: TaskUsageSummary | null;
   breakdown: CostBreakdown | null;
+  /** The issue's running total once this run ended — what the curve reads there. */
+  costSoFar: number;
+}
+
+export interface CumulativeStep {
+  t: number;
+  cost: number;
 }
 
 export interface TimelineLane {
@@ -74,6 +86,14 @@ export interface RunTimeline {
   failedCount: number;
   cancelledCount: number;
   activeCount: number;
+  /** The cumulative chart's x axis: the extent, padded. */
+  domain: [number, number];
+  /** First start to last end — the stretch of the axis that holds runs. */
+  extent: [number, number];
+  /** The running total after each priced run, in completion order. */
+  cumulative: CumulativeStep[];
+  /** The run that moved the total most, when it moved it enough to name. */
+  peak: TimelineRun | null;
   /** One lane per agent, in order of first appearance. */
   lanes: TimelineLane[];
   /** Spend per agent, most expensive first. */
@@ -138,6 +158,7 @@ export function toTimelineRun(task: AgentTask, nowMs: number): TimelineRun | nul
     durationMs: active ? null : taskDurationMs(task),
     usage,
     breakdown: usage ? sumBreakdown(task) : null,
+    costSoFar: 0,
   };
 }
 
@@ -184,9 +205,27 @@ export function buildRunTimeline(tasks: readonly AgentTask[], nowMs: number): Ru
     else laneMap.set(run.task.agent_id, [run]);
   }
 
+  // Usage is written when a run finishes, so the curve steps at completion —
+  // and completion order is not start order when runs overlap.
+  const cumulative: CumulativeStep[] = [];
+  let running = 0;
+  for (const run of runs.toSorted((a, b) => a.endMs - b.endMs)) {
+    if (run.usage) {
+      running += run.usage.cost;
+      cumulative.push({ t: run.endMs, cost: running });
+    }
+    run.costSoFar = running;
+  }
+
   const first = runs[0];
   const lastEnd = runs.reduce((m, r) => Math.max(m, r.endMs), first?.endMs ?? nowMs);
   const elapsedMs = first ? Math.max(0, lastEnd - first.startMs) : 0;
+
+  let peak: TimelineRun | null = null;
+  for (const run of runs) {
+    if (run.usage && (!peak || run.usage.cost > peak.usage!.cost)) peak = run;
+  }
+  if (peak && (totalCost <= 0 || peak.usage!.cost / totalCost < PEAK_MIN_SHARE)) peak = null;
 
   return {
     runs,
@@ -199,6 +238,10 @@ export function buildRunTimeline(tasks: readonly AgentTask[], nowMs: number): Ru
     failedCount,
     cancelledCount,
     activeCount,
+    domain: paddedDomain(first?.startMs ?? nowMs, lastEnd),
+    extent: [first?.startMs ?? nowMs, lastEnd],
+    cumulative,
+    peak,
     lanes: Array.from(laneMap, ([agentId, laneRuns]) => ({ agentId, runs: laneRuns })),
     costByAgent: sortedShares(agentCost),
     costByModel: sortedShares(modelCost),
@@ -210,6 +253,22 @@ export function buildRunTimeline(tasks: readonly AgentTask[], nowMs: number): Ru
 export function cacheHitRate(tokens: Pick<TokenTotals, "input" | "cacheRead" | "cacheWrite">): number | null {
   const prompt = tokens.input + tokens.cacheRead + tokens.cacheWrite;
   return prompt > 0 ? tokens.cacheRead / prompt : null;
+}
+
+// A little air on both ends so the first and last bars never sit on the frame,
+// and a floor on the span so a single short run doesn't fill the whole axis.
+const MIN_SPAN_MS = 60 * 60 * 1000;
+
+function paddedDomain(start: number, end: number): [number, number] {
+  let span = end - start;
+  if (span < MIN_SPAN_MS) {
+    const extra = (MIN_SPAN_MS - span) / 2;
+    start -= extra;
+    end += extra;
+    span = MIN_SPAN_MS;
+  }
+  const pad = span * 0.02;
+  return [start - pad, end + pad];
 }
 
 /**
@@ -228,6 +287,141 @@ export function niceTicks(max: number, maxCount = 4): number[] {
     const v = Number((step * i).toPrecision(12));
     ticks.push(v);
     if (v >= max) break;
+  }
+  return ticks;
+}
+
+/**
+ * The run a pointer at time `t` is on: the one whose bar spans `t`, give or
+ * take `slopMs` — the time a few pixels cover, so a bar one pixel wide is
+ * still something a pointer can land on. -1 between runs: the chart says so,
+ * rather than reaching across a gap for a run the pointer is nowhere near.
+ * Snapping to the nearest run was what made the crosshair jump — hundreds of
+ * pixels for a few pixels of pointer travel.
+ *
+ * Runs overlap — one agent's short run inside another's long one, or two
+ * agents at once — so "the bar it is on" can be several. A bar the pointer is
+ * inside beats one it is merely near, then the shortest wins: a bar fully
+ * inside another is otherwise unreachable, while the long one still owns
+ * every moment the short one doesn't cover. `agentId` narrows the choice to
+ * one lane when the pointer is over that lane.
+ */
+export function runIndexAt(
+  runs: readonly TimelineRun[],
+  t: number,
+  slopMs: number,
+  agentId?: string,
+): number {
+  let best = -1;
+  let bestDistance = Infinity;
+  let bestSpan = Infinity;
+  runs.forEach((run, i) => {
+    if (agentId && run.task.agent_id !== agentId) return;
+    const distance = t < run.startMs ? run.startMs - t : t > run.endMs ? t - run.endMs : 0;
+    if (distance > slopMs) return;
+    const span = run.endMs - run.startMs;
+    if (distance < bestDistance || (distance === bestDistance && span < bestSpan)) {
+      best = i;
+      bestDistance = distance;
+      bestSpan = span;
+    }
+  });
+  return best;
+}
+
+/** What the cumulative curve reads at `t`: the total once every run that had
+ *  finished by then was paid for. */
+export function cumulativeCostAt(steps: readonly CumulativeStep[], t: number): number {
+  let cost = 0;
+  for (const step of steps) {
+    if (step.t > t) break;
+    cost = step.cost;
+  }
+  return cost;
+}
+
+/**
+ * The quiet stretch around `t`: when the last run before it ended and the
+ * next one after it started. Either side is null past the first or last run.
+ * `agentId` reads one lane's quiet stretch.
+ */
+export function idleSpanAround(
+  runs: readonly TimelineRun[],
+  t: number,
+  agentId?: string,
+): { fromMs: number | null; toMs: number | null } {
+  let fromMs: number | null = null;
+  let toMs: number | null = null;
+  for (const run of runs) {
+    if (agentId && run.task.agent_id !== agentId) continue;
+    if (run.endMs <= t && (fromMs == null || run.endMs > fromMs)) fromMs = run.endMs;
+    if (run.startMs >= t && (toMs == null || run.startMs < toMs)) toMs = run.startMs;
+  }
+  return { fromMs, toMs };
+}
+
+/**
+ * The cumulative cost as a step curve in a 1000×100 box, for an SVG stretched
+ * over the plot with `preserveAspectRatio="none"`. Usage is written when a run
+ * finishes, so the line rises at each run's end and holds flat between.
+ */
+export function stepCurvePath(
+  steps: readonly CumulativeStep[],
+  [d0, d1]: [number, number],
+  yMax: number,
+): { line: string; area: string } {
+  const x = (t: number) => (((t - d0) / (d1 - d0)) * 1000).toFixed(2);
+  const y = (cost: number) => ((1 - cost / yMax) * 100).toFixed(2);
+  let line = "M0,100";
+  let prevY = "100.00";
+  for (const step of steps) {
+    const sx = x(step.t);
+    const sy = y(step.cost);
+    line += ` L${sx},${prevY} L${sx},${sy}`;
+    prevY = sy;
+  }
+  line += ` L1000,${prevY}`;
+  return { line, area: `${line} L1000,100 L0,100 Z` };
+}
+
+export interface TimeTick {
+  t: number;
+  /** "day" ticks sit on local midnight; "hour" ticks on a whole hour. */
+  kind: "day" | "hour";
+}
+
+const HOUR_MS = 60 * 60 * 1000;
+const HOUR_STEPS = [1, 2, 3, 6, 12];
+
+/**
+ * X-axis ticks in local time. Past a day and a half the axis marks midnights
+ * (labelled by weekday); shorter spans mark whole hours at a step that keeps
+ * the count readable, because a single day label would leave the axis blank.
+ */
+export function timeTicks([start, end]: [number, number], maxTicks = 8): TimeTick[] {
+  const span = end - start;
+  if (!(span > 0)) return [];
+  if (span > 36 * HOUR_MS) {
+    const ticks: TimeTick[] = [];
+    const d = new Date(start);
+    d.setHours(0, 0, 0, 0);
+    d.setDate(d.getDate() + 1);
+    // Thin daily ticks for long issues so the labels never collide.
+    const days = Math.ceil(span / (24 * HOUR_MS));
+    const every = Math.max(1, Math.ceil(days / maxTicks));
+    for (let i = 0; d.getTime() <= end; i++) {
+      if (i % every === 0) ticks.push({ t: d.getTime(), kind: "day" });
+      d.setDate(d.getDate() + 1);
+    }
+    return ticks;
+  }
+  const step = HOUR_STEPS.find((h) => span / (h * HOUR_MS) <= maxTicks) ?? 24;
+  const d = new Date(start);
+  d.setMinutes(0, 0, 0);
+  while (d.getHours() % step !== 0 || d.getTime() <= start) d.setHours(d.getHours() + 1);
+  const ticks: TimeTick[] = [];
+  for (; d.getTime() < end; d.setHours(d.getHours() + step)) {
+    ticks.push({ t: d.getTime(), kind: "hour" });
   }
   return ticks;
 }

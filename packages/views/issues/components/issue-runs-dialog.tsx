@@ -36,9 +36,10 @@ import {
   type RunTimeline,
   type TimelineRun,
 } from "./issue-run-timeline";
+import { RunCumulativeChart } from "./issue-runs-cumulative-chart";
 import { canRetryRun, RetryRunButton } from "./retry-run-button";
+import { RunTriggerLabel } from "./run-trigger-label";
 import { useStatusLabel, useTriggerText } from "./task-run-labels";
-import { WakeupRunLabel } from "./wakeup-source-chip";
 
 // The issue's runs laid out in time — the surface the execution log's header
 // and cost bars open.
@@ -47,7 +48,8 @@ import { WakeupRunLabel } from "./wakeup-source-chip";
 // did this issue get here": what it spent and on what, when, who asked for
 // each run, and which ones were expensive. The chart on top is one bar per
 // run (cost, tokens or agent time); the list below is the same runs as rows,
-// newest first — it is also the chart's accessible, exact-value view.
+// newest first — it is also the chart's accessible, exact-value view. The
+// cumulative cost curve over time is the chart's second view.
 //
 // Every figure comes from the same `summarizeTaskUsage` helpers the sidebar
 // uses, so the total here can never disagree with the total that opened it.
@@ -157,7 +159,7 @@ export function IssueRunsDialog({
         {timeline.runs.length > 0 && (
           <>
             <RunStats timeline={timeline} />
-            <RunActivityChart timeline={timeline} />
+            <RunCharts timeline={timeline} />
             {timeline.pricedCount > 0 && <CostSplit timeline={timeline} />}
             {/* `min-h-0`: the dialog is a flex column; without it this flex
                 item sizes to its content and the list never scrolls. */}
@@ -263,6 +265,29 @@ function RunStats({ timeline }: { timeline: RunTimeline }) {
 
 // ─── Chart ─────────────────────────────────────────────────────────────────
 
+type ChartView = "runs" | "cumulative";
+
+function RunCharts({ timeline }: { timeline: RunTimeline }) {
+  const { t } = useT("issues");
+  const [view, setView] = useState<ChartView>("runs");
+  const viewSwitch = (
+    <Segmented
+      label={t(($) => $.runs_timeline.view_label)}
+      value={view}
+      onChange={setView}
+      options={[
+        { value: "runs", label: t(($) => $.runs_timeline.view_runs) },
+        { value: "cumulative", label: t(($) => $.runs_timeline.view_cumulative) },
+      ]}
+    />
+  );
+  return view === "runs" ? (
+    <RunActivityChart timeline={timeline} viewSwitch={viewSwitch} />
+  ) : (
+    <RunCumulativeChart timeline={timeline} viewSwitch={viewSwitch} />
+  );
+}
+
 type Metric = "cost" | "tokens" | "time";
 
 interface Series {
@@ -293,7 +318,14 @@ function swatchFor(index: number): string {
 // that failed or was cancelled. Days are dividers rather than an axis — runs
 // cluster in bursts, and a time axis spends most of its width on the hours in
 // between where nothing ran.
-function RunActivityChart({ timeline }: { timeline: RunTimeline }) {
+function RunActivityChart({
+  timeline,
+  viewSwitch,
+}: {
+  timeline: RunTimeline;
+  /** The dialog's chart switch, placed first in this chart's toolbar. */
+  viewSwitch: React.ReactNode;
+}) {
   const { t } = useT("issues");
   const locale = useLocale();
   const { getActorName } = useActorName();
@@ -387,6 +419,7 @@ function RunActivityChart({ timeline }: { timeline: RunTimeline }) {
   return (
     <div className="mt-5 border-b px-6 pb-3">
       <div className="mb-3 flex flex-wrap items-center gap-x-3 gap-y-2">
+        {viewSwitch}
         <Segmented
           label={t(($) => $.runs_timeline.metric_label)}
           value={metric}
@@ -551,24 +584,6 @@ function RunActivityChart({ timeline }: { timeline: RunTimeline }) {
 // Axis steps are round numbers; "$50.00" would print noise a tick does not need.
 function formatTick(v: number): string {
   return Number.isInteger(v) ? `$${v}` : formatUsd(v);
-}
-
-/**
- * A run's trigger, with a wakeup run naming its rule's condition ("Wakeup ·
- * When a linked PR's CI finishes") the way the execution log's rows do. The
- * rule lookup mounts only for wakeup runs.
- */
-export function RunTriggerLabel({
-  task,
-  fallback,
-  children,
-}: {
-  task: AgentTask;
-  fallback: string;
-  children: (label: string) => React.ReactNode;
-}) {
-  if (!task.wakeup_id) return <>{children(fallback)}</>;
-  return <WakeupRunLabel task={task} fallback={fallback} render={children} />;
 }
 
 function RunHoverCard({ run, parts }: { run: TimelineRun; parts: boolean }) {
