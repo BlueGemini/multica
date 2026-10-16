@@ -1952,9 +1952,10 @@ export class ApiClient {
     );
   }
 
-  async discardAgentDraft(id: string): Promise<AgentDraftRecord> {
+  async discardAgentDraft(id: string, reason = ""): Promise<AgentDraftRecord> {
     const raw = await this.fetch<unknown>(`/api/agent-drafts/${id}/discard`, {
       method: "POST",
+      body: JSON.stringify({ reason }),
     });
     return parseWithFallback(
       raw,

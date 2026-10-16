@@ -736,11 +736,36 @@ export interface AgentDraftRecord {
   status: AgentDraftStatus;
   config: AgentDraftConfig;
   version: number;
+  /** Latest revision an agent proposed; 0 when no agent has written it. */
+  revision: number;
+  /** Newest last. Only a single draft's response carries it. */
+  revisions: AgentDraftRevision[];
+  follow_ups: AgentDraftFollowUp[];
+  discard_reason: string;
   created_agent_id: string | null;
   created_at: string;
   updated_at: string;
   /** Markdown link that renders this draft as a card. */
   mention: string;
+}
+
+/** One write an agent made: the config it left, and the previous value of
+ *  every field it changed. */
+export interface AgentDraftRevision {
+  revision: number;
+  author_type: "member" | "agent";
+  author_id: string;
+  created_at: string;
+  config: AgentDraftConfig;
+  previous: Record<string, unknown>;
+}
+
+/** Something the member does once the agent exists: fill in an environment
+ *  variable (`env`, label is the key) or confirm anything else (`note`). */
+export interface AgentDraftFollowUp {
+  kind: "env" | "note";
+  label: string;
+  hint: string;
 }
 
 export interface UpdateAgentRequest {

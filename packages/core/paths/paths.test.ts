@@ -29,6 +29,9 @@ describe("paths.workspace(slug)", () => {
     expect(ws.chatWithAgent("a1", { prompt: "hi & bye" })).toBe(
       "/acme/chat?agent=a1&prompt=hi%20%26%20bye",
     );
+    expect(ws.chatWithAgent("a1", { goal: "create-agent" })).toBe(
+      "/acme/chat?agent=a1&goal=create-agent",
+    );
     expect(ws.chatSession("session one")).toBe(
       "/acme/chat?session=session%20one",
     );

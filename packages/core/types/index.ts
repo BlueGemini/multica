@@ -59,6 +59,8 @@ export type {
   CreateAgentRequest,
   AgentDraftConfig,
   AgentDraftRecord,
+  AgentDraftRevision,
+  AgentDraftFollowUp,
   AgentDraftStatus,
   AgentPermissionScope,
   UpdateAgentRequest,

@@ -1107,6 +1107,24 @@ describe("ApiClient schema fallback", () => {
       expect(draft.status).toBe("discarded");
       expect(draft.config.name).toBe("");
     });
+
+    it("keeps the draft when its revision history or follow-ups are malformed", async () => {
+      stubFetchJson({
+        id: "d-1",
+        status: "pending",
+        config: { name: "Reviewer" },
+        revision: 2,
+        revisions: "not-a-list",
+        follow_ups: [{ kind: "secret", label: 1 }],
+      });
+      const client = new ApiClient("https://api.example.test");
+      const draft = await client.getAgentDraft("d-1");
+      expect(draft.status).toBe("pending");
+      expect(draft.config.name).toBe("Reviewer");
+      expect(draft.revision).toBe(2);
+      expect(draft.revisions).toEqual([]);
+      expect(draft.follow_ups).toEqual([]);
+    });
   });
 
   describe("cronPreview", () => {

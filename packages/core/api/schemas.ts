@@ -2327,6 +2327,22 @@ export const EMPTY_AGENT_DRAFT_CONFIG: AgentDraftConfig = {
   team_ids: [],
 };
 
+const AgentDraftRevisionSchema = z.object({
+  revision: z.number().catch(0),
+  author_type: z.enum(["member", "agent"]).catch("agent"),
+  author_id: z.string().catch(""),
+  created_at: z.string().catch(""),
+  config: AgentDraftConfigSchema.catch({ ...EMPTY_AGENT_DRAFT_CONFIG }),
+  previous: z.record(z.string(), z.unknown()).catch({}),
+}).loose();
+
+// A list this client cannot read is dropped rather than shown wrong.
+const AgentDraftFollowUpSchema = z.object({
+  kind: z.enum(["env", "note"]),
+  label: z.string(),
+  hint: z.string().catch(""),
+});
+
 export const AgentDraftRecordSchema = z.object({
   id: z.string(),
   workspace_id: z.string().catch(""),
@@ -2340,6 +2356,10 @@ export const AgentDraftRecordSchema = z.object({
   status: z.enum(["pending", "created", "discarded"]).catch("discarded"),
   config: AgentDraftConfigSchema.catch({ ...EMPTY_AGENT_DRAFT_CONFIG }),
   version: z.number().catch(0),
+  revision: z.number().catch(0),
+  revisions: z.array(AgentDraftRevisionSchema).catch([]),
+  follow_ups: z.array(AgentDraftFollowUpSchema).catch([]),
+  discard_reason: z.string().catch(""),
   created_agent_id: z.string().nullable().catch(null),
   created_at: z.string().catch(""),
   updated_at: z.string().catch(""),
@@ -2359,6 +2379,10 @@ export const agentDraftRecordFallback = (id: string): AgentDraftRecord => ({
   status: "discarded",
   config: EMPTY_AGENT_DRAFT_CONFIG,
   version: 0,
+  revision: 0,
+  revisions: [],
+  follow_ups: [],
+  discard_reason: "",
   created_agent_id: null,
   created_at: "",
   updated_at: "",

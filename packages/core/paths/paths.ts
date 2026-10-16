@@ -59,10 +59,13 @@ function workspaceScoped(slug: string) {
     squadDetail: (id: string) => `${ws}/squads/${encode(id)}`,
     inbox: () => `${ws}/inbox`,
     chat: () => `${ws}/chat`,
-    chatWithAgent: (agentId: string, options?: { prompt?: string }) =>
+    chatWithAgent: (
+      agentId: string,
+      options?: { prompt?: string; goal?: "create-agent" },
+    ) =>
       `${ws}/chat?agent=${encode(agentId)}${
         options?.prompt ? `&prompt=${encode(options.prompt)}` : ""
-      }`,
+      }${options?.goal ? `&goal=${options.goal}` : ""}`,
     chatSession: (sessionId: string) =>
       `${ws}/chat?session=${encode(sessionId)}`,
     myIssues: () => `${ws}/my-issues`,
