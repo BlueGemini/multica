@@ -25,7 +25,22 @@ vi.mock("./components/chat-message-list", () => ({
   ChatMessageSkeleton: () => <div>chat-message-skeleton</div>,
 }));
 vi.mock("./components/chat-input", () => ({
-  ChatInput: () => <div>chat-input</div>,
+  ChatInput: ({
+    onSend,
+  }: {
+    onSend: (content: string, ids: undefined, commit: () => void, attachments: []) => void;
+  }) => (
+    <button type="button" onClick={() => onSend("Review PRs", undefined, () => {}, [])}>
+      chat-input
+    </button>
+  ),
+}));
+vi.mock("./components/create-agent-goal", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("./components/create-agent-goal")>()),
+  CreateAgentGoalEmptyState: () => <div>create-agent-goal-empty-state</div>,
+}));
+vi.mock("../agents/create/pinned-agent-draft-bar", () => ({
+  PinnedAgentDraftBar: () => null,
 }));
 vi.mock("./components/chat-thread-list", () => ({
   ChatThreadList: ({
@@ -109,6 +124,7 @@ const storeListeners = vi.hoisted(() => new Set<() => void>());
 const availableAgentsRef = vi.hoisted(() => ({ current: [] as Agent[] }));
 const agentsSettledRef = vi.hoisted(() => ({ current: true }));
 const mockStartNewChat = vi.hoisted(() => vi.fn());
+const mockHandleSend = vi.hoisted(() => vi.fn(async () => true));
 const mockToastError = vi.hoisted(() => vi.fn());
 const mockSetActiveSession = vi.hoisted(() =>
   vi.fn((id: string | null) => {
@@ -168,7 +184,7 @@ vi.mock("./components/use-chat-controller", async () => {
       restoreDraftRequest: null,
       handleRestoreDraftConsumed: vi.fn(),
       focusInputRequest: 0,
-      handleSend: vi.fn(),
+      handleSend: mockHandleSend,
       handleStop: vi.fn(),
       handleUploadFile: vi.fn(),
       handleNewChat: vi.fn(),
@@ -369,6 +385,33 @@ describe("ChatPage URL synchronization", () => {
       expect(replace).not.toHaveBeenCalled();
     },
   );
+});
+
+describe("ChatPage ?goal=create-agent", () => {
+  it("starts a chat whose first message carries the goal", async () => {
+    renderPage("agent=agent-1&goal=create-agent");
+    expect(screen.getByText("Goal: create an agent")).toBeInTheDocument();
+    expect(screen.getByText("create-agent-goal-empty-state")).toBeInTheDocument();
+    await act(async () => {
+      fireEvent.click(screen.getByText("chat-input"));
+    });
+    expect(mockHandleSend).toHaveBeenCalledWith(
+      "Help me create an agent. What it needs to do:\n\nReview PRs",
+      undefined,
+      expect.any(Function),
+      [],
+    );
+  });
+
+  it("sends the message as written once the goal is removed", async () => {
+    renderPage("agent=agent-1&goal=create-agent");
+    fireEvent.click(screen.getByRole("button", { name: "Remove goal" }));
+    expect(screen.queryByText("Goal: create an agent")).toBeNull();
+    await act(async () => {
+      fireEvent.click(screen.getByText("chat-input"));
+    });
+    expect(mockHandleSend).toHaveBeenCalledWith("Review PRs", undefined, expect.any(Function), []);
+  });
 });
 
 describe("ChatPage ?agent= deep link", () => {

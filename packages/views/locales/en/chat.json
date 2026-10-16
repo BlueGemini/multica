@@ -251,5 +251,13 @@
     "archive": "Archive chat",
     "unarchive": "Unarchive chat",
     "delete": "Delete chat"
+  },
+  "create_agent_goal": {
+    "chip": "Goal: create an agent",
+    "remove": "Remove goal",
+    "prefix": "Help me create an agent. What it needs to do:",
+    "title": "What does this agent need to do?",
+    "description": "Tell {{name}} its job. {{name}} replies with a draft card in this chat, and nothing is created until you confirm.",
+    "manual": "Fill in every field yourself"
   }
 }

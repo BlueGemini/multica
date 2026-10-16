@@ -251,5 +251,13 @@
     "archive": "Archiver la discussion",
     "unarchive": "Désarchiver la discussion",
     "delete": "Supprimer la discussion"
+  },
+  "create_agent_goal": {
+    "chip": "Objectif : créer un agent",
+    "remove": "Retirer l’objectif",
+    "prefix": "Aide-moi à créer un agent. Ce qu’il doit faire :",
+    "title": "Que doit faire cet agent ?",
+    "description": "Décrivez son rôle à {{name}}. {{name}} répond avec une carte de brouillon dans ce chat, et rien n’est créé avant votre confirmation.",
+    "manual": "Remplir chaque champ vous-même"
   }
 }

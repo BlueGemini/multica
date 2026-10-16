@@ -247,5 +247,13 @@
     "delete": "删除会话",
     "archive": "归档会话",
     "unarchive": "取消归档"
+  },
+  "create_agent_goal": {
+    "chip": "目标：创建智能体",
+    "remove": "移除目标",
+    "prefix": "帮我创建一个智能体，它需要做的是：",
+    "title": "这个智能体需要做什么？",
+    "description": "告诉 {{name}} 它的职责。{{name}} 会在对话里给你一张草稿卡片，你确认后才会创建。",
+    "manual": "手动填写全部字段"
   }
 }

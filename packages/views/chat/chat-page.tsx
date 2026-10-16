@@ -36,6 +36,12 @@ import { NoAgentBanner } from "./components/no-agent-banner";
 import { ArchivedAgentBanner } from "./components/archived-agent-banner";
 import { AgentAccessRevokedBanner } from "./components/agent-access-revoked-banner";
 import { RuntimeRequiredBanner } from "./components/runtime-required-banner";
+import { CHAT_COLUMN, CHAT_GUTTER } from "./components/chat-column";
+import {
+  CreateAgentGoalChip,
+  CreateAgentGoalEmptyState,
+} from "./components/create-agent-goal";
+import { PinnedAgentDraftBar } from "../agents/create/pinned-agent-draft-bar";
 
 /**
  * Chat tab — the first-class two-pane surface (thread list on the left,
@@ -83,6 +89,32 @@ export function ChatPage() {
   const urlSession = searchParams.get("session") || null;
   const urlAgent = searchParams.get("agent") || null;
   const urlPrompt = searchParams.get("prompt") || null;
+  const urlGoal = searchParams.get("goal") === "create-agent";
+
+  // `?goal=create-agent`: a new chat meant to end in an agent draft. It
+  // follows the chat its first message creates, and that message carries the
+  // goal as its visible first line.
+  const [goal, setGoal] = useState<{ sessionId: string | null; sent: boolean } | null>(
+    null,
+  );
+  useEffect(() => {
+    if (goal?.sent && goal.sessionId === null && c.activeSessionId) {
+      setGoal({ sessionId: c.activeSessionId, sent: true });
+    }
+  }, [goal, c.activeSessionId]);
+  const goalVisible =
+    goal !== null &&
+    (goal.sessionId ? c.activeSessionId === goal.sessionId : !c.activeSessionId);
+  const handleSend: typeof c.handleSend = async (content, ...rest) => {
+    if (!goalVisible || goal.sent) return c.handleSend(content, ...rest);
+    setGoal({ sessionId: null, sent: true });
+    const sent = await c.handleSend(
+      `${t(($) => $.create_agent_goal.prefix)}\n\n${content}`,
+      ...rest,
+    );
+    if (!sent) setGoal((current) => current && { ...current, sent: false });
+    return sent;
+  };
 
   // "Composing a brand-new chat" — the user hit ⊕ but hasn't sent yet, so no
   // session exists. At compact widths this decides list-vs-conversation; on desktop the
@@ -173,6 +205,7 @@ export function ChatPage() {
     // A manual ⊕ pick outranks a pending deep link; when called FROM the
     // intent effect the ref is already set to this param, so this is a no-op.
     supersedeAgentIntent();
+    setGoal(null);
     if (agent) c.handleStartNewChat(agent);
     else c.handleNewChat();
     setComposingNew(true);
@@ -209,6 +242,7 @@ export function ChatPage() {
     if (agent) {
       consumedAgentIntent.current = urlAgent;
       startNewChat(agent);
+      if (urlGoal) setGoal({ sessionId: null, sent: false });
       // `?prompt=` pre-fills the composer — never sends — and only an empty
       // one, so a link can never overwrite what the user was typing.
       const store = useChatStore.getState();
@@ -224,7 +258,7 @@ export function ChatPage() {
       replace(wsPaths.chat());
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps -- consume when the URL param or the resolving agent list changes
-  }, [isCurrentChatRoute, workspaceSlug, urlAgent, urlPrompt, c.availableAgents, c.agentsSettled]);
+  }, [isCurrentChatRoute, workspaceSlug, urlAgent, urlPrompt, urlGoal, c.availableAgents, c.agentsSettled]);
 
   const newChatButton = (
     <NewChatButton
@@ -270,6 +304,7 @@ export function ChatPage() {
           onArchive={handleArchive}
         />
       )}
+      {goalVisible ? <CreateAgentGoalChip onRemove={() => setGoal(null)} /> : null}
       {c.showSkeleton ? (
         <ChatMessageSkeleton />
       ) : c.hasMessages ? (
@@ -301,6 +336,8 @@ export function ChatPage() {
           }
           quickActionsPendingMessageId={quickActionsPending?.message_id ?? null}
         />
+      ) : goalVisible ? (
+        <CreateAgentGoalEmptyState agent={c.activeAgent} />
       ) : (
         <EmptyState
           agent={c.activeAgent}
@@ -325,6 +362,12 @@ export function ChatPage() {
         <OfflineBanner agentName={c.activeAgent?.name} availability={c.availability} />
       )}
 
+      <PinnedAgentDraftBar
+        sessionId={c.activeSessionId ?? null}
+        gutterClassName={CHAT_GUTTER}
+        columnClassName={CHAT_COLUMN}
+      />
+
       <ChatQueue
         tasks={queuedTasks}
         headStatus={c.pendingTask?.status}
@@ -336,7 +379,7 @@ export function ChatPage() {
       />
 
       <ChatInput
-        onSend={c.handleSend}
+        onSend={handleSend}
         restoreDraftRequest={c.restoreDraftRequest}
         conversationStarterRequest={c.conversationStarterRequest}
         onConversationStarterApplied={c.handleConversationStarterApplied}
