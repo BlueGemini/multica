@@ -37,6 +37,7 @@ export function RuntimePicker({
   selectedRuntimeId,
   onSelect,
   disabled = false,
+  compact = false,
 }: {
   runtimes: RuntimeDevice[];
   runtimesLoading?: boolean;
@@ -47,6 +48,9 @@ export function RuntimePicker({
   /** Blocks opening the picker while the selection cannot be honoured yet
    *  (e.g. a builder reply or a runtime rebind is in flight). */
   disabled?: boolean;
+  /** A one-line trigger with no label of its own, for a form row that labels
+   *  it; the mine/all filter moves into the popover. */
+  compact?: boolean;
 }) {
   const { t } = useT("agents");
   const [open, setOpen] = useState(false);
@@ -109,13 +113,7 @@ export function RuntimePicker({
     onSelect(firstUsable?.id ?? "");
   };
 
-  return (
-    <div className="flex flex-col min-w-0">
-      <div className="flex h-6 items-center justify-between">
-        <Label className="text-caption text-muted-foreground">
-          {t(($) => $.create_dialog.runtime_label)}
-        </Label>
-        {hasOtherRuntimes && (
+  const filterToggle = hasOtherRuntimes ? (
           // These are not just a view filter: changing tab re-selects the first
           // usable runtime in the new list, so they are a second way to fire
           // onSelect and must honour `disabled` alongside the trigger.
@@ -145,8 +143,18 @@ export function RuntimePicker({
               {t(($) => $.create_dialog.runtime_filter_all)}
             </button>
           </div>
-        )}
-      </div>
+  ) : null;
+
+  return (
+    <div className="flex flex-col min-w-0">
+      {compact ? null : (
+        <div className="flex h-6 items-center justify-between">
+          <Label className="text-caption text-muted-foreground">
+            {t(($) => $.create_dialog.runtime_label)}
+          </Label>
+          {filterToggle}
+        </div>
+      )}
       <Popover
         open={open && !disabled}
         onOpenChange={(next) => {
@@ -157,7 +165,11 @@ export function RuntimePicker({
       >
         <PopoverTrigger
           disabled={disabled || (runtimes.length === 0 && !runtimesLoading)}
-          className="flex w-full min-w-0 items-center gap-3 rounded-lg border border-border bg-background px-3 py-2.5 mt-1.5 text-left text-body transition-colors hover:bg-muted disabled:pointer-events-none disabled:opacity-50"
+          className={
+            compact
+              ? "flex h-8 w-full min-w-0 items-center gap-2 rounded-md border border-border bg-background px-2.5 text-left text-body transition-colors hover:bg-muted disabled:pointer-events-none disabled:opacity-50"
+              : "flex w-full min-w-0 items-center gap-3 rounded-lg border border-border bg-background px-3 py-2.5 mt-1.5 text-left text-body transition-colors hover:bg-muted disabled:pointer-events-none disabled:opacity-50"
+          }
         >
           {runtimesLoading ? (
             <Loader2 className="h-4 w-4 shrink-0 animate-spin text-muted-foreground" />
@@ -184,7 +196,7 @@ export function RuntimePicker({
                 </span>
               )}
             </div>
-            {selectedRuntime && (
+            {selectedRuntime && !compact && (
               <div className="truncate text-caption text-muted-foreground">
                 {getOwnerMember(selectedRuntime.owner_id)?.name ??
                   selectedRuntime.device_info}
@@ -199,8 +211,11 @@ export function RuntimePicker({
         </PopoverTrigger>
         <PopoverContent
           align="start"
-          className="w-[var(--anchor-width)] p-1 flex flex-col max-h-72"
+          className="w-[var(--anchor-width)] min-w-72 p-1 flex flex-col max-h-72"
         >
+          {compact && filterToggle ? (
+            <div className="mb-1 flex shrink-0 justify-end">{filterToggle}</div>
+          ) : null}
           {showSearch && (
             <div className="relative mb-1 shrink-0">
               <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />

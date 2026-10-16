@@ -39,6 +39,7 @@ export function ModelDropdown({
   onChange,
   onAutomaticChange = onChange,
   disabled,
+  compact = false,
 }: {
   runtimeId: string | null;
   runtimeOnline: boolean;
@@ -47,6 +48,9 @@ export function ModelDropdown({
   /** Automatic value cleanup, separate from explicit user selections. */
   onAutomaticChange?: (value: string) => void;
   disabled?: boolean;
+  /** A one-line trigger with no label of its own, for a form row that labels
+   *  it. */
+  compact?: boolean;
 }) {
   const { t } = useT("agents");
   const queryClient = useQueryClient();
@@ -133,9 +137,11 @@ export function ModelDropdown({
   if (!supported && !modelsQuery.isLoading) {
     return (
       <div className="flex flex-col min-w-0">
-        <div className="flex h-6 items-center">
-          <Label className="text-caption text-muted-foreground">{t(($) => $.model_dropdown.label)}</Label>
-        </div>
+        {compact ? null : (
+          <div className="flex h-6 items-center">
+            <Label className="text-caption text-muted-foreground">{t(($) => $.model_dropdown.label)}</Label>
+          </div>
+        )}
         <div className="mt-1.5 flex items-start gap-2 rounded-lg border border-dashed border-border bg-muted/30 px-3 py-2.5 text-body text-muted-foreground">
           <Info className="mt-0.5 h-4 w-4 shrink-0" />
           <div className="min-w-0">
@@ -151,31 +157,40 @@ export function ModelDropdown({
 
   return (
     <div className="flex flex-col min-w-0">
-      <div className="flex h-6 items-center justify-between">
-        <Label className="text-caption text-muted-foreground">{t(($) => $.model_dropdown.label)}</Label>
-        {modelsQuery.isError && (
-          <span
-            className="text-caption text-muted-foreground"
-            title={discoveryError ?? undefined}
-          >
-            {t(($) => $.model_dropdown.discovery_failed)}
-          </span>
-        )}
-      </div>
+      {compact ? null : (
+        <div className="flex h-6 items-center justify-between">
+          <Label className="text-caption text-muted-foreground">{t(($) => $.model_dropdown.label)}</Label>
+          {modelsQuery.isError && (
+            <span
+              className="text-caption text-muted-foreground"
+              title={discoveryError ?? undefined}
+            >
+              {t(($) => $.model_dropdown.discovery_failed)}
+            </span>
+          )}
+        </div>
+      )}
       <Popover open={open} onOpenChange={setOpen}>
         <PopoverTrigger
           disabled={disabled}
-          className="flex w-full min-w-0 items-center gap-3 rounded-lg border border-border bg-background px-3 py-2.5 mt-1.5 text-left text-body transition-colors hover:bg-muted disabled:pointer-events-none disabled:opacity-50"
+          title={compact && modelsQuery.isError ? discoveryError ?? undefined : undefined}
+          className={
+            compact
+              ? "flex h-8 w-full min-w-0 items-center gap-2 rounded-md border border-border bg-background px-2.5 text-left text-body transition-colors hover:bg-muted disabled:pointer-events-none disabled:opacity-50"
+              : "flex w-full min-w-0 items-center gap-3 rounded-lg border border-border bg-background px-3 py-2.5 mt-1.5 text-left text-body transition-colors hover:bg-muted disabled:pointer-events-none disabled:opacity-50"
+          }
         >
-          <Cpu className="h-4 w-4 shrink-0 text-muted-foreground" />
+          {compact ? null : <Cpu className="h-4 w-4 shrink-0 text-muted-foreground" />}
           <div className="min-w-0 flex-1">
             {/* Wrapped in flex to mirror RuntimePicker's trigger DOM. The
                 two pickers sit side-by-side; inline-in-flex vs block-line-
                 box height calc would otherwise leave them ~1px misaligned. */}
             <div className="flex items-center gap-2">
-              <span className="truncate font-medium">{triggerLabel}</span>
+              <span className={compact ? "truncate" : "truncate font-medium"}>
+                {triggerLabel}
+              </span>
             </div>
-            {value && (
+            {value && !compact && (
               <div className="truncate text-caption text-muted-foreground">
                 {modelLabel(models, value)}
               </div>
@@ -187,7 +202,7 @@ export function ModelDropdown({
         </PopoverTrigger>
         <PopoverContent
           align="start"
-          className="w-[var(--anchor-width)] p-0 overflow-hidden"
+          className="w-[var(--anchor-width)] min-w-64 p-0 overflow-hidden"
         >
           <div className="border-b border-border">
             <ModelSearchHeader

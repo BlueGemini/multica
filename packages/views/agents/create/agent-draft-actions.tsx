@@ -17,33 +17,43 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@multica/ui/components/ui/alert-dialog";
+import { Textarea } from "@multica/ui/components/ui/textarea";
 import { useNavigation } from "../../navigation";
 import { useT } from "../../i18n";
 
-/** Confirms, then discards. Awaits the server before reporting success. */
+/**
+ * Confirms, then discards. A draft an agent wrote is rejected instead, with an
+ * optional reason kept on the draft for that agent to read. Awaits the server
+ * before reporting success.
+ */
 export function DiscardAgentDraftDialog({
   draftId,
   open,
   onOpenChange,
   onDiscarded,
+  authorName = null,
 }: {
   draftId: string;
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onDiscarded?: () => void;
+  /** The agent that wrote the draft; turns discarding into rejecting. */
+  authorName?: string | null;
 }) {
   const { t } = useT("agents");
   const wsId = useWorkspaceId();
   const qc = useQueryClient();
   const [discarding, setDiscarding] = useState(false);
+  const [reason, setReason] = useState("");
+  const rejecting = authorName !== null;
 
   const discard = async () => {
     setDiscarding(true);
     try {
-      const record = await api.discardAgentDraft(draftId);
+      const record = await api.discardAgentDraft(draftId, rejecting ? reason.trim() : "");
       qc.setQueryData(agentDraftKeys.detail(wsId, draftId), record);
       await qc.invalidateQueries({ queryKey: agentDraftKeys.pending(wsId) });
-      toast.success(t(($) => $.drafts.discarded));
+      toast.success(rejecting ? t(($) => $.drafts.rejected) : t(($) => $.drafts.discarded));
       onOpenChange(false);
       onDiscarded?.();
     } catch (error) {
@@ -66,11 +76,25 @@ export function DiscardAgentDraftDialog({
     >
       <AlertDialogContent>
         <AlertDialogHeader>
-          <AlertDialogTitle>{t(($) => $.drafts.discard_title)}</AlertDialogTitle>
+          <AlertDialogTitle>
+            {rejecting ? t(($) => $.drafts.reject_title) : t(($) => $.drafts.discard_title)}
+          </AlertDialogTitle>
           <AlertDialogDescription>
-            {t(($) => $.drafts.discard_confirm)}
+            {rejecting
+              ? t(($) => $.drafts.reject_confirm, { name: authorName })
+              : t(($) => $.drafts.discard_confirm)}
           </AlertDialogDescription>
         </AlertDialogHeader>
+        {rejecting ? (
+          <Textarea
+            value={reason}
+            onChange={(event) => setReason(event.target.value)}
+            maxLength={500}
+            rows={3}
+            aria-label={t(($) => $.drafts.reject_reason_label, { name: authorName })}
+            placeholder={t(($) => $.drafts.reject_reason_placeholder, { name: authorName })}
+          />
+        ) : null}
         <AlertDialogFooter>
           <AlertDialogCancel disabled={discarding}>
             {t(($) => $.drafts.discard_cancel)}
@@ -80,7 +104,7 @@ export function DiscardAgentDraftDialog({
             disabled={discarding}
             onClick={() => void discard()}
           >
-            {t(($) => $.drafts.discard)}
+            {rejecting ? t(($) => $.drafts.reject) : t(($) => $.drafts.discard)}
           </AlertDialogAction>
         </AlertDialogFooter>
       </AlertDialogContent>
@@ -89,17 +113,21 @@ export function DiscardAgentDraftDialog({
 }
 
 /**
- * Opens a chat with the drafting agent, the composer pre-filled with a request
- * that names this draft. Nothing is sent: the member reads it and sends it.
+ * Opens a chat with the drafting agent. A saved draft pre-fills the composer
+ * with a request that names it; otherwise the chat starts with the goal of
+ * creating an agent. Nothing is sent: the member writes or reads it and sends.
  */
 export function useHandDraftToAgent() {
   const { t } = useT("agents");
   const paths = useWorkspacePaths();
   const navigation = useNavigation();
   return (agentId: string, draftId: string | null) => {
-    const prompt = draftId
-      ? t(($) => $.drafts.handoff_prompt, { id: draftId })
-      : t(($) => $.drafts.agent_prompt);
-    navigation.push(paths.chatWithAgent(agentId, { prompt }));
+    navigation.push(
+      draftId
+        ? paths.chatWithAgent(agentId, {
+            prompt: t(($) => $.drafts.handoff_prompt, { id: draftId }),
+          })
+        : paths.chatWithAgent(agentId, { goal: "create-agent" }),
+    );
   };
 }

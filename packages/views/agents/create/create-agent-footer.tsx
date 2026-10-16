@@ -1,29 +1,29 @@
 "use client";
 
 import type { ReactNode } from "react";
-import { Loader2 } from "lucide-react";
+import { Info, Loader2 } from "lucide-react";
 import { Button } from "@multica/ui/components/ui/button";
 import { useT } from "../../i18n";
 
 /**
- * Where the flow ends. The error sits on the left so it reads before the
- * button it explains; `secondary` holds the ways out that keep the draft
- * (finish later, hand it to an agent) and the one that throws it away.
+ * Where the flow ends. The error replaces the note on the left so it reads
+ * before the button it explains; `secondary` holds the ways out that keep the
+ * draft (finish later) and the one that throws it away.
  */
 export function CreateAgentFooter({
   canCreate,
   creating,
   squad,
-  opensAgent = true,
   error,
+  note,
   onCreate,
   secondary,
 }: {
   canCreate: boolean;
   creating: boolean;
   squad: boolean;
-  opensAgent?: boolean;
   error: string | null;
+  note?: string;
   onCreate: () => void;
   secondary?: ReactNode;
 }) {
@@ -40,6 +40,11 @@ export function CreateAgentFooter({
         >
           {error}
         </p>
+      ) : note ? (
+        <p className="flex min-w-0 flex-1 items-center gap-1.5 text-caption text-muted-foreground">
+          <Info aria-hidden="true" className="size-3.5 shrink-0" />
+          <span className="truncate">{note}</span>
+        </p>
       ) : null}
       <div className="ml-auto flex shrink-0 items-center gap-2">
         {secondary}
@@ -49,9 +54,7 @@ export function CreateAgentFooter({
             ? t(($) => $.creation_studio.creating)
             : squad
               ? t(($) => $.creation_studio.create_and_add)
-              : opensAgent
-                ? t(($) => $.creation_studio.create_and_open)
-                : t(($) => $.create_dialog.create)}
+              : t(($) => $.drafts.create_agent)}
         </Button>
       </div>
     </div>

@@ -399,14 +399,17 @@ const AgentDraftCard = lazy(() =>
   })),
 );
 
-const AGENT_DRAFT_HREF = /^mention:\/\/agent-draft\/([^/?#]+)$/;
+const AGENT_DRAFT_HREF = /^mention:\/\/agent-draft\/([^/?#]+)(?:\?rev=(\d+))?$/;
 
 /**
- * The draft id when a paragraph holds nothing but one agent-draft link — the
- * shape agents are told to post. Only then does the link become a card: a card
- * is a block, and a block inside a sentence would break the paragraph.
+ * The draft (and the revision it was posted for) when a paragraph holds
+ * nothing but one agent-draft link — the shape agents are told to post. Only
+ * then does the link become a card: a card is a block, and a block inside a
+ * sentence would break the paragraph.
  */
-function soleAgentDraftId(node: ExtraProps["node"]): string | null {
+function soleAgentDraft(
+  node: ExtraProps["node"],
+): { id: string; revision: number | null } | null {
   const children = (node?.children ?? []).filter(
     (child) => !(child.type === "text" && child.value.trim() === ""),
   );
@@ -414,7 +417,9 @@ function soleAgentDraftId(node: ExtraProps["node"]): string | null {
   if (only?.type !== "element" || only.tagName !== "a") return null;
   const href = only.properties?.href;
   if (typeof href !== "string") return null;
-  return href.match(AGENT_DRAFT_HREF)?.[1] ?? null;
+  const match = href.match(AGENT_DRAFT_HREF);
+  if (!match?.[1]) return null;
+  return { id: match[1], revision: match[2] ? Number(match[2]) : null };
 }
 
 function isMultiLineNode(node: ExtraProps["node"]): boolean {
@@ -525,13 +530,13 @@ const COMPONENTS: Partial<Components> = {
   ),
 
   p: ({ node, children, ...props }) => {
-    const draftId = soleAgentDraftId(node);
-    if (draftId) {
+    const draft = soleAgentDraft(node);
+    if (draft) {
       return (
         <Suspense
-          fallback={<div className="my-2 h-24 max-w-xl rounded-lg border bg-card" />}
+          fallback={<div className="my-2 h-24 max-w-2xl rounded-lg border bg-card" />}
         >
-          <AgentDraftCard draftId={draftId} />
+          <AgentDraftCard draftId={draft.id} revision={draft.revision} />
         </Suspense>
       );
     }

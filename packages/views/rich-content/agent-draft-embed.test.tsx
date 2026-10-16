@@ -42,8 +42,11 @@ vi.mock("../editor/link-hover-card", () => ({
 }));
 
 vi.mock("../agents/create/agent-draft-card", () => ({
-  AgentDraftCard: ({ draftId }: { draftId: string }) => (
-    <div data-testid="agent-draft-card">{draftId}</div>
+  AgentDraftCard: ({ draftId, revision }: { draftId: string; revision: number | null }) => (
+    <div data-testid="agent-draft-card">
+      {draftId}
+      {revision !== null ? `@${revision}` : ""}
+    </div>
   ),
 }));
 
@@ -76,6 +79,13 @@ describe("agent draft embed", () => {
       "draft-1",
     );
     expect(container.querySelector("p [data-testid=agent-draft-card]")).toBeNull();
+  });
+
+  it("passes the revision a link was posted for to the card", async () => {
+    renderContent("[Reviewer](mention://agent-draft/draft-1?rev=2)");
+    expect(await screen.findByTestId("agent-draft-card")).toHaveTextContent(
+      "draft-1@2",
+    );
   });
 
   it("keeps a draft link inside a sentence inline", () => {

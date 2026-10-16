@@ -1,10 +1,9 @@
 "use client";
 
-import { useEffect, useState, type ReactNode } from "react";
-import { useQuery } from "@tanstack/react-query";
-import { Loader2 } from "lucide-react";
-import { useWorkspaceId } from "@multica/core/hooks";
-import { agentListOptions } from "@multica/core/workspace/queries";
+import { useState, type ReactNode } from "react";
+import { Check, ChevronRight, Copy, Loader2 } from "lucide-react";
+import type { Agent } from "@multica/core/types";
+import { ActorAvatar } from "@multica/ui/components/common/actor-avatar";
 import { Button } from "@multica/ui/components/ui/button";
 import {
   Dialog,
@@ -13,18 +12,23 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@multica/ui/components/ui/dialog";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@multica/ui/components/ui/dropdown-menu";
 import { useT } from "../../i18n";
 import { AgentConfigurationPanel } from "./agent-configuration-panel";
 import {
   DiscardAgentDraftDialog,
   useHandDraftToAgent,
 } from "./agent-draft-actions";
+import { latestRevisionChanges } from "./agent-draft-revision";
 import { CreateAgentFooter } from "./create-agent-footer";
-import { useAgentDraftSync } from "./use-agent-draft-sync";
-import { useCreateAgentForm } from "./use-create-agent-form";
-import { useCreateAgentSubmit } from "./use-create-agent-submit";
+import type { AgentDraftSaveState } from "./use-agent-draft-sync";
+import { useAgentDraftEditor } from "./use-agent-draft-editor";
 import { useDraftHelperAgent } from "./use-draft-helper-agent";
-import { useDuplicateDraftSeed } from "./use-duplicate-draft-seed";
 
 export interface AgentDraftDialogProps {
   open: boolean;
@@ -34,24 +38,23 @@ export interface AgentDraftDialogProps {
   squadId?: string | null;
   /** Seeds a new draft from this agent. Ignored when `draftId` is set. */
   duplicateId?: string | null;
-  /** False keeps the user where they are after creating — the draft card in a
-   *  chat or a comment. */
+  /** False keeps the user where they are after creating. */
   navigateOnCreate?: boolean;
   /** A new form just became a saved draft. */
   onDraftCreated?: (draftId: string) => void;
 }
 
 /**
- * The one editor every way of creating an agent goes through: a blank form, a
- * duplicate, a draft resumed from the agents list, and a draft an agent
- * proposed in a chat or a comment. It edits a server-side draft, so closing it
- * loses nothing, and only its owner can turn it into an agent.
+ * The form for creating an agent by hand: a blank form, a duplicate, or a
+ * draft resumed from the agents list. It edits the same server-side draft a
+ * card in a chat or a comment shows, so closing it loses nothing, and only its
+ * owner can turn it into an agent.
  */
 export function AgentDraftDialog({ open, onOpenChange, ...props }: AgentDraftDialogProps) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       {open ? (
-        <DialogContent className="p-0 gap-0 flex flex-col overflow-hidden !top-1/2 !left-1/2 !-translate-x-1/2 !-translate-y-1/2 !w-full !max-w-3xl !h-[88vh]">
+        <DialogContent className="p-0 gap-0 flex flex-col overflow-hidden !top-1/2 !left-1/2 !-translate-x-1/2 !-translate-y-1/2 !w-full !max-w-[600px] !max-h-[88vh]">
           <AgentDraftEditor {...props} onClose={() => onOpenChange(false)} />
         </DialogContent>
       ) : null}
@@ -70,78 +73,20 @@ function AgentDraftEditor({
   onClose: () => void;
 }) {
   const { t } = useT("agents");
-  const wsId = useWorkspaceId();
   const helper = useDraftHelperAgent();
   const handToAgent = useHandDraftToAgent();
   const [confirmDiscard, setConfirmDiscard] = useState(false);
   const [handingOff, setHandingOff] = useState(false);
-
-  // Fixed at open: once the copy is saved the URL names the draft instead, and
-  // the create must still carry what only the source agent has.
-  const [seedFromAgent] = useState(initialDraftId ? null : duplicateId);
-  const { data: agents = [] } = useQuery(agentListOptions(wsId));
-  const duplicateAgent = seedFromAgent
-    ? agents.find((agent) => agent.id === seedFromAgent) ?? null
-    : null;
-  const [duplicateRuntimeReset, setDuplicateRuntimeReset] = useState(false);
-  const [duplicateSeeded, setDuplicateSeeded] = useState(false);
-
-  // A saved draft owns its runtime; seeding one before it hydrates would
-  // record the list-order fallback as the user's choice.
-  const [runtimeSeedReady, setRuntimeSeedReady] = useState(initialDraftId === null);
-  const form = useCreateAgentForm({
-    runtimeSeed: { ready: runtimeSeedReady, runtimeId: "" },
-  });
-
-  useDuplicateDraftSeed({
-    source: duplicateAgent,
-    runtimesSettled: form.runtimesSettled,
-    runtimes: form.runtimes,
-    currentUserId: form.currentUserId,
-    fallbackRuntimeId: form.usableRuntimes[0]?.id ?? "",
-    nameSuffix: t(($) => $.create_dialog.duplicate_copy_suffix),
-    onSeed: (duplicated, runtimeReset) => {
-      setDuplicateRuntimeReset(runtimeReset);
-      form.setDraft(duplicated);
-      setDuplicateSeeded(true);
-    },
-  });
-
-  const sync = useAgentDraftSync({
+  const editor = useAgentDraftEditor({
     draftId: initialDraftId,
-    draft: form.draft,
-    setDraft: form.setDraft,
-    ready: !seedFromAgent || duplicateSeeded,
-    onDraftCreated,
-  });
-  useEffect(() => {
-    if (sync.hydrated) setRuntimeSeedReady(true);
-  }, [sync.hydrated]);
-
-  const submit = useCreateAgentSubmit({
-    draft: form.draft,
-    runtimeId: form.selectedRuntime?.id ?? null,
     squadId,
-    duplicateSource: duplicateAgent,
-    draftId: sync.draftId,
+    duplicateId,
     navigateOnCreate,
+    onDraftCreated,
     onCreated: onClose,
   });
-
-  const record = sync.record;
-  const ownedByOther =
-    record !== null && !!form.currentUserId && record.owner_id !== form.currentUserId;
-  const editable = !sync.closed && !ownedByOther && !sync.loading && !sync.loadFailed;
-  const canCreate =
-    editable &&
-    form.draft.name.trim().length > 0 &&
-    form.draftReady &&
-    !submit.creating;
-
-  const create = async () => {
-    await sync.settle();
-    await submit.create();
-  };
+  const { form, sync, submit, record } = editor;
+  const revisionChanges = latestRevisionChanges(record);
 
   const finishLater = async () => {
     try {
@@ -164,25 +109,26 @@ function AgentDraftEditor({
     }
   };
 
-  const title = duplicateAgent
-    ? t(($) => $.creation_studio.duplicate_title, { name: duplicateAgent.name })
+  const title = editor.duplicateAgent
+    ? t(($) => $.creation_studio.duplicate_title, { name: editor.duplicateAgent.name })
     : squadId
       ? t(($) => $.creation_studio.squad_title)
-      : t(($) => $.creation_studio.title);
+      : t(($) => $.drafts.dialog_title);
+  const copySources = editor.agents.filter((agent) => !agent.archived_at);
 
   return (
     <>
-      <DialogHeader className="border-b px-5 py-3 space-y-0">
-        <div className="flex items-baseline gap-3 pr-8">
+      <DialogHeader className="flex-row items-start gap-3 space-y-0 border-b px-5 py-3.5 pr-12">
+        <div className="min-w-0 flex-1">
           <DialogTitle className="text-title-sm font-semibold">{title}</DialogTitle>
-          <SaveStatus state={sync.saveState} />
+          <DialogDescription className="mt-0.5 text-caption text-muted-foreground">
+            {t(($) => $.drafts.dialog_description)}
+          </DialogDescription>
         </div>
-        <DialogDescription className="text-caption text-muted-foreground">
-          {t(($) => $.drafts.dialog_description)}
-        </DialogDescription>
+        <SaveStatus state={sync.saveState} />
       </DialogHeader>
 
-      <div className="min-h-0 flex-1 overflow-y-auto px-5 py-6">
+      <div className="min-h-0 flex-1 overflow-y-auto">
         {sync.loading ? (
           <div className="flex justify-center py-16">
             <Loader2 className="size-5 animate-spin text-muted-foreground" />
@@ -198,15 +144,13 @@ function AgentDraftEditor({
                   : t(($) => $.drafts.card_discarded)}
               </Notice>
             ) : null}
-            {duplicateAgent ? (
+            {editor.duplicateAgent ? (
               <Notice>{t(($) => $.creation_studio.duplicate_env_notice)}</Notice>
             ) : null}
-            {duplicateRuntimeReset ? (
-              <Notice>
-                {t(($) => $.creation_studio.duplicate_runtime_reset_notice)}
-              </Notice>
+            {editor.duplicateRuntimeReset ? (
+              <Notice>{t(($) => $.creation_studio.duplicate_runtime_reset_notice)}</Notice>
             ) : null}
-            <fieldset disabled={!editable} className="min-w-0">
+            <fieldset disabled={!editor.editable} className="min-w-0">
               <AgentConfigurationPanel
                 draft={form.draft}
                 onChange={form.setDraft}
@@ -219,6 +163,24 @@ function AgentDraftEditor({
                   submit.clearNameError();
                   form.setDraft((current) => ({ ...current, name }));
                 }}
+                changedFields={revisionChanges.changedFields}
+                previousInstructions={revisionChanges.previousInstructions}
+                runtimeHint={
+                  initialDraftId === null && !editor.duplicateAgent
+                    ? t(($) => $.drafts.form.runtime_auto_hint)
+                    : null
+                }
+                instructionsFooter={
+                  editor.editable ? (
+                    <InstructionsFooter
+                      copySources={copySources}
+                      onCopy={editor.copyFromAgent}
+                      helper={helper}
+                      handingOff={handingOff}
+                      onHandOff={() => void handOff()}
+                    />
+                  ) : null
+                }
               />
             </fieldset>
           </>
@@ -226,16 +188,16 @@ function AgentDraftEditor({
       </div>
 
       <CreateAgentFooter
-        canCreate={canCreate}
+        canCreate={editor.canCreate}
         creating={submit.creating}
         squad={!!squadId}
-        opensAgent={navigateOnCreate}
         error={submit.formError}
-        onCreate={() => void create()}
+        note={t(($) => $.drafts.after_create_note)}
+        onCreate={() => void editor.create()}
         secondary={
-          editable ? (
+          editor.editable ? (
             <>
-              {sync.draftId ? (
+              {initialDraftId && sync.draftId ? (
                 <Button
                   type="button"
                   variant="ghost"
@@ -246,19 +208,9 @@ function AgentDraftEditor({
                   {t(($) => $.drafts.discard)}
                 </Button>
               ) : null}
-              {helper ? (
-                <Button
-                  type="button"
-                  variant="ghost"
-                  disabled={submit.creating || handingOff}
-                  onClick={() => void handOff()}
-                >
-                  {t(($) => $.drafts.hand_off, { name: helper.name })}
-                </Button>
-              ) : null}
               <Button
                 type="button"
-                variant="outline"
+                variant="ghost"
                 disabled={submit.creating || handingOff}
                 onClick={() => void finishLater()}
               >
@@ -281,7 +233,76 @@ function AgentDraftEditor({
   );
 }
 
-function SaveStatus({ state }: { state: "idle" | "saving" | "saved" | "error" }) {
+function InstructionsFooter({
+  copySources,
+  onCopy,
+  helper,
+  handingOff,
+  onHandOff,
+}: {
+  copySources: Agent[];
+  onCopy: (agentId: string) => void;
+  helper: Agent | null;
+  handingOff: boolean;
+  onHandOff: () => void;
+}) {
+  const { t } = useT("agents");
+  return (
+    <div className="flex flex-wrap items-center justify-between gap-2">
+      {copySources.length > 0 ? (
+        <DropdownMenu>
+          <DropdownMenuTrigger
+            render={
+              <Button type="button" size="xs" variant="outline" className="gap-1">
+                <Copy aria-hidden="true" className="size-3" />
+                {t(($) => $.drafts.form.copy_from_agent)}
+              </Button>
+            }
+          />
+          <DropdownMenuContent align="start" className="max-h-72 w-auto min-w-48 overflow-y-auto">
+            {copySources.map((agent) => (
+              <DropdownMenuItem key={agent.id} onClick={() => onCopy(agent.id)}>
+                <ActorAvatar
+                  name={agent.name}
+                  initials={agent.name.slice(0, 1).toUpperCase()}
+                  avatarUrl={agent.avatar_url}
+                  isAgent
+                  size="sm"
+                />
+                <span className="min-w-0 truncate">{agent.name}</span>
+              </DropdownMenuItem>
+            ))}
+          </DropdownMenuContent>
+        </DropdownMenu>
+      ) : (
+        <span />
+      )}
+      {helper ? (
+        <div className="flex items-center gap-1.5 text-caption">
+          <span className="text-muted-foreground">{t(($) => $.drafts.form.rather_not_write)}</span>
+          <button
+            type="button"
+            disabled={handingOff}
+            onClick={onHandOff}
+            className="inline-flex items-center gap-1 font-medium text-info hover:underline disabled:opacity-50"
+          >
+            <ActorAvatar
+              name={helper.name}
+              initials={helper.name.slice(0, 1).toUpperCase()}
+              avatarUrl={helper.avatar_url}
+              isAgent
+              size="xs"
+            />
+            {t(($) => $.drafts.hand_off, { name: helper.name })}
+            <ChevronRight aria-hidden="true" className="size-3" />
+          </button>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function SaveStatus({ state }: { state: AgentDraftSaveState }) {
   const { t } = useT("agents");
   if (state === "idle") return null;
   return (
@@ -289,10 +310,11 @@ function SaveStatus({ state }: { state: "idle" | "saving" | "saved" | "error" })
       aria-live="polite"
       className={
         state === "error"
-          ? "text-caption text-destructive"
-          : "text-caption text-muted-foreground"
+          ? "mt-0.5 shrink-0 text-caption text-destructive"
+          : "mt-0.5 inline-flex shrink-0 items-center gap-1 text-caption text-muted-foreground"
       }
     >
+      {state === "saved" ? <Check aria-hidden="true" className="size-3.5" /> : null}
       {state === "saving"
         ? t(($) => $.drafts.saving)
         : state === "saved"
@@ -304,7 +326,7 @@ function SaveStatus({ state }: { state: "idle" | "saving" | "saved" | "error" })
 
 function Notice({ children }: { children: ReactNode }) {
   return (
-    <div className="mb-5 rounded-lg border border-warning/30 bg-warning/5 px-4 py-3 text-body">
+    <div className="mx-5 mt-4 rounded-lg border border-warning/30 bg-warning/5 px-4 py-3 text-body">
       {children}
     </div>
   );

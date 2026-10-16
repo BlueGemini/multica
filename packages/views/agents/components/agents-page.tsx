@@ -786,6 +786,7 @@ export function AgentsPage(_props: AgentsPageProps = {}) {
 
   const draftHelper = useDraftHelperAgent();
   const handDraftToAgent = useHandDraftToAgent();
+  const continueDraft = (id: string) => navigation.replace(paths.agentDraft(id));
   const createMethod = useAgentsViewStore((s) => s.createMethod);
   const setCreateMethod = useAgentsViewStore((s) => s.setCreateMethod);
   const duplicateSources = useMemo(
@@ -1069,20 +1070,19 @@ export function AgentsPage(_props: AgentsPageProps = {}) {
         totalCount={totalCount}
         createControl={createControl("outline")}
       />
-      <div className="@container">
-        <PendingAgentDrafts
-          onContinue={(id) => navigation.replace(paths.agentDraft(id))}
-        />
-      </div>
-
       {isLoading || (!showEmpty && !listReady) ? (
         <div className="flex-1 overflow-y-auto @container">
           <LoadingSkeleton />
         </div>
       ) : showEmpty ? (
-        <div className="flex flex-1 items-center justify-center">
-          <EmptyState createControl={createControl("default")} />
-        </div>
+        <>
+          <div className="@container">
+            <PendingAgentDrafts onContinue={continueDraft} />
+          </div>
+          <div className="flex flex-1 items-center justify-center">
+            <EmptyState createControl={createControl("default")} />
+          </div>
+        </>
       ) : (
         <>
           <AgentListToolbar
@@ -1108,6 +1108,10 @@ export function AgentsPage(_props: AgentsPageProps = {}) {
             ref={listScrollRef}
             className="min-h-0 flex-1 overflow-auto @container"
           >
+            <PendingAgentDrafts
+              onContinue={continueDraft}
+              listHeading={t(($) => $.drafts.all_agents)}
+            />
             <ListGrid
               className={`${GRID_COLS} @2xl:min-w-[var(--agc-minw)]`}
               style={columnTrackVars(isColVisible)}

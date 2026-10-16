@@ -35,3 +35,14 @@
   margin-top: 0.5rem;
   margin-bottom: 0.5rem;
 }
+
+/*
+ * An embedded agent-draft card is interface, not prose. The unlayered
+ * typography rules outrank its utilities, so they are rolled back to the
+ * layered styles inside it, leaving only the card's own classes in effect.
+ */
+.rich-text-editor
+  [data-agent-draft-card]
+  :is(p, ul, ol, li, a, code, dl, dt, dd, h1, h2, h3, h4, blockquote, img, input) {
+  all: revert-layer;
+}

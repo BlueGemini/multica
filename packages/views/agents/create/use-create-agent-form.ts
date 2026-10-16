@@ -28,7 +28,7 @@ import {
   skillListOptions,
 } from "@multica/core/workspace/queries";
 
-interface CreateAgentForm {
+export interface CreateAgentForm {
   draft: AgentDraft;
   setDraft: Dispatch<SetStateAction<AgentDraft>>;
   runtimes: RuntimeDevice[];
@@ -121,19 +121,6 @@ export function useCreateAgentForm(options?: {
     setDraft((current) => ({ ...current, runtimeId: next }));
   }, [draft.runtimeId, seedReady, seedRuntimeId, usableRuntimes]);
 
-  const accessInvalid =
-    draft.permissionScope === "members" &&
-    draft.memberIds.size === 0 &&
-    draft.teamIds.size === 0;
-
-  const conversationStartersInvalid = draft.conversationStarters.some(
-    (item) =>
-      item.label.trim().length === 0 ||
-      item.prompt.trim().length === 0 ||
-      [...item.label].length > AGENT_CONVERSATION_STARTER_LABEL_MAX_LENGTH ||
-      [...item.prompt].length > AGENT_CONVERSATION_STARTER_MAX_LENGTH,
-  );
-
   return {
     draft,
     setDraft,
@@ -145,11 +132,32 @@ export function useCreateAgentForm(options?: {
     members,
     workspaceSkills,
     currentUserId,
-    draftReady:
-      selectedRuntime != null &&
-      isRuntimeUsableForUser(selectedRuntime, currentUserId) &&
-      isDraftDescriptionWithinLimit(draft.description) &&
-      !accessInvalid &&
-      !conversationStartersInvalid,
+    draftReady: isDraftReady(draft, selectedRuntime, currentUserId),
   };
+}
+
+/** Every precondition of creating `draft` except its name. */
+export function isDraftReady(
+  draft: AgentDraft,
+  runtime: RuntimeDevice | null,
+  currentUserId: string | null,
+): boolean {
+  const accessInvalid =
+    draft.permissionScope === "members" &&
+    draft.memberIds.size === 0 &&
+    draft.teamIds.size === 0;
+  const conversationStartersInvalid = draft.conversationStarters.some(
+    (item) =>
+      item.label.trim().length === 0 ||
+      item.prompt.trim().length === 0 ||
+      [...item.label].length > AGENT_CONVERSATION_STARTER_LABEL_MAX_LENGTH ||
+      [...item.prompt].length > AGENT_CONVERSATION_STARTER_MAX_LENGTH,
+  );
+  return (
+    runtime != null &&
+    isRuntimeUsableForUser(runtime, currentUserId) &&
+    isDraftDescriptionWithinLimit(draft.description) &&
+    !accessInvalid &&
+    !conversationStartersInvalid
+  );
 }

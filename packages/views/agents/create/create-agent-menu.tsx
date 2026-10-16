@@ -1,7 +1,8 @@
 "use client";
 
-import { ChevronDown, Copy, FileText, MessageSquare, Plus } from "lucide-react";
+import { ChevronDown, Copy, Info, Plus, SquarePen } from "lucide-react";
 import type { AgentCreateMethod } from "@multica/core/agents/stores";
+import type { ReactNode } from "react";
 import type { Agent } from "@multica/core/types";
 import { ActorAvatar } from "@multica/ui/components/common/actor-avatar";
 import { Button } from "@multica/ui/components/ui/button";
@@ -15,6 +16,7 @@ import {
   DropdownMenuSubTrigger,
   DropdownMenuTrigger,
 } from "@multica/ui/components/ui/dropdown-menu";
+import { Kbd } from "@multica/ui/components/ui/kbd";
 import { cn } from "@multica/ui/lib/utils";
 import { useT } from "../../i18n";
 
@@ -71,64 +73,88 @@ export function CreateAgentMenu({
             </Button>
           }
         />
-        <DropdownMenuContent align="end" className="w-72">
+        <DropdownMenuContent align="end" className="w-80 p-1.5">
           {helper ? (
-            <DropdownMenuItem
-              className="items-start"
-              onClick={() => onCreate("chat")}
-            >
-              <MessageSquare className="mt-0.5 size-3.5" />
+            <DropdownMenuItem className="gap-3 py-2" onClick={() => onCreate("chat")}>
+              <MenuTile>
+                <ActorAvatar
+                  name={helper.name}
+                  initials={helper.name.slice(0, 1).toUpperCase()}
+                  avatarUrl={helper.avatar_url}
+                  isAgent
+                  size="xs"
+                />
+              </MenuTile>
               <MenuText
                 title={t(($) => $.drafts.with_agent, { name: helper.name })}
                 hint={t(($) => $.drafts.with_agent_hint, { name: helper.name })}
               />
+              {primary === "chat" ? <Kbd className="ml-auto">↵</Kbd> : null}
             </DropdownMenuItem>
           ) : null}
-          <DropdownMenuItem className="items-start" onClick={() => onCreate("form")}>
-            <FileText className="mt-0.5 size-3.5" />
+          <DropdownMenuItem className="gap-3 py-2" onClick={() => onCreate("form")}>
+            <MenuTile>
+              <SquarePen className="size-3.5" />
+            </MenuTile>
             <MenuText
               title={t(($) => $.drafts.manual)}
               hint={t(($) => $.drafts.manual_hint)}
             />
+            {primary === "form" ? <Kbd className="ml-auto">↵</Kbd> : null}
           </DropdownMenuItem>
           {duplicateSources.length > 0 ? (
-            <>
-              <DropdownMenuSeparator />
-              <DropdownMenuSub>
-                <DropdownMenuSubTrigger>
+            <DropdownMenuSub>
+              <DropdownMenuSubTrigger className="gap-3 py-2">
+                <MenuTile>
                   <Copy className="size-3.5" />
-                  {t(($) => $.drafts.duplicate)}
-                </DropdownMenuSubTrigger>
-                <DropdownMenuSubContent className="max-h-80 w-auto min-w-48 overflow-y-auto">
-                  {duplicateSources.map((agent) => (
-                    <DropdownMenuItem
-                      key={agent.id}
-                      onClick={() => onDuplicate(agent.id)}
-                    >
-                      <ActorAvatar
-                        name={agent.name}
-                        initials={agent.name.slice(0, 1).toUpperCase()}
-                        avatarUrl={agent.avatar_url}
-                        isAgent
-                        size="sm"
-                      />
-                      <span className="min-w-0 truncate">{agent.name}</span>
-                    </DropdownMenuItem>
-                  ))}
-                </DropdownMenuSubContent>
-              </DropdownMenuSub>
-            </>
+                </MenuTile>
+                <MenuText
+                  title={t(($) => $.drafts.duplicate)}
+                  hint={t(($) => $.drafts.duplicate_hint)}
+                />
+              </DropdownMenuSubTrigger>
+              <DropdownMenuSubContent className="max-h-80 w-auto min-w-48 overflow-y-auto">
+                {duplicateSources.map((agent) => (
+                  <DropdownMenuItem
+                    key={agent.id}
+                    onClick={() => onDuplicate(agent.id)}
+                  >
+                    <ActorAvatar
+                      name={agent.name}
+                      initials={agent.name.slice(0, 1).toUpperCase()}
+                      avatarUrl={agent.avatar_url}
+                      isAgent
+                      size="sm"
+                    />
+                    <span className="min-w-0 truncate">{agent.name}</span>
+                  </DropdownMenuItem>
+                ))}
+              </DropdownMenuSubContent>
+            </DropdownMenuSub>
           ) : null}
+          <DropdownMenuSeparator />
+          <p className="flex items-center gap-1.5 px-2 py-1 text-caption text-muted-foreground">
+            <Info aria-hidden="true" className="size-3.5 shrink-0" />
+            {t(($) => $.drafts.menu_footer)}
+          </p>
         </DropdownMenuContent>
       </DropdownMenu>
     </div>
   );
 }
 
+function MenuTile({ children }: { children: ReactNode }) {
+  return (
+    <span className="grid size-8 shrink-0 place-items-center rounded-md border bg-muted/40 text-muted-foreground">
+      {children}
+    </span>
+  );
+}
+
 function MenuText({ title, hint }: { title: string; hint: string }) {
   return (
     <span className="min-w-0">
-      <span className="block text-body">{title}</span>
+      <span className="block text-body font-medium">{title}</span>
       <span className="block text-caption leading-5 text-muted-foreground">
         {hint}
       </span>

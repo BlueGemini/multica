@@ -35,6 +35,7 @@ vi.mock("../../i18n", () => ({
           name_label: string;
           name_placeholder: string;
         };
+        drafts: { create_agent: string };
       }) => string,
     ) =>
       selector({
@@ -63,6 +64,7 @@ vi.mock("../../i18n", () => ({
           name_label: "Name",
           name_placeholder: "Agent name",
         },
+        drafts: { create_agent: "Create agent" },
       }),
   }),
 }));
@@ -156,7 +158,7 @@ describe("Agent creation errors", () => {
     );
 
     const error = screen.getByRole("alert");
-    const button = screen.getByRole("button", { name: "Create and open" });
+    const button = screen.getByRole("button", { name: "Create agent" });
     const footer = error.closest("[data-slot=create-agent-footer]");
     expect(footer).not.toBeNull();
     expect(button.closest("[data-slot=create-agent-footer]")).toBe(footer);

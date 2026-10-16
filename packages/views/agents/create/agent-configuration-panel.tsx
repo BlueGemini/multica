@@ -1,7 +1,12 @@
 "use client";
 
-import { useEffect, useRef, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useQuery } from "@tanstack/react-query";
+import { FileText, Globe, Lock, Plus, Trash2, Users, X } from "lucide-react";
 import {
+  AGENT_CONVERSATION_STARTER_LABEL_MAX_LENGTH,
+  AGENT_CONVERSATION_STARTER_MAX_LENGTH,
+  AGENT_CONVERSATION_STARTERS_MAX,
   AGENT_DESCRIPTION_MAX_LENGTH,
   applyDraftModelChange,
   applyDraftRuntimeChange,
@@ -9,25 +14,32 @@ import {
   type AgentPermissionScope,
 } from "@multica/core/agents";
 import { useConfigStore } from "@multica/core/config";
-import type { MemberWithUser, RuntimeDevice } from "@multica/core/types";
+import { useWorkspaceId } from "@multica/core/hooks";
+import type {
+  AgentConversationStarter,
+  MemberWithUser,
+  RuntimeDevice,
+} from "@multica/core/types";
+import { skillListOptions } from "@multica/core/workspace/queries";
+import { Button } from "@multica/ui/components/ui/button";
 import { Checkbox } from "@multica/ui/components/ui/checkbox";
 import { Input } from "@multica/ui/components/ui/input";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@multica/ui/components/ui/popover";
 import { Textarea } from "@multica/ui/components/ui/textarea";
 import { cn } from "@multica/ui/lib/utils";
 import { ActorAvatar } from "../../common/actor-avatar";
 import { AvatarUploadControl } from "../../common/avatar-upload-control";
 import { useT } from "../../i18n";
-import {
-  SettingsCard,
-  SettingsSection,
-} from "../../settings/components/settings-layout";
-import { CharCounter } from "../components/char-counter";
 import { ServiceTierSettingField } from "../components/inspector/service-tier-setting-field";
 import { ThinkingSettingField } from "../components/inspector/thinking-prop-row";
 import { ModelDropdown } from "../components/model-dropdown";
 import { RuntimePicker } from "../components/runtime-picker";
-import { SkillMultiSelect } from "../components/skill-multi-select";
-import { ConversationStartersEditor } from "../components/conversation-starters-editor";
+import { SkillPickerList } from "../components/skill-picker-list";
+import { InstructionsDiff } from "./instructions-diff";
 
 const PERMISSION_SCOPES: AgentPermissionScope[] = [
   "private",
@@ -47,7 +59,10 @@ export function AgentConfigurationPanel({
   currentUserId,
   nameError,
   onNameChange,
-  compact = false,
+  changedFields,
+  previousInstructions = null,
+  instructionsFooter,
+  runtimeHint,
 }: {
   draft: AgentDraft;
   /** Takes an updater, never a whole draft: pickers seed and clear values from
@@ -62,12 +77,31 @@ export function AgentConfigurationPanel({
   currentUserId: string | null;
   nameError: string | null;
   onNameChange: (name: string) => void;
-  compact?: boolean;
+  /** Config fields the agent's latest revision changed; their rows are
+   *  marked. */
+  changedFields?: ReadonlySet<string>;
+  /** The instructions before that revision, when it changed them. */
+  previousInstructions?: string | null;
+  instructionsFooter?: ReactNode;
+  runtimeHint?: string | null;
 }) {
   const { t } = useT("agents");
+  const wsId = useWorkspaceId();
   const conversationStartersSupported = useConfigStore(
     (state) => state.agentConversationStartersSupported,
   );
+  const { data: workspaceSkills = [], isLoading: skillsLoading } = useQuery(
+    skillListOptions(wsId),
+  );
+  const [editingInstructions, setEditingInstructions] = useState(false);
+  const nameInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (!nameError) return;
+    nameInputRef.current?.focus();
+    nameInputRef.current?.select();
+  }, [nameError]);
+
   const selectedRuntime =
     runtimes.find((runtime) => runtime.id === draft.runtimeId) ?? null;
   const set = <K extends keyof AgentDraft>(key: K, value: AgentDraft[K]) =>
@@ -87,125 +121,198 @@ export function AgentConfigurationPanel({
       current.runtimeId === seen ? applyDraftRuntimeChange(current, id) : current,
     );
   };
+  const changed = (field: string) => changedFields?.has(field) ?? false;
+  const showDiff =
+    previousInstructions !== null &&
+    previousInstructions !== draft.instructions &&
+    !editingInstructions;
+  const selectedSkills = workspaceSkills.filter((skill) =>
+    draft.skillIds.has(skill.id),
+  );
 
   return (
-    <div className={cn("space-y-8", compact && "space-y-6")}>
-      <SettingsSection
-        title={t(($) => $.creation_studio.sections.identity)}
+    <div className="divide-y">
+      <FormRow
+        label={t(($) => $.drafts.form.identity)}
+        required
+        changed={changed("name") || changed("description") || changed("avatar_url")}
       >
-        <SettingsCard>
-          <DraftFieldRow
-            compact={compact}
-            label={t(($) => $.create_dialog.avatar.change_aria)}
-          >
-            <div className={cn(!compact && "sm:flex sm:justify-end")}>
-              <AvatarUploadControl
-                variant="agent"
-                value={draft.avatarUrl}
-                name={draft.name}
-                size={compact ? 52 : 56}
-                onUploaded={(url) => set("avatarUrl", url)}
-                onEmojiSelected={(value) => set("avatarUrl", value)}
-                onClear={() => set("avatarUrl", null)}
-              />
-            </div>
-          </DraftFieldRow>
-          <AgentNameField
-            compact={compact}
+        <div className="flex items-start gap-3">
+          <AvatarUploadControl
+            variant="agent"
+            value={draft.avatarUrl}
             name={draft.name}
-            error={nameError}
-            onChange={onNameChange}
+            size={44}
+            onUploaded={(url) => set("avatarUrl", url)}
+            onEmojiSelected={(value) => set("avatarUrl", value)}
+            onClear={() => set("avatarUrl", null)}
           />
-          <DraftFieldRow
-            compact={compact}
-            align="start"
-            label={t(($) => $.create_dialog.description_label)}
-            htmlFor="agent-create-description"
-          >
-            <div>
-              <Textarea
-                id="agent-create-description"
-                name="agent-description"
-                autoComplete="off"
-                aria-label={t(($) => $.create_dialog.description_label)}
-                value={draft.description}
-                onChange={(event) => set("description", event.target.value)}
-                placeholder={t(($) => $.create_dialog.description_placeholder)}
-                rows={compact ? 3 : 4}
-                // The create API rejects >255 characters with a 400. Cap the
-                // input and show the counter so the limit is visible before
-                // submitting, matching the settings page.
-                maxLength={AGENT_DESCRIPTION_MAX_LENGTH}
-                className="resize-y"
-              />
-              <CharCounter
-                length={[...draft.description].length}
-                max={AGENT_DESCRIPTION_MAX_LENGTH}
-              />
-            </div>
-          </DraftFieldRow>
-        </SettingsCard>
-      </SettingsSection>
-
-      <SettingsSection
-        title={t(($) => $.creation_studio.sections.behavior)}
-      >
-        <SettingsCard>
-          <DraftFieldRow
-            compact
-            label={t(($) => $.create_dialog.instructions.label)}
-            htmlFor="agent-create-instructions"
-          >
-            <Textarea
-              id="agent-create-instructions"
-              name="agent-instructions"
+          <div className="min-w-0 flex-1 space-y-2">
+            <Input
+              ref={nameInputRef}
+              id="agent-create-name"
+              name="agent-name"
               autoComplete="off"
-              aria-label={t(($) => $.create_dialog.instructions.label)}
-              value={draft.instructions}
-              onChange={(event) => set("instructions", event.target.value)}
-              placeholder={t(
-                ($) => $.create_dialog.instructions.editor_placeholder,
-              )}
-              rows={compact ? 9 : 12}
-              className="min-h-44 resize-y font-mono text-label leading-6"
+              aria-label={t(($) => $.create_dialog.name_label)}
+              aria-invalid={!!nameError}
+              aria-describedby={nameError ? "agent-create-name-error" : undefined}
+              value={draft.name}
+              onChange={(event) => onNameChange(event.target.value)}
+              placeholder={t(($) => $.create_dialog.name_placeholder)}
             />
-          </DraftFieldRow>
-          {conversationStartersSupported ? (
-            <div className="px-4 py-4">
-              <ConversationStartersEditor
-                value={draft.conversationStarters}
-                onChange={(value) => set("conversationStarters", value)}
-              />
-            </div>
-          ) : null}
-          <div className="px-4 py-4">
-            <SkillMultiSelect
-              selectedIds={draft.skillIds}
-              onChange={(ids) => set("skillIds", ids)}
+            {nameError ? (
+              <p id="agent-create-name-error" className="text-caption text-destructive">
+                {nameError}
+              </p>
+            ) : null}
+            <Input
+              id="agent-create-description"
+              name="agent-description"
+              autoComplete="off"
+              aria-label={t(($) => $.create_dialog.description_label)}
+              value={draft.description}
+              onChange={(event) => set("description", event.target.value)}
+              placeholder={t(($) => $.drafts.form.description_placeholder)}
+              // The create API rejects >255 characters with a 400.
+              maxLength={AGENT_DESCRIPTION_MAX_LENGTH}
             />
           </div>
-        </SettingsCard>
-      </SettingsSection>
+        </div>
+      </FormRow>
 
-      <SettingsSection
-        title={t(($) => $.creation_studio.sections.execution)}
-        description={t(($) => $.creation_studio.sections.execution_hint)}
+      <FormRow
+        label={t(($) => $.create_dialog.instructions.label)}
+        htmlFor={showDiff ? undefined : "agent-create-instructions"}
+        changed={changed("instructions")}
       >
-        <SettingsCard>
-          <div
-            className={cn("grid gap-4 px-4 py-4", !compact && "sm:grid-cols-2")}
-          >
-            <div className="min-w-0">
-              <RuntimePicker
-                runtimes={runtimes}
-                runtimesLoading={runtimesLoading}
-                members={members}
-                currentUserId={currentUserId}
-                selectedRuntimeId={draft.runtimeId}
-                onSelect={handleRuntimeSelect}
-              />
+        {showDiff ? (
+          <div>
+            <InstructionsDiff
+              before={previousInstructions ?? ""}
+              after={draft.instructions}
+            />
+            <div className="mt-1.5 flex items-center gap-1.5 text-caption text-muted-foreground">
+              <FileText aria-hidden="true" className="size-3.5" />
+              <span>
+                {t(($) => $.drafts.form.instructions_meta, {
+                  count: [...draft.instructions].length,
+                })}
+              </span>
+              <span aria-hidden="true">·</span>
+              <button
+                type="button"
+                className="hover:text-foreground"
+                onClick={() => setEditingInstructions(true)}
+              >
+                {t(($) => $.drafts.form.edit_full)}
+              </button>
             </div>
+          </div>
+        ) : (
+          <Textarea
+            id="agent-create-instructions"
+            name="agent-instructions"
+            autoComplete="off"
+            aria-label={t(($) => $.create_dialog.instructions.label)}
+            value={draft.instructions}
+            onChange={(event) => set("instructions", event.target.value)}
+            placeholder={t(($) => $.create_dialog.instructions.editor_placeholder)}
+            rows={5}
+            className="min-h-28 resize-y"
+          />
+        )}
+        {instructionsFooter ? <div className="mt-2">{instructionsFooter}</div> : null}
+      </FormRow>
+
+      <FormRow
+        label={t(($) => $.create_dialog.skills_section.label)}
+        changed={changed("skill_ids")}
+      >
+        <div className="flex flex-wrap items-center gap-1.5">
+          {selectedSkills.map((skill) => (
+            <span
+              key={skill.id}
+              className="inline-flex h-6 items-center gap-1 rounded-md border bg-muted/40 pl-2 pr-1 text-caption"
+            >
+              {skill.name}
+              <button
+                type="button"
+                aria-label={t(($) => $.drafts.form.remove, { name: skill.name })}
+                className="rounded-sm p-0.5 text-muted-foreground hover:bg-muted hover:text-foreground"
+                onClick={() =>
+                  onChange((current) => {
+                    const next = new Set(current.skillIds);
+                    next.delete(skill.id);
+                    return { ...current, skillIds: next };
+                  })
+                }
+              >
+                <X aria-hidden="true" className="size-3" />
+              </button>
+            </span>
+          ))}
+          <Popover>
+            <PopoverTrigger className={ADD_CHIP_CLASS}>
+              <Plus aria-hidden="true" className="size-3" />
+              {t(($) => $.drafts.form.add_skill)}
+            </PopoverTrigger>
+            <PopoverContent align="start" className="w-80 p-2">
+              <SkillPickerList
+                skills={workspaceSkills}
+                selectedIds={draft.skillIds}
+                loading={skillsLoading}
+                emptyMessage={t(($) => $.create_dialog.skills_section.list_empty_multi)}
+                onToggle={(skill) =>
+                  onChange((current) => {
+                    const next = new Set(current.skillIds);
+                    if (next.has(skill.id)) next.delete(skill.id);
+                    else next.add(skill.id);
+                    return { ...current, skillIds: next };
+                  })
+                }
+              />
+            </PopoverContent>
+          </Popover>
+          {selectedSkills.length === 0 ? (
+            <span className="text-caption text-muted-foreground">
+              {t(($) => $.drafts.form.optional)}
+            </span>
+          ) : null}
+        </div>
+      </FormRow>
+
+      {conversationStartersSupported ? (
+        <FormRow
+          label={t(($) => $.drafts.form.starters)}
+          changed={changed("conversation_starters")}
+        >
+          <ConversationStarterChips
+            value={draft.conversationStarters}
+            onChange={(value) => set("conversationStarters", value)}
+          />
+        </FormRow>
+      ) : null}
+
+      <FormRow
+        label={t(($) => $.create_dialog.runtime_label)}
+        required
+        changed={changed("runtime_id") || changed("model")}
+      >
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="min-w-48 max-w-64 flex-[3_1_0%]">
+            <RuntimePicker
+              compact
+              runtimes={runtimes}
+              runtimesLoading={runtimesLoading}
+              members={members}
+              currentUserId={currentUserId}
+              selectedRuntimeId={draft.runtimeId}
+              onSelect={handleRuntimeSelect}
+            />
+          </div>
+          <div className="min-w-36 max-w-44 flex-[2_1_0%]">
             <ModelDropdown
+              compact
               runtimeId={selectedRuntime?.id ?? null}
               runtimeOnline={selectedRuntime?.status === "online"}
               value={draft.model}
@@ -221,104 +328,239 @@ export function AgentConfigurationPanel({
               disabled={!selectedRuntime}
             />
           </div>
-          {/* Both fields fail closed: they render only when the exact selected
-              model's live catalog advertises the capability (or a value is
-              already set and needs clearing), so an offline runtime, a failed
-              discovery or an empty model shows nothing instead of an input
-              that cannot be honoured. */}
-          <AgentExecutionOverrides
-            draft={draft}
-            runtime={selectedRuntime}
-            onChange={onChange}
-          />
-        </SettingsCard>
-      </SettingsSection>
+        </div>
+        {runtimeHint ? (
+          <p className="mt-1.5 text-caption text-muted-foreground">{runtimeHint}</p>
+        ) : null}
+        {/* Both fields fail closed: they render only when the exact selected
+            model's live catalog advertises the capability (or a value is
+            already set and needs clearing). */}
+        <AgentExecutionOverrides
+          draft={draft}
+          runtime={selectedRuntime}
+          onChange={onChange}
+        />
+      </FormRow>
 
-      <SettingsSection
-        title={t(($) => $.creation_studio.sections.access)}
+      <FormRow
+        label={t(($) => $.creation_studio.sections.access)}
+        changed={changed("permission_scope") || changed("member_ids")}
       >
-        <SettingsCard>
-          <div
-            className="space-y-1 p-2"
-            role="radiogroup"
-            aria-label={t(($) => $.creation_studio.sections.access)}
-          >
-            {PERMISSION_SCOPES.map((scope) => (
+        <div
+          role="radiogroup"
+          aria-label={t(($) => $.creation_studio.sections.access)}
+          className="inline-flex items-center gap-0.5 rounded-md bg-muted p-0.5"
+        >
+          {PERMISSION_SCOPES.map((scope) => {
+            const Icon = SCOPE_ICONS[scope];
+            const active = draft.permissionScope === scope;
+            return (
               <button
                 key={scope}
                 type="button"
                 role="radio"
-                aria-checked={draft.permissionScope === scope}
+                aria-checked={active}
+                title={t(($) => $.creation_studio.access[scope].description)}
                 onClick={() => set("permissionScope", scope)}
                 className={cn(
-                  "flex w-full items-start gap-3 rounded-md px-3 py-2.5 text-left transition-colors",
-                  "hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-                  draft.permissionScope === scope && "bg-muted",
+                  "inline-flex h-7 items-center gap-1.5 rounded-sm px-2.5 text-caption font-medium transition-colors",
+                  "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                  active
+                    ? "bg-background text-foreground shadow-sm"
+                    : "text-muted-foreground hover:text-foreground",
                 )}
               >
-                <span
-                  className={cn(
-                    "mt-1 flex size-3.5 shrink-0 items-center justify-center rounded-full border",
-                    draft.permissionScope === scope && "border-primary",
-                  )}
-                  aria-hidden="true"
-                >
-                  {draft.permissionScope === scope ? (
-                    <span className="size-1.5 rounded-full bg-primary" />
-                  ) : null}
-                </span>
-                <span className="min-w-0">
-                  <span className="block text-body font-medium">
-                    {t(($) => $.creation_studio.access[scope].title)}
-                  </span>
-                  <span className="mt-0.5 block text-caption leading-5 text-muted-foreground">
-                    {t(($) => $.creation_studio.access[scope].description)}
-                  </span>
-                </span>
+                <Icon aria-hidden="true" className="size-3.5" />
+                {t(($) => $.creation_studio.access[scope].title)}
               </button>
+            );
+          })}
+        </div>
+        {draft.permissionScope === "members" ? (
+          <div className="mt-2 max-h-48 overflow-y-auto rounded-md border p-1">
+            {otherMembers.map((member) => (
+              <label
+                key={member.user_id}
+                className="flex cursor-pointer items-center gap-2 rounded-sm px-2 py-1.5 hover:bg-muted"
+              >
+                <Checkbox
+                  checked={draft.memberIds.has(member.user_id)}
+                  onCheckedChange={(value) =>
+                    onChange((current) => {
+                      const next = new Set(current.memberIds);
+                      if (value === true) next.add(member.user_id);
+                      else next.delete(member.user_id);
+                      return { ...current, memberIds: next };
+                    })
+                  }
+                />
+                <ActorAvatar actorType="member" actorId={member.user_id} size="sm" />
+                <span className="min-w-0 flex-1 truncate text-body">{member.name}</span>
+              </label>
             ))}
+            {draft.memberIds.size === 0 ? (
+              <p className="px-2 py-1 text-caption text-destructive">
+                {t(($) => $.creation_studio.access.members.required)}
+              </p>
+            ) : null}
           </div>
-          {draft.permissionScope === "members" ? (
-            <div className="max-h-48 overflow-y-auto p-2">
-              {otherMembers.map((member) => {
-                const checked = draft.memberIds.has(member.user_id);
-                return (
-                  <label
-                    key={member.user_id}
-                    className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-2 hover:bg-muted"
-                  >
-                    <Checkbox
-                      checked={checked}
-                      onCheckedChange={(value) =>
-                        onChange((current) => {
-                          const next = new Set(current.memberIds);
-                          if (value === true) next.add(member.user_id);
-                          else next.delete(member.user_id);
-                          return { ...current, memberIds: next };
-                        })
-                      }
-                    />
-                    <ActorAvatar
-                      actorType="member"
-                      actorId={member.user_id}
-                      size="sm"
-                    />
-                    <span className="min-w-0 flex-1 truncate text-body">
-                      {member.name}
-                    </span>
-                  </label>
-                );
-              })}
-              {draft.memberIds.size === 0 ? (
-                <p className="px-2 py-1 text-caption text-destructive">
-                  {t(($) => $.creation_studio.access.members.required)}
-                </p>
-              ) : null}
-            </div>
-          ) : null}
-        </SettingsCard>
-      </SettingsSection>
+        ) : null}
+      </FormRow>
     </div>
+  );
+}
+
+const ADD_CHIP_CLASS =
+  "inline-flex h-6 items-center gap-1 rounded-md border border-dashed px-2 text-caption text-muted-foreground transition-colors hover:border-foreground/30 hover:text-foreground";
+
+const SCOPE_ICONS: Record<AgentPermissionScope, typeof Lock> = {
+  private: Lock,
+  workspace: Globe,
+  members: Users,
+};
+
+/** One labelled row of the draft form; `changed` marks what the agent's latest
+ *  revision touched. */
+function FormRow({
+  label,
+  required = false,
+  changed = false,
+  htmlFor,
+  children,
+}: {
+  label: string;
+  required?: boolean;
+  changed?: boolean;
+  htmlFor?: string;
+  children: ReactNode;
+}) {
+  const { t } = useT("agents");
+  const LabelTag = htmlFor ? "label" : "div";
+  return (
+    <div
+      data-changed={changed || undefined}
+      className={cn(
+        "grid gap-x-4 gap-y-2 px-5 py-3.5 sm:grid-cols-[104px_minmax(0,1fr)]",
+        changed && "border-l-2 border-l-info bg-info/[0.04] pl-[18px]",
+      )}
+    >
+      <div className="pt-1.5">
+        <LabelTag
+          {...(htmlFor ? { htmlFor } : {})}
+          className="text-body font-medium"
+        >
+          {label}
+          {required ? <span className="ml-0.5 text-destructive">*</span> : null}
+        </LabelTag>
+        {changed ? (
+          <span className="mt-1 block w-fit rounded-sm bg-info/10 px-1.5 py-px text-micro font-medium text-info">
+            {t(($) => $.drafts.form.changed)}
+          </span>
+        ) : null}
+      </div>
+      <div className="min-w-0">{children}</div>
+    </div>
+  );
+}
+
+/** Starters as chips; a chip or "Add" opens a small editor. */
+function ConversationStarterChips({
+  value,
+  onChange,
+}: {
+  value: AgentConversationStarter[];
+  onChange: (value: AgentConversationStarter[]) => void;
+}) {
+  const { t } = useT("agents");
+  const incomplete = value.some((item) => !item.label.trim() || !item.prompt.trim());
+  const update = (index: number, next: AgentConversationStarter) =>
+    onChange(value.map((item, i) => (i === index ? next : item)));
+  return (
+    <div>
+      <div className="flex flex-wrap items-center gap-1.5">
+        {value.map((item, index) => (
+          <Popover key={index}>
+            <PopoverTrigger
+              className={cn(
+                "inline-flex h-6 max-w-56 items-center rounded-md border bg-muted/40 px-2 text-caption hover:bg-muted",
+                (!item.label.trim() || !item.prompt.trim()) && "border-destructive/50",
+              )}
+            >
+              <span className="truncate">
+                {item.label.trim() || t(($) => $.conversation_starters.label_placeholder)}
+              </span>
+            </PopoverTrigger>
+            <PopoverContent align="start" className="w-80 space-y-2 p-3">
+              <StarterEditor
+                index={index}
+                item={item}
+                onChange={(next) => update(index, next)}
+                onRemove={() => onChange(value.filter((_, i) => i !== index))}
+              />
+            </PopoverContent>
+          </Popover>
+        ))}
+        {value.length < AGENT_CONVERSATION_STARTERS_MAX ? (
+          <button
+            type="button"
+            className={ADD_CHIP_CLASS}
+            onClick={() => onChange([...value, { label: "", prompt: "" }])}
+          >
+            <Plus aria-hidden="true" className="size-3" />
+            {t(($) => $.drafts.form.add_starter)}
+          </button>
+        ) : null}
+        <span className="text-caption text-muted-foreground">
+          {t(($) => $.drafts.form.starters_hint, { count: AGENT_CONVERSATION_STARTERS_MAX })}
+        </span>
+      </div>
+      {incomplete ? (
+        <p className="mt-1.5 text-caption text-destructive" role="alert">
+          {t(($) => $.conversation_starters.incomplete)}
+        </p>
+      ) : null}
+    </div>
+  );
+}
+
+function StarterEditor({
+  index,
+  item,
+  onChange,
+  onRemove,
+}: {
+  index: number;
+  item: AgentConversationStarter;
+  onChange: (item: AgentConversationStarter) => void;
+  onRemove: () => void;
+}) {
+  const { t } = useT("agents");
+  return (
+    <>
+      <Input
+        autoFocus
+        value={item.label}
+        maxLength={AGENT_CONVERSATION_STARTER_LABEL_MAX_LENGTH}
+        aria-label={t(($) => $.conversation_starters.item_label, { number: index + 1 })}
+        placeholder={t(($) => $.conversation_starters.label_placeholder)}
+        onChange={(event) => onChange({ ...item, label: event.target.value })}
+      />
+      <Textarea
+        value={item.prompt}
+        maxLength={AGENT_CONVERSATION_STARTER_MAX_LENGTH}
+        rows={3}
+        className="resize-y"
+        aria-label={t(($) => $.conversation_starters.prompt_label, { number: index + 1 })}
+        placeholder={t(($) => $.conversation_starters.prompt_placeholder)}
+        onChange={(event) => onChange({ ...item, prompt: event.target.value })}
+      />
+      <div className="flex justify-end">
+        <Button type="button" size="sm" variant="ghost" onClick={onRemove}>
+          <Trash2 aria-hidden="true" className="size-3.5" />
+          {t(($) => $.conversation_starters.remove, { number: index + 1 })}
+        </Button>
+      </div>
+    </>
   );
 }
 
