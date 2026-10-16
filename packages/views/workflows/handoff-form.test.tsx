@@ -84,13 +84,11 @@ describe("HandoffFields", () => {
     expect(onPatch).toHaveBeenCalledWith({ handler: { type: "member", id: "user-1" } });
   });
 
-  it("defaults the next status to the next column and tucks the rest away", () => {
+  it("shows next and back for an agent, next defaulting to the next column", () => {
     renderFields({ status_key: "in_progress", handler: { type: "agent", id: "agent-1" }, instructions: "" });
 
-    expect(screen.getByText(/When done, moves to/)).toBeTruthy();
-    expect(screen.queryByRole("combobox", { name: /back/i })).toBeNull();
-    fireEvent.click(screen.getByRole("button", { name: /More options/ }));
     expect(screen.getAllByRole("combobox").length).toBe(2);
+    expect(screen.getByText(/In Review/)).toBeTruthy();
   });
 });
 

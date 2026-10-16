@@ -284,12 +284,8 @@ export function HandoffFields({
   onPreview?: () => void;
 }) {
   const { t } = useT("issues");
-  const wsId = useWorkspaceId();
-  const labelOf = useStatusLabel(wsId);
   const mode = modeOf(step.handler);
-  const [more, setMore] = useState(!!step.back_status_key || !!step.next_status_key);
   const nextDefault = workflowNextStatus({ steps: workflow.steps.map((s) => ({ ...s, next_status_key: undefined })) }, step.status_key);
-  const next = step.next_status_key ?? nextDefault;
   const choose = (m: HandoffMode) => {
     if (m === mode) return;
     onPatch({ handler: m === "none" ? { type: "none" } : { type: m } });
@@ -364,28 +360,14 @@ export function HandoffFields({
               onChange={(e) => onPatch({ instructions: e.target.value })}
             />
           </Field>
-          <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-caption text-muted-foreground">
-            <span>
-              {next
-                ? t(($) => $.workflows.handoff.then, { status: labelOf(next) })
-                : t(($) => $.workflows.handoff.then_none)}
-            </span>
-            <button
-              type="button"
-              aria-expanded={more}
-              onClick={() => setMore((v) => !v)}
-              className="inline-flex items-center gap-0.5 hover:text-foreground"
-            >
-              {t(($) => $.workflows.handoff.more)}
-              <ChevronDown aria-hidden className={cn("size-3 transition-transform", more && "rotate-180")} />
-            </button>
-            {onPreview && (
-              <button type="button" onClick={onPreview} className="ml-auto text-brand hover:underline">
-                {t(($) => $.workflows.editor.preview_brief)}
-              </button>
-            )}
-          </div>
-          {more && <NextBackFields step={step} workflow={workflow} canEdit={canEdit} nextDefault={nextDefault} onPatch={onPatch} />}
+          <NextBackFields
+            step={step}
+            workflow={workflow}
+            canEdit={canEdit}
+            nextDefault={nextDefault}
+            onPatch={onPatch}
+            onPreview={onPreview}
+          />
         </>
       )}
     </div>
@@ -494,12 +476,14 @@ function NextBackFields({
   canEdit,
   nextDefault,
   onPatch,
+  onPreview,
 }: {
   step: IssueWorkflowStep;
   workflow: Pick<IssueWorkflow, "steps">;
   canEdit: boolean;
   nextDefault: string | null;
   onPatch: (patch: Partial<IssueWorkflowStep>) => void;
+  onPreview?: () => void;
 }) {
   const { t } = useT("issues");
   const wsId = useWorkspaceId();
@@ -561,7 +545,17 @@ function NextBackFields({
           );
         })}
       </div>
-      <p className="text-caption leading-5 text-muted-foreground">{t(($) => $.workflows.editor.next_hint)}</p>
+      <p className="text-caption leading-5 text-muted-foreground">
+        {t(($) => $.workflows.editor.next_hint)}
+        {onPreview && (
+          <>
+            {" "}
+            <button type="button" onClick={onPreview} className="text-brand hover:underline">
+              {t(($) => $.workflows.editor.preview_brief)}
+            </button>
+          </>
+        )}
+      </p>
     </div>
   );
 }

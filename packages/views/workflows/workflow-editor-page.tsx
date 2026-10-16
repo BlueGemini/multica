@@ -24,6 +24,7 @@ import {
   ChevronRight,
   Copy,
   CornerDownRight,
+  FolderKanban,
   GripVertical,
   MoreHorizontal,
   Plus,
@@ -74,6 +75,13 @@ import { BriefPreviewDialog, HandoffFields, savedHandoff } from "./handoff-form"
 import { stepHandlerActor, useStepHandlerLabel } from "./step-handler";
 import { WORKFLOW_TEMPLATES, type WorkflowTemplateId } from "./templates";
 import { WorkflowMappingDialog } from "./workflow-mapping-dialog";
+
+/**
+ * The name and description edit in place. A hover or focus background tells
+ * them apart from the read-only note under them.
+ */
+const INLINE_FIELD =
+  "-mx-1.5 block w-[calc(100%+0.75rem)] rounded-md bg-transparent px-1.5 outline-none transition-colors placeholder:text-muted-foreground/60 read-only:cursor-default hover:[&:not(:read-only)]:bg-accent/60 focus-visible:[&:not(:read-only)]:bg-accent/60 focus-visible:[&:not(:read-only)]:ring-1 focus-visible:[&:not(:read-only)]:ring-ring/40";
 
 /** A new workflow starts from the common delivery loop instead of nothing. */
 const NEW_WORKFLOW_MIDDLE = ["in_progress", "in_review"];
@@ -377,17 +385,37 @@ export function WorkflowEditorPage({
       <div className="space-y-3">
         <Breadcrumb onBack={onBack} current={title} />
         <div className="flex items-start gap-3">
-          <div className="min-w-0 flex-1 space-y-1">
-            <h2 className="truncate text-title-lg font-semibold tracking-tight">{title}</h2>
-            <p className="text-body text-muted-foreground">
-              {isDefault
-                ? t(($) => $.workflows.editor.default_note)
-                : usedBy.length > 0
-                  ? t(($) => $.workflows.editor.used_by_note, {
-                      count: usedBy.length,
-                      names: usedBy.map((p) => p.title).join(t(($) => $.workflows.list_separator)),
-                    })
-                  : t(($) => $.workflows.editor.unused_note)}
+          <div className="min-w-0 flex-1">
+            <input
+              aria-label={t(($) => $.workflows.editor.name)}
+              value={draft.name}
+              maxLength={64}
+              readOnly={!canEdit || isDefault}
+              placeholder={t(($) => $.workflows.editor.name_placeholder)}
+              onChange={(e) => setDraft((d) => ({ ...d, name: e.target.value }))}
+              className={cn(INLINE_FIELD, "h-9 text-title-lg font-semibold tracking-tight")}
+            />
+            <input
+              aria-label={t(($) => $.workflows.editor.description)}
+              value={draft.description}
+              maxLength={256}
+              readOnly={!canEdit}
+              placeholder={canEdit ? t(($) => $.workflows.editor.description_placeholder) : ""}
+              onChange={(e) => setDraft((d) => ({ ...d, description: e.target.value }))}
+              className={cn(INLINE_FIELD, "mt-0.5 h-7 text-body")}
+            />
+            <p className="mt-2 flex items-start gap-1.5 text-caption leading-5 text-muted-foreground">
+              <FolderKanban aria-hidden className="mt-0.5 size-3.5 shrink-0" />
+              <span>
+                {isDefault
+                  ? t(($) => $.workflows.editor.default_note)
+                  : usedBy.length > 0
+                    ? t(($) => $.workflows.editor.used_by_note, {
+                        count: usedBy.length,
+                        names: usedBy.map((p) => p.title).join(t(($) => $.workflows.list_separator)),
+                      })
+                    : t(($) => $.workflows.editor.unused_note)}
+              </span>
             </p>
           </div>
           {canEdit && (
@@ -433,35 +461,6 @@ export function WorkflowEditorPage({
               )}
             </div>
           )}
-        </div>
-      </div>
-
-      <div className="grid gap-4 sm:grid-cols-[minmax(0,18rem)_minmax(0,1fr)]">
-        <div className="space-y-1.5">
-          <label htmlFor="workflow-name" className="block text-caption font-medium text-muted-foreground">
-            {t(($) => $.workflows.editor.name)}
-          </label>
-          <Input
-            id="workflow-name"
-            value={draft.name}
-            maxLength={64}
-            readOnly={!canEdit || isDefault}
-            placeholder={t(($) => $.workflows.editor.name_placeholder)}
-            onChange={(e) => setDraft((d) => ({ ...d, name: e.target.value }))}
-          />
-        </div>
-        <div className="space-y-1.5">
-          <label htmlFor="workflow-description" className="block text-caption font-medium text-muted-foreground">
-            {t(($) => $.workflows.editor.description)}
-          </label>
-          <Input
-            id="workflow-description"
-            value={draft.description}
-            maxLength={256}
-            readOnly={!canEdit}
-            placeholder={canEdit ? t(($) => $.workflows.editor.description_placeholder) : ""}
-            onChange={(e) => setDraft((d) => ({ ...d, description: e.target.value }))}
-          />
         </div>
       </div>
 
