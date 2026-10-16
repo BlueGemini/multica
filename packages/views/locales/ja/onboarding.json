@@ -135,25 +135,6 @@
     "success_toast": "ウェイトリストに登録しました。クラウドランタイムが利用可能になったらメールでお知らせします。",
     "failed_toast": "ウェイトリストに登録できませんでした"
   },
-  "welcome_after_onboarding": {
-    "skip": {
-      "loading": "ワークスペースを準備中…",
-      "title": "Multica へようこそ!",
-      "subtitle": "ランタイム接続を案内するタスクを 1 つ追加しました。準備できたら Runtimes から Mika と始められます。",
-      "got_it": "了解",
-      "status_in_progress": "進行中",
-      "error_title": "準備できませんでした",
-      "error_body": "ランタイム案内のタスクを作成できませんでした。再試行するか、準備ができたら Runtimes からランタイムを接続してください。",
-      "retry": "再試行",
-      "dismiss": "後で",
-      "cards": {
-        "install_runtime": {
-          "title": "ランタイムを接続",
-          "subtitle": "Codex または Kimi をインストールし、Runtimes から Mika の案内チャットを始めてください。"
-        }
-      }
-    }
-  },
   "step_workspace": {
     "eyebrow_first": "最初のワークスペース",
     "eyebrow_resume": "続きから、または新規作成",
@@ -253,6 +234,7 @@
   },
   "errors": {
     "skip_failed": "オンボーディングを完了できませんでした",
+    "guide_failed": "ランタイム案内のタスクを作成できませんでした。もう一度お試しください。",
     "mika_setup_failed": "Mika ワークスペースを開始できませんでした"
   },
   "mika_intro": {

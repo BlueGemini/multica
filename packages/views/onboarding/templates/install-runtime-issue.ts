@@ -1,8 +1,8 @@
 /**
  * Skip path: "Connect a runtime to start with Mika".
  *
- * Written to a new issue (assigned to the user themselves) by the welcome
- * hook when the user took the Skip exit on Step 3. Content is the
+ * Written to a new issue (assigned to the user themselves) by OnboardingFlow
+ * when the user takes the Skip exit on Step 3, which then opens it. Content is the
  * install-runtime tutorial; each supported locale can recommend the
  * quickest runtime path that best fits that audience.
  *

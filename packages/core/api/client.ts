@@ -1403,7 +1403,10 @@ export class ApiClient {
     return issue;
   }
 
-  async createIssue(data: CreateIssueRequest): Promise<Issue> {
+  async createIssue(
+    data: CreateIssueRequest,
+    workspaceSlug?: string,
+  ): Promise<Issue> {
     const requestedProperties = requestedIssueCreateProperties(data);
     if (requestedProperties) {
       const config = await this.getConfig();
@@ -1424,6 +1427,7 @@ export class ApiClient {
     // render its localized "failed to create" toast.
     const raw = await this.fetch<unknown>("/api/issues", {
       method: "POST",
+      headers: workspaceHeader(workspaceSlug),
       body: JSON.stringify(data),
     });
     const issue = parseWithFallback<Issue | null>(raw, CreateIssueResponseSchema, null, {

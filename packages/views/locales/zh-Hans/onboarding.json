@@ -135,25 +135,6 @@
     "success_toast": "已加入候补名单。云运行时上线时会通过邮件通知你。",
     "failed_toast": "加入候补名单失败"
   },
-  "welcome_after_onboarding": {
-    "skip": {
-      "loading": "正在为你准备工作区...",
-      "title": "欢迎来到 Multica！",
-      "subtitle": "我们建了一个任务帮你连接运行时。准备好后，在 \"运行时\" 页面就能开始使用 Mika。",
-      "got_it": "知道了",
-      "status_in_progress": "进行中",
-      "error_title": "没能帮你准备好",
-      "error_body": "运行时引导任务没有创建成功。可以重试，也可以随时在\"运行时\"页面自己连接。",
-      "retry": "重试",
-      "dismiss": "暂不",
-      "cards": {
-        "install_runtime": {
-          "title": "连接一个运行时",
-          "subtitle": "安装 Codex 或 Kimi，然后从 \"运行时\" 页面进入 Mika 的引导对话。"
-        }
-      }
-    }
-  },
   "step_workspace": {
     "eyebrow_first": "你的第一个工作区",
     "eyebrow_resume": "继续，或重新开始",
@@ -253,6 +234,7 @@
   },
   "errors": {
     "skip_failed": "完成上手引导失败",
+    "guide_failed": "运行时引导任务没有创建成功，请重试。",
     "mika_setup_failed": "无法启动 Mika 工作区"
   },
   "mika_intro": {
