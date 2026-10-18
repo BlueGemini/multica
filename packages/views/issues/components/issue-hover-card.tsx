@@ -219,8 +219,12 @@ function IssueHoverCardDetails({ issue }: { issue: Issue }) {
   // the dash a mark carrying no information in an already dense popup.
   const hasPriority = !!issue.priority && issue.priority !== "none";
   const hasAssignee = !!issue.assignee_type && !!issue.assignee_id;
-  const isWorking = (tasks?.running.length ?? 0) > 0;
-  const isQueued = !isWorking && (tasks?.queued.length ?? 0) > 0;
+  // The badge sits beside the assignee, so it only counts that agent's own
+  // runs — another agent reviewing the issue is not the assignee working.
+  const isAssigneeTask = (task: AgentTask) =>
+    issue.assignee_type === "agent" && task.agent_id === issue.assignee_id;
+  const isWorking = !!tasks?.running.some(isAssigneeTask);
+  const isQueued = !isWorking && !!tasks?.queued.some(isAssigneeTask);
   const project = issue.project_id
     ? projects?.find((p) => p.id === issue.project_id)
     : undefined;
