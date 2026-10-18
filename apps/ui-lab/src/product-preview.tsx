@@ -11,7 +11,12 @@ import { WorkspaceSlugProvider } from "@multica/core/paths";
 import { workspaceKeys } from "@multica/core/workspace/queries";
 import { setCurrentWorkspace } from "@multica/core/platform";
 import { getIssueSurfaceViewStore } from "@multica/core/issues/stores/surface-view-store";
-import { AppSidebar } from "@multica/views/layout";
+import {
+  APP_SIDEBAR_PROVIDER_PROPS,
+  AppSidebar,
+  AppSidebarPanel,
+  AppSidebarProvider,
+} from "@multica/views/layout";
 import { IssueDetail, IssuesPage } from "@multica/views/issues/components";
 import {
   NavigationProvider,
@@ -102,15 +107,22 @@ export function ProductPreview({
           <WorkspaceSlugProvider slug={workspace.slug}>
             <NavigationProvider value={navigation}>
               <TooltipProvider>
-                <SidebarProvider className="h-svh bg-app-shell">
-                  <AppSidebar />
-                  <SidebarInset className="relative overflow-hidden">
-                    {issueId ? (
-                      <IssueDetail issueId={issueId} />
-                    ) : (
-                      <IssuesPage />
-                    )}
-                  </SidebarInset>
+                <SidebarProvider className="h-svh bg-app-shell" {...APP_SIDEBAR_PROVIDER_PROPS}>
+                  <AppSidebarProvider>
+                    <AppSidebar />
+                    <SidebarInset className="relative overflow-hidden">
+                      <div className="flex min-h-0 flex-1">
+                        <AppSidebarPanel />
+                        <div className="relative flex min-w-0 flex-1 flex-col">
+                          {issueId ? (
+                            <IssueDetail issueId={issueId} />
+                          ) : (
+                            <IssuesPage />
+                          )}
+                        </div>
+                      </div>
+                    </SidebarInset>
+                  </AppSidebarProvider>
                 </SidebarProvider>
                 <Toaster />
               </TooltipProvider>

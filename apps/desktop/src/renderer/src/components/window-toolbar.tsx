@@ -7,10 +7,7 @@ import {
   type PointerEventHandler,
 } from "react";
 import { ArrowLeft, ArrowRight } from "lucide-react";
-import {
-  SidebarTrigger,
-  useSidebar,
-} from "@multica/ui/components/ui/sidebar";
+import { SidebarTrigger } from "@multica/ui/components/ui/sidebar";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -28,8 +25,7 @@ import { browsingHistoryKeyForUrl } from "@/stores/tab-store";
 // Controls sit left-aligned just past the macOS traffic lights, which end
 // around x=76 with trafficLightPosition { x: 16 }. The clearance covers that
 // inset plus Back, Forward and the sidebar toggle (3 × 28px, 2 × 8px gaps) and
-// a 12px trailing pad, and matches the sidebar's minimum width so the
-// controls always fit inside the expanded sidebar column.
+// a 12px trailing pad. The main top bar pads its tabs past the same edge.
 const TRAFFIC_LIGHT_CLEARANCE = 88;
 export const WINDOW_TOOLBAR_CLEARANCE = 200;
 const LONG_PRESS_DURATION_MS = 500;
@@ -168,11 +164,6 @@ function HistoryMenuItem({
 }
 
 export function WindowToolbar() {
-  const { state: sidebarState, isCompact } = useSidebar();
-  const sidebarHidden = sidebarState === "collapsed" || isCompact;
-  const toolbarWidth: React.CSSProperties["width"] = sidebarHidden
-    ? WINDOW_TOOLBAR_CLEARANCE
-    : `max(var(--sidebar-live-width, var(--sidebar-width)), ${WINDOW_TOOLBAR_CLEARANCE}px)`;
   const {
     canGoBack,
     canGoForward,
@@ -245,12 +236,11 @@ export function WindowToolbar() {
   return (
     <div
       data-slot="window-toolbar"
-      data-sidebar-resize-consumer
       className="fixed left-0 top-0 z-30 flex h-10 shrink-0 items-center pr-3"
       style={
         {
           WebkitAppRegion: "drag",
-          width: toolbarWidth,
+          width: WINDOW_TOOLBAR_CLEARANCE,
           paddingLeft: TRAFFIC_LIGHT_CLEARANCE,
         } as React.CSSProperties
       }

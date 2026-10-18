@@ -11,9 +11,11 @@ import { cn } from "@multica/ui/lib/utils";
  * through a portal into the element the panel publishes here, leaving the main
  * area to the detail alone.
  *
- * The panel only publishes the element while it is actually on screen as a
- * column — expanded, not a compact sheet — so a `null` slot is the signal for
- * the page to fall back to its own two-pane layout.
+ * The panel publishes the element whenever it is a column in the canvas
+ * rather than a compact sheet. Folding the panel keeps it mounted at zero
+ * width, so the list stays put and the page still shows the detail alone. A
+ * `null` slot is the signal for the page to fall back to its own two-pane
+ * layout.
  */
 const SidebarListSlotContext = createContext<{
   slot: HTMLElement | null;
@@ -54,7 +56,7 @@ export function useSidebarListSlot(active: boolean): HTMLElement | null {
 
 /**
  * The title row at the top of a sidebar panel. Shares the page header's
- * height so the panel and the canvas beside it read as one band.
+ * height and bottom rule so the panel and the page beside it read as one band.
  */
 export function SidebarPanelHeader({
   title,
@@ -68,7 +70,7 @@ export function SidebarPanelHeader({
   return (
     <header
       data-slot="sidebar-panel-header"
-      className={cn("flex h-12 shrink-0 items-center gap-1 pr-2 pl-4", className)}
+      className={cn("flex h-12 shrink-0 items-center gap-1 border-b pr-2 pl-4", className)}
     >
       <h2 className="flex min-w-0 flex-1 items-center gap-2 truncate text-body font-semibold">
         {title}

@@ -4,8 +4,8 @@ import type { ReactNode } from "react";
 import { SidebarProvider, SidebarInset } from "@multica/ui/components/ui/sidebar";
 import { ModalRegistry } from "../modals/registry";
 import { SourceBackfillModal } from "../onboarding";
-import { APP_SIDEBAR_PROVIDER_PROPS, AppSidebar } from "./app-sidebar";
-import { SidebarListSlotProvider } from "./sidebar-list-slot";
+import { APP_SIDEBAR_PROVIDER_PROPS, AppSidebar, AppSidebarPanel } from "./app-sidebar";
+import { AppSidebarProvider } from "./sidebar-module-state";
 import { DashboardGuard } from "./dashboard-guard";
 import { NavigationProgress } from "./navigation-progress";
 import { WorkspacePresencePrefetch } from "./workspace-presence-prefetch";
@@ -33,18 +33,21 @@ export function DashboardLayout({
       }
     >
       <SidebarProvider className="h-svh bg-app-shell" {...APP_SIDEBAR_PROVIDER_PROPS}>
-        <SidebarListSlotProvider>
+        <AppSidebarProvider>
           <GlobalShortcuts />
           <WorkspacePresencePrefetch />
           <AppSidebar />
           <SidebarInset className="relative overflow-hidden">
             <NavigationProgress />
-            {children}
+            <div className="flex min-h-0 flex-1">
+              <AppSidebarPanel />
+              <div className="relative flex min-w-0 flex-1 flex-col">{children}</div>
+            </div>
             <ModalRegistry />
             <SourceBackfillModal />
             {extra}
           </SidebarInset>
-        </SidebarListSlotProvider>
+        </AppSidebarProvider>
       </SidebarProvider>
     </DashboardGuard>
   );

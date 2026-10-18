@@ -67,7 +67,8 @@ vi.mock("@multica/views/platform", () => ({
 
 vi.mock("@multica/views/layout", () => ({
   APP_SIDEBAR_PROVIDER_PROPS: {},
-  SidebarListSlotProvider: ({ children }: { children: React.ReactNode }) => <>{children}</>,
+  AppSidebarProvider: ({ children }: { children: React.ReactNode }) => <>{children}</>,
+  AppSidebarPanel: () => null,
   AppSidebar: () => null,
   GlobalShortcuts: () => null,
   NavigationProgress: () => null,
@@ -151,23 +152,18 @@ describe("DesktopShell sidebar trigger", () => {
       "data-external-trigger",
       "true",
     );
+    // The rail is the only sidebar column in the flow — the module panel
+    // lives inside the canvas — so the tabs need the same clearance whether
+    // that panel is open or folded.
     const mainTopBar = container.querySelector('[data-slot="main-top-bar"]');
-    expect(mainTopBar).toHaveAttribute("data-sidebar-resize-consumer");
+    const railClearance = "max(0px, calc(200px - (var(--sidebar-width-icon) + 1rem)))";
     expect(mainTopBar).toHaveClass("transition-[padding-left]");
-    expect(mainTopBar).toHaveStyle({
-      paddingLeft:
-        "max(0px, calc(200px - var(--sidebar-live-width, var(--sidebar-width))))",
-    });
+    expect(mainTopBar).toHaveStyle({ paddingLeft: railClearance });
 
-    // Collapsed, the sidebar keeps its icon rail in the flow, so the tabs
-    // only need the clearance the rail does not already cover.
     fireEvent.click(
       container.querySelector('[data-slot="sidebar-trigger"]')!,
     );
-    expect(mainTopBar).toHaveStyle({
-      paddingLeft:
-        "max(0px, calc(200px - (var(--sidebar-width-icon) + 1rem)))",
-    });
+    expect(mainTopBar).toHaveStyle({ paddingLeft: railClearance });
     expect(queryByRole("status", { name: /loading workspace/i })).toBeNull();
   });
 

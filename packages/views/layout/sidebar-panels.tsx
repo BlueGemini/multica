@@ -116,7 +116,7 @@ export function ProjectsPanel({ wsId, pathname }: { wsId: string; pathname: stri
         </Button>
       </SidebarPanelHeader>
       <PanelBody>
-        <SidebarGroup className="pt-0">
+        <SidebarGroup>
           <SidebarGroupContent>
             <SidebarMenu className="gap-0.5">
               <PanelNavItem
@@ -185,7 +185,7 @@ export function TeamPanel({ wsId, pathname }: { wsId: string; pathname: string }
     <>
       <SidebarPanelHeader title={t(($) => $.sidebar.ai_team_group)} />
       <PanelBody>
-        <SidebarGroup className="pt-0">
+        <SidebarGroup>
           <SidebarGroupLabel>
             <span>{t(($) => $.sidebar.running_label)}</span>
             {running.length > 0 && <PanelCount value={running.length} />}

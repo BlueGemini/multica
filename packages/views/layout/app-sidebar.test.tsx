@@ -7,7 +7,17 @@ vi.mock("@multica/core/issue-statuses/hooks", () => ({
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { ApiError } from "@multica/core/api";
 import { renderWithI18n } from "../test/i18n";
-import { AppSidebar } from "./app-sidebar";
+import { AppSidebar, AppSidebarPanel } from "./app-sidebar";
+import { AppSidebarProvider } from "./sidebar-module-state";
+
+function Shell() {
+  return (
+    <AppSidebarProvider>
+      <AppSidebar />
+      <AppSidebarPanel />
+    </AppSidebarProvider>
+  );
+}
 
 const { agents, appForeground, chatSessions, chatStore, detail, deletePin, invitationApi, navigation, pins, presence, sidebarState, summary, workspaces } = vi.hoisted(() => ({
   appForeground: { current: true },
@@ -83,7 +93,7 @@ vi.mock("@multica/ui/components/ui/sidebar", () => ({
     </button>
   ),
   SidebarMenuItem: ({ children }: { children: React.ReactNode }) => <>{children}</>,
-  SidebarRail: () => null,
+  SidebarPanelResizeHandle: () => <div data-slot="sidebar-panel-resize-handle" />,
   useSidebar: () => sidebarState,
 }));
 vi.mock("@multica/ui/components/ui/dropdown-menu", () => ({
@@ -251,19 +261,19 @@ describe("PinRow", () => {
 
   it("unpins missing details", async () => {
     detail.current = { isPending: false, isError: true, data: null, error: new ApiError("missing", 404, "Not Found") };
-    render(<AppSidebar />);
+    render(<Shell />);
     await waitFor(() => expect(deletePin).toHaveBeenCalledTimes(1));
   });
 
   it("ignores non-404 errors", async () => {
     detail.current = { isPending: false, isError: true, data: null, error: new ApiError("error", 500, "Server Error") };
-    render(<AppSidebar />);
+    render(<Shell />);
     await waitFor(() => expect(deletePin).not.toHaveBeenCalled());
   });
 
   it("renders loaded details", async () => {
     detail.current = { isPending: false, isError: false, data: { identifier: "MUL-123", title: "Keep this pin", status: "todo" }, error: null };
-    render(<AppSidebar />);
+    render(<Shell />);
     expect(await screen.findByText("Keep this pin")).toBeInTheDocument();
     expect(screen.queryByText("MUL-123 Keep this pin")).not.toBeInTheDocument();
   });
@@ -277,7 +287,7 @@ describe("PinRow", () => {
       error: null,
     };
 
-    const { container } = render(<AppSidebar />);
+    const { container } = render(<Shell />);
 
     expect((await screen.findByText("Keep this pin")).closest("button")).toHaveAttribute(
       "data-active",
@@ -303,7 +313,7 @@ describe("PinRow", () => {
     };
 
     try {
-      const { container } = renderWithI18n(<AppSidebar />);
+      const { container } = renderWithI18n(<Shell />);
       const parent = () => container.querySelector('button[data-href="/acme/issues"]');
       const lastPin = () => container.querySelector('button[data-href="/acme/issues/issue-6"]');
 
@@ -332,11 +342,11 @@ describe("mobile sheet dismissal", () => {
   });
 
   it("dismisses the sheet once the route changes", () => {
-    const { rerender } = render(<AppSidebar />);
+    const { rerender } = render(<Shell />);
     sidebarState.setOpenMobile.mockClear();
 
     navigation.current = { pathname: "/acme/inbox" };
-    rerender(<AppSidebar />);
+    rerender(<Shell />);
 
     expect(sidebarState.setOpenMobile).toHaveBeenCalledWith(false);
   });
@@ -344,10 +354,10 @@ describe("mobile sheet dismissal", () => {
   // Closing on `pathname` rather than per-link keeps every route out of the
   // sidebar covered at once — nav groups, pins, and the switcher's own push.
   it("does not re-dismiss while the route holds still", () => {
-    const { rerender } = render(<AppSidebar />);
+    const { rerender } = render(<Shell />);
     sidebarState.setOpenMobile.mockClear();
 
-    rerender(<AppSidebar />);
+    rerender(<Shell />);
 
     expect(sidebarState.setOpenMobile).not.toHaveBeenCalled();
   });
@@ -367,20 +377,20 @@ describe("workspace-switcher unread dot", () => {
 
   it("shows a dot when another workspace has unread inbox items", () => {
     summary.current = [{ workspace_id: "ws-2", count: 3 }];
-    const { container } = render(<AppSidebar />);
+    const { container } = render(<Shell />);
     expect(dot(container)).not.toBeNull();
   });
 
   it("does not show a dot when only the active workspace has unread", () => {
     // Active workspace is ws-1 (see useCurrentWorkspace mock).
     summary.current = [{ workspace_id: "ws-1", count: 3 }];
-    const { container } = render(<AppSidebar />);
+    const { container } = render(<Shell />);
     expect(dot(container)).toBeNull();
   });
 
   it("does not show a dot when no workspace has unread", () => {
     summary.current = [];
-    const { container } = render(<AppSidebar />);
+    const { container } = render(<Shell />);
     expect(dot(container)).toBeNull();
   });
 });
@@ -401,7 +411,7 @@ describe("workspace-switcher dropdown per-workspace dot", () => {
 
   it("dots the specific other workspace that has unread", () => {
     summary.current = [{ workspace_id: "ws-2", count: 3 }];
-    const { container } = render(<AppSidebar />);
+    const { container } = render(<Shell />);
     // Exactly one row dot, sitting right after the "Other WS" name; the active
     // row shows the check, not a dot.
     expect(rowDots(container)).toHaveLength(1);
@@ -411,13 +421,13 @@ describe("workspace-switcher dropdown per-workspace dot", () => {
 
   it("does not dot a workspace whose unread count is zero", () => {
     summary.current = [{ workspace_id: "ws-2", count: 0 }];
-    const { container } = render(<AppSidebar />);
+    const { container } = render(<Shell />);
     expect(rowDots(container)).toHaveLength(0);
   });
 
   it("never dots the active workspace even when it has unread", () => {
     summary.current = [{ workspace_id: "ws-1", count: 5 }];
-    const { container } = render(<AppSidebar />);
+    const { container } = render(<Shell />);
     expect(rowDots(container)).toHaveLength(0);
   });
 });
@@ -439,7 +449,7 @@ describe("rail and module panel", () => {
 
   it("lights the module the route belongs to and shows its panel", () => {
     navigation.current = { pathname: "/acme/agents" };
-    const { container } = renderWithI18n(<AppSidebar />);
+    const { container } = renderWithI18n(<Shell />);
 
     expect(railLink(container, "team")).toHaveAttribute("data-active");
     expect(railLink(container, "issues")).not.toHaveAttribute("data-active");
@@ -449,17 +459,17 @@ describe("rail and module panel", () => {
 
   it("keeps the panel an issue was opened from", () => {
     navigation.current = { pathname: "/acme/projects" };
-    const { container, rerender } = render(<AppSidebar />);
+    const { container, rerender } = render(<Shell />);
     expect(panel(container)).toHaveAttribute("data-module", "projects");
 
     navigation.current = { pathname: "/acme/issues/issue-9" };
-    rerender(<AppSidebar />);
+    rerender(<Shell />);
     expect(panel(container)).toHaveAttribute("data-module", "projects");
   });
 
   it("folds the panel when the active module's icon is clicked", () => {
     navigation.current = { pathname: "/acme/my-issues" };
-    const { container } = render(<AppSidebar />);
+    const { container } = render(<Shell />);
 
     fireEvent.click(railLink(container, "issues")!);
     expect(sidebarState.setOpen).toHaveBeenCalledWith(false);
@@ -467,7 +477,7 @@ describe("rail and module panel", () => {
 
   it("reopens the folded panel when a module icon is clicked", () => {
     sidebarState.open = false;
-    const { container } = render(<AppSidebar />);
+    const { container } = render(<Shell />);
 
     fireEvent.click(railLink(container, "projects")!);
     expect(sidebarState.setOpen).toHaveBeenCalledWith(true);
@@ -475,10 +485,10 @@ describe("rail and module panel", () => {
 
   it("reopens each module at the route it was left on", () => {
     navigation.current = { pathname: "/acme/projects/p-1" };
-    const { container, rerender } = render(<AppSidebar />);
+    const { container, rerender } = render(<Shell />);
 
     navigation.current = { pathname: "/acme/inbox" };
-    rerender(<AppSidebar />);
+    rerender(<Shell />);
 
     expect(railLink(container, "projects")).toHaveAttribute("href", "/acme/projects/p-1");
     expect(railLink(container, "team")).toHaveAttribute("href", "/acme/agents");
@@ -486,17 +496,44 @@ describe("rail and module panel", () => {
 
   it("hands the Inbox panel to the page's list while the panel is a column", () => {
     navigation.current = { pathname: "/acme/inbox" };
-    const { container } = render(<AppSidebar />);
-    expect(container.querySelector('[data-slot="sidebar-list-slot"]')).not.toBeNull();
+    const { container } = render(<Shell />);
+    expect(panel(container)?.querySelector('[data-slot="sidebar-list-slot"]')).not.toBeNull();
   });
 
-  it("keeps the general panel in the compact sheet, where the page shows its own list", () => {
+  it("keeps a folded panel mounted at zero width, list slot included", () => {
+    navigation.current = { pathname: "/acme/inbox" };
+    sidebarState.open = false;
+    const { container } = render(<Shell />);
+
+    const folded = panel(container)!;
+    expect(folded).toHaveAttribute("data-state", "collapsed");
+    expect(folded).toHaveAttribute("inert");
+    expect(folded.style.width).toBe("0px");
+    expect(folded.querySelector('[data-slot="sidebar-list-slot"]')).not.toBeNull();
+    expect(folded.querySelector('[data-slot="sidebar-panel-resize-handle"]')).toBeNull();
+  });
+
+  it("sizes the open panel from the sidebar width and offers a resize handle", () => {
+    const { container } = render(<Shell />);
+
+    const open = panel(container)!;
+    expect(open).toHaveAttribute("data-state", "expanded");
+    expect(open).not.toHaveAttribute("inert");
+    expect(open.style.width).toBe("var(--sidebar-width)");
+    expect(open.querySelector('[data-slot="sidebar-panel-resize-handle"]')).not.toBeNull();
+  });
+
+  it("moves the panel into the compact sheet, where the page shows its own list", () => {
     navigation.current = { pathname: "/acme/chat" };
     sidebarState.isCompact = true;
-    const { container } = render(<AppSidebar />);
+    const { container } = render(<Shell />);
 
+    expect(panel(container)).toBeNull();
     expect(container.querySelector('[data-slot="sidebar-list-slot"]')).toBeNull();
-    expect(panel(container)).toHaveAttribute("data-module", "issues");
+    expect(container.querySelector('[data-slot="sidebar-sheet-panel"]')).toHaveAttribute(
+      "data-module",
+      "issues",
+    );
     expect(railLink(container, "chat")).toHaveAttribute("data-active");
   });
 
@@ -510,7 +547,7 @@ describe("rail and module panel", () => {
       ["a-1", { workload: "working" }],
       ["a-2", { workload: "idle" }],
     ]);
-    const { container } = render(<AppSidebar />);
+    const { container } = render(<Shell />);
 
     expect(railLink(container, "team")?.querySelector('[data-slot="rail-running-dot"]')).not.toBeNull();
     expect(screen.getByText("Builder")).toBeInTheDocument();
@@ -535,7 +572,7 @@ describe("rail — Chat badge", () => {
   it("keeps persistent Inbox and Chat counters static", () => {
     summary.current = [{ workspace_id: "ws-1", count: 1 }];
     chatSessions.current = [{ id: "chat-1", unread_count: 2 }];
-    const { container } = render(<AppSidebar />);
+    const { container } = render(<Shell />);
     const inboxBadge = container
       .querySelector<HTMLElement>('a[data-module="inbox"]')
       ?.querySelector("number-flow-react") as (HTMLElement & { animated?: boolean }) | null;
@@ -546,19 +583,19 @@ describe("rail — Chat badge", () => {
   });
 
   it("renders a Chat rail link to the workspace chat route", () => {
-    const { container } = render(<AppSidebar />);
+    const { container } = render(<Shell />);
     expect(chatNav(container)).toHaveAttribute("href", "/acme/chat");
   });
 
   it("badges the Chat nav with the summed unread_count of chat sessions", () => {
     chatSessions.current = [{ id: "a", unread_count: 3 }, { id: "b", unread_count: 2 }, { id: "c", unread_count: 0 }];
-    const { container } = render(<AppSidebar />);
+    const { container } = render(<Shell />);
     expect(chatBadge(container)).toHaveAttribute("aria-label", "5");
   });
 
   it("shows no Chat unread badge when every session is read", () => {
     chatSessions.current = [{ id: "a", unread_count: 0 }, { id: "b" }];
-    const { container } = render(<AppSidebar />);
+    const { container } = render(<Shell />);
     expect(chatBadge(container)).toBeNull();
   });
 
@@ -569,7 +606,7 @@ describe("rail — Chat badge", () => {
     chatSessions.current = [{ id: "a", unread_count: 2 }, { id: "b", unread_count: 3 }];
     navigation.current = { pathname: "/acme/chat" };
     chatStore.current = { activeSessionId: "a", isOpen: false };
-    const { container } = render(<AppSidebar />);
+    const { container } = render(<Shell />);
     expect(chatBadge(container)).toHaveAttribute("aria-label", "3");
   });
 
@@ -577,7 +614,7 @@ describe("rail — Chat badge", () => {
     chatSessions.current = [{ id: "a", unread_count: 2 }, { id: "b", unread_count: 3 }];
     navigation.current = { pathname: "/acme/issues" };
     chatStore.current = { activeSessionId: "a", isOpen: true };
-    const { container } = render(<AppSidebar />);
+    const { container } = render(<Shell />);
     expect(chatBadge(container)).toHaveAttribute("aria-label", "3");
   });
 
@@ -587,7 +624,7 @@ describe("rail — Chat badge", () => {
     chatSessions.current = [{ id: "a", unread_count: 2 }, { id: "b", unread_count: 3 }];
     navigation.current = { pathname: "/acme/issues" };
     chatStore.current = { activeSessionId: "a", isOpen: false };
-    const { container } = render(<AppSidebar />);
+    const { container } = render(<Shell />);
     expect(chatBadge(container)).toHaveAttribute("aria-label", "5");
   });
 
@@ -599,7 +636,7 @@ describe("rail — Chat badge", () => {
     navigation.current = { pathname: "/acme/issues" };
     chatStore.current = { activeSessionId: "a", isOpen: true };
     appForeground.current = false;
-    const { container } = render(<AppSidebar />);
+    const { container } = render(<Shell />);
     expect(chatBadge(container)).toHaveAttribute("aria-label", "5");
   });
 
@@ -608,7 +645,7 @@ describe("rail — Chat badge", () => {
     navigation.current = { pathname: "/acme/chat" };
     chatStore.current = { activeSessionId: "a", isOpen: false };
     appForeground.current = false;
-    const { container } = render(<AppSidebar />);
+    const { container } = render(<Shell />);
     expect(chatBadge(container)).toHaveAttribute("aria-label", "5");
   });
 });
@@ -629,7 +666,7 @@ describe("Pending invitation self-heal", () => {
   // another surface. Both mutations must invalidate the pending list on
   // failure so the stale row drops instead of surviving until restart.
   it("invalidates the pending-invitations list when accept or decline fails", async () => {
-    render(<AppSidebar />);
+    render(<Shell />);
     // The mock records every render's options; the latest render's accept and
     // decline pair is what the menu is wired to.
     const latest = invitationApi.mutations.slice(-2);

@@ -80,7 +80,8 @@ vi.mock("@multica/views/platform", () => ({
 // which of them the shell decided to mount.
 vi.mock("@multica/views/layout", () => ({
   APP_SIDEBAR_PROVIDER_PROPS: {},
-  SidebarListSlotProvider: ({ children }: { children: React.ReactNode }) => <>{children}</>,
+  AppSidebarProvider: ({ children }: { children: React.ReactNode }) => <>{children}</>,
+  AppSidebarPanel: () => <div data-testid="app-sidebar-panel" />,
   AppSidebar: () => <div data-testid="app-sidebar" />,
   GlobalShortcuts: () => <div data-testid="global-shortcuts" />,
   NavigationProgress: () => <div data-testid="navigation-progress" />,
@@ -154,6 +155,7 @@ describe("DesktopShell workspace gating", () => {
     const { queryByRole, queryByTestId } = renderShell();
 
     expect(queryByTestId("app-sidebar")).not.toBeNull();
+    expect(queryByTestId("app-sidebar-panel")).not.toBeNull();
     expect(queryByTestId("search-command")).not.toBeNull();
     expect(queryByTestId("global-shortcuts")).not.toBeNull();
     expect(queryByTestId("modal-registry")).not.toBeNull();
@@ -167,6 +169,7 @@ describe("DesktopShell workspace gating", () => {
     const { container, getByRole, getByTestId, queryByTestId } = renderShell();
 
     expect(queryByTestId("app-sidebar")).toBeNull();
+    expect(queryByTestId("app-sidebar-panel")).toBeNull();
     expect(
       container.querySelectorAll("[data-slot='sidebar-trigger']"),
     ).toHaveLength(0);
@@ -187,6 +190,7 @@ describe("DesktopShell workspace gating", () => {
     const { queryByTestId } = renderShell();
 
     expect(queryByTestId("app-sidebar")).toBeNull();
+    expect(queryByTestId("app-sidebar-panel")).toBeNull();
     expect(queryByTestId("search-command")).toBeNull();
     expect(queryByTestId("global-shortcuts")).toBeNull();
     expect(queryByTestId("modal-registry")).toBeNull();
@@ -222,6 +226,7 @@ describe("DesktopShell workspace gating", () => {
     const { queryByTestId } = renderShell();
 
     expect(queryByTestId("app-sidebar")).toBeNull();
+    expect(queryByTestId("app-sidebar-panel")).toBeNull();
     expect(queryByTestId("search-command")).toBeNull();
   });
 });

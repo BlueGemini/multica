@@ -87,17 +87,12 @@ describe("historyIndicesForMenu", () => {
 });
 
 describe("WindowToolbar history controls", () => {
-  it("left-aligns the controls past the traffic lights across the expanded sidebar", () => {
+  it("left-aligns the controls past the traffic lights within the fixed clearance", () => {
     render(<WindowToolbar />);
 
     const toolbar = document.querySelector('[data-slot="window-toolbar"]');
     expect(toolbar).not.toHaveClass("justify-end");
-    expect(toolbar).toHaveStyle({
-      paddingLeft: "88px",
-      width:
-        "max(var(--sidebar-live-width, var(--sidebar-width)), 200px)",
-    });
-    expect(toolbar).toHaveAttribute("data-sidebar-resize-consumer");
+    expect(toolbar).toHaveStyle({ paddingLeft: "88px", width: "200px" });
     expect(toolbar).not.toHaveClass("transition-[width]");
   });
 

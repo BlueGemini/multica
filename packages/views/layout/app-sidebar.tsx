@@ -43,7 +43,7 @@ import {
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
-  SidebarRail,
+  SidebarPanelResizeHandle,
   useSidebar,
 } from "@multica/ui/components/ui/sidebar";
 import {
@@ -92,10 +92,10 @@ import {
   SIDEBAR_MODULES,
   isNavActive,
   ownsSidebarRoute,
-  resolveSidebarModule,
   sidebarModuleHome,
   type SidebarModule,
 } from "./sidebar-modules";
+import { useSidebarModule } from "./sidebar-module-state";
 import {
   NAV_ITEM_CLASS_NAME,
   PanelBody,
@@ -117,16 +117,15 @@ const EMPTY_INBOX_SUMMARY: Awaited<ReturnType<typeof api.getInboxUnreadSummary>>
 const PINNED_PREVIEW_LIMIT = 5;
 
 /**
- * Width bounds for the rail + panel sidebar, shared by every shell that
- * mounts `AppSidebar`. The expanded width covers the 48px rail, the panel,
- * and the inset variant's 8px padding on both sides; the panel's range
- * matches the list column Inbox and Chat used to keep in the page.
+ * Width bounds for the module panel inside the canvas, shared by every shell
+ * that mounts `AppSidebar` under `collapsible="rail"`. The range matches the
+ * list column Inbox and Chat used to keep in the page.
  */
 export const APP_SIDEBAR_PROVIDER_PROPS = {
-  defaultWidth: 324,
-  minWidth: 284,
-  maxWidth: 464,
-  widthStorageKey: "sidebar_rail_width",
+  defaultWidth: 280,
+  minWidth: 240,
+  maxWidth: 420,
+  widthStorageKey: "sidebar_panel_width",
 } as const;
 
 const RAIL_ITEM_CLASS_NAME =
@@ -477,7 +476,7 @@ function IssuesPanel({ wsId, pathname }: { wsId: string; pathname: string }) {
     <>
       <SidebarPanelHeader title={t(($) => $.nav.issues)} />
       <PanelBody>
-        <SidebarGroup className="pt-0">
+        <SidebarGroup>
           <SidebarGroupContent>
             <SidebarMenu className="gap-0.5">
               <SidebarMenuItem>
@@ -764,27 +763,113 @@ function hrefPathname(href: string): string {
   return query === -1 ? href : href.slice(0, query);
 }
 
+/**
+ * A module's panel content: its navigation, or — for Inbox and Chat — the
+ * slot the page portals its own list into.
+ */
+function ModulePanelContent({
+  module,
+  wsId,
+  pathname,
+  listSlot,
+}: {
+  module: SidebarModule;
+  wsId: string;
+  pathname: string;
+  listSlot: boolean;
+}) {
+  if (listSlot) return <SidebarListSlot />;
+  return (
+    <>
+      {module === "issues" && <IssuesPanel wsId={wsId} pathname={pathname} />}
+      {module === "projects" && <ProjectsPanel wsId={wsId} pathname={pathname} />}
+      {module === "team" && <TeamPanel wsId={wsId} pathname={pathname} />}
+      <SidebarFooter className="p-2">
+        <JoinDiscordCard />
+      </SidebarFooter>
+    </>
+  );
+}
+
+/**
+ * The active module's panel, as the first column inside the canvas. Folding
+ * (the active rail icon, or the sidebar shortcut) narrows it to zero width
+ * but keeps it mounted, so a portaled list keeps its state and scroll
+ * position. In the compact sheet the panel renders beside the rail instead.
+ */
+export function AppSidebarPanel() {
+  const moduleLabel = useModuleLabel();
+  const { open, isCompact } = useSidebar();
+  const { module, pathname } = useSidebarModule();
+  const workspace = useCurrentWorkspace();
+  if (isCompact) return null;
+  return (
+    <aside
+      data-slot="sidebar-module-panel"
+      data-sidebar-panel
+      data-sidebar-resize-consumer
+      data-module={module}
+      data-state={open ? "expanded" : "collapsed"}
+      aria-label={moduleLabel(module)}
+      inert={!open}
+      className={cn(
+        "relative hidden shrink-0 overflow-hidden border-r transition-[width] duration-200 ease-out motion-reduce:transition-none lg:block",
+        !open && "border-r-0",
+      )}
+      style={{ width: open ? "var(--sidebar-width)" : 0 }}
+    >
+      <div className="flex h-full w-(--sidebar-width) flex-col">
+        <ModulePanelContent
+          module={module}
+          wsId={workspace?.id ?? ""}
+          pathname={pathname}
+          listSlot={LIST_MODULES.has(module)}
+        />
+      </div>
+      {open && <SidebarPanelResizeHandle />}
+    </aside>
+  );
+}
+
+function useModuleLabel() {
+  const { t } = useT("layout");
+  return (module: SidebarModule) => {
+    switch (module) {
+      case "inbox":
+        return t(($) => $.nav.inbox);
+      case "chat":
+        return t(($) => $.nav.chat);
+      case "issues":
+        return t(($) => $.nav.issues);
+      case "projects":
+        return t(($) => $.nav.projects);
+      case "team":
+        return t(($) => $.sidebar.ai_team_group);
+    }
+  };
+}
+
 interface AppSidebarProps {
-  /** Rendered above the rail and panel (e.g. desktop traffic light spacer) */
+  /** Rendered above the rail (e.g. desktop traffic light spacer) */
   topSlot?: React.ReactNode;
 }
 
 /**
- * Icon rail + context panel. The rail switches between modules (Inbox, Chat,
- * Issues, Projects, AI team); the panel beside it shows that module's
- * navigation, or — for Inbox and Chat — the page's own list, portaled in so
- * the main area holds only the detail. Collapsing the sidebar folds it down
- * to the rail.
+ * The icon rail: the shell's outer frame. It switches between modules (Inbox,
+ * Chat, Issues, Projects, AI team), whose panel `AppSidebarPanel` renders
+ * inside the canvas. Clicking the active module folds that panel away.
  */
 export function AppSidebar({ topSlot }: AppSidebarProps = {}) {
   const { t } = useT("layout");
   const navigation = useNavigation();
-  const { pathname } = navigation;
   const search = navigation.searchParams.toString();
   const workspace = useCurrentWorkspace();
   const p = useWorkspacePaths();
   const wsId = workspace?.id ?? "";
   const { open, setOpen, isCompact, setOpenMobile } = useSidebar();
+  const { module: activeModule, pathname, state: moduleState, setState: setModuleState } =
+    useSidebarModule();
+  const moduleLabel = useModuleLabel();
 
   // On a phone the sidebar is a Sheet covering the page, so navigating out of
   // it has to dismiss it — otherwise the destination renders underneath and the
@@ -797,28 +882,12 @@ export function AppSidebar({ topSlot }: AppSidebarProps = {}) {
     setOpenMobile(false);
   }, [pathname, setOpenMobile]);
 
-  // The active module follows the route, but a route several modules lead to
-  // (an issue detail) keeps the one it was opened from — so it is derived
-  // from the previous module, adjusted during render to avoid a frame where
-  // the panel shows the wrong module. A rail click names its module up front
-  // (`pending`), since the route it reopens may be one of those shared ones.
-  const [moduleState, setModuleState] = useState<{
-    pathname: string;
-    module: SidebarModule;
-    pending: { pathname: string; module: SidebarModule } | null;
-  }>(() => ({
-    pathname,
-    module: resolveSidebarModule(pathname, p, "issues"),
-    pending: null,
-  }));
-  let activeModule = moduleState.module;
-  if (moduleState.pathname !== pathname) {
-    activeModule =
-      moduleState.pending?.pathname === pathname
-        ? moduleState.pending.module
-        : resolveSidebarModule(pathname, p, moduleState.module);
+  // Settle the derived module onto the route it was derived for, so the next
+  // shared route resolves from it.
+  useEffect(() => {
+    if (moduleState?.pathname === pathname) return;
     setModuleState({ pathname, module: activeModule, pending: null });
-  }
+  }, [activeModule, moduleState?.pathname, pathname, setModuleState]);
 
   // Each module reopens where the user left it. Scoped to the workspace: a
   // remembered route belongs to the workspace it was visited in.
@@ -881,21 +950,6 @@ export function AppSidebar({ topSlot }: AppSidebarProps = {}) {
   const searchShortcut = useShortcut("openSearch");
   const createIssueShortcut = useShortcut("createIssue");
 
-  const moduleLabel = (module: SidebarModule) => {
-    switch (module) {
-      case "inbox":
-        return t(($) => $.nav.inbox);
-      case "chat":
-        return t(($) => $.nav.chat);
-      case "issues":
-        return t(($) => $.nav.issues);
-      case "projects":
-        return t(($) => $.nav.projects);
-      case "team":
-        return t(($) => $.sidebar.ai_team_group);
-    }
-  };
-
   const onRailModuleClick = (module: SidebarModule, href: string) => (event: React.MouseEvent) => {
     if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || event.button !== 0) return;
     if (!isCompact && module === activeModule && open) {
@@ -907,24 +961,21 @@ export function AppSidebar({ topSlot }: AppSidebarProps = {}) {
     }
     if (!isCompact && !open) setOpen(true);
     const target = hrefPathname(href);
-    setModuleState((state) =>
-      target === state.pathname
-        ? { ...state, module, pending: null }
-        : { ...state, pending: { pathname: target, module } },
-    );
+    setModuleState((state) => {
+      const settled = state ?? { pathname, module: activeModule, pending: null };
+      return target === settled.pathname
+        ? { ...settled, module, pending: null }
+        : { ...settled, pending: { pathname: target, module } };
+    });
   };
 
   const settingsHref = p.settings();
-  const isListModule = LIST_MODULES.has(activeModule);
-  // The list slot exists only while the panel is an on-screen column; the
-  // page falls back to its own two-pane layout otherwise.
-  const showListSlot = isListModule && open && !isCompact;
   // In the compact sheet the Inbox and Chat pages show their list themselves,
-  // so the panel offers the general task navigation instead.
-  const panelModule: SidebarModule = isListModule && isCompact ? "issues" : activeModule;
+  // so the panel beside the rail offers the general task navigation instead.
+  const sheetModule: SidebarModule = LIST_MODULES.has(activeModule) ? "issues" : activeModule;
 
   return (
-    <Sidebar variant="inset" collapsible="icon">
+    <Sidebar variant="inset" collapsible="rail">
       {topSlot}
       <div className="flex min-h-0 flex-1">
         <nav
@@ -1022,26 +1073,21 @@ export function AppSidebar({ topSlot }: AppSidebarProps = {}) {
           </RailTooltip>
         </nav>
 
-        <div
-          data-slot="sidebar-module-panel"
-          data-module={panelModule}
-          className="flex min-w-0 flex-1 flex-col group-data-[collapsible=icon]:hidden"
-        >
-          {showListSlot ? (
-            <SidebarListSlot />
-          ) : (
-            <>
-              {panelModule === "issues" && <IssuesPanel wsId={wsId} pathname={pathname} />}
-              {panelModule === "projects" && <ProjectsPanel wsId={wsId} pathname={pathname} />}
-              {panelModule === "team" && <TeamPanel wsId={wsId} pathname={pathname} />}
-              <SidebarFooter className="p-2">
-                <JoinDiscordCard />
-              </SidebarFooter>
-            </>
-          )}
-        </div>
+        {isCompact && (
+          <div
+            data-slot="sidebar-sheet-panel"
+            data-module={sheetModule}
+            className="flex min-w-0 flex-1 flex-col"
+          >
+            <ModulePanelContent
+              module={sheetModule}
+              wsId={wsId}
+              pathname={pathname}
+              listSlot={false}
+            />
+          </div>
+        )}
       </div>
-      <SidebarRail />
     </Sidebar>
   );
 }

@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
   Sidebar,
+  SidebarPanelResizeHandle,
   SidebarProvider,
   SidebarRail,
   useSidebar,
@@ -221,5 +222,74 @@ describe("left sidebar resizing", () => {
 
     fireEvent.click(rail);
     expect(sidebar).toHaveAttribute("data-state", "expanded");
+  });
+
+  it("keeps a rail sidebar at its icon width whatever the open state", () => {
+    function Toggle() {
+      const { toggleSidebar } = useSidebar();
+      return <button type="button" data-testid="toggle" onClick={toggleSidebar} />;
+    }
+    const { container, getByTestId } = renderWithI18n(
+      <SidebarProvider>
+        <Sidebar variant="inset" collapsible="rail">
+          <Toggle />
+        </Sidebar>
+      </SidebarProvider>,
+    );
+
+    const sidebar = container.querySelector<HTMLElement>("[data-slot='sidebar']")!;
+    expect(sidebar).toHaveAttribute("data-collapsible", "icon");
+    expect(sidebar).toHaveAttribute("data-state", "expanded");
+
+    fireEvent.click(getByTestId("toggle"));
+    expect(sidebar).toHaveAttribute("data-collapsible", "icon");
+    expect(sidebar).toHaveAttribute("data-state", "expanded");
+  });
+
+  it("previews a panel's width on the panel alone and commits it on release", () => {
+    const { container } = renderWithI18n(
+      <SidebarProvider defaultWidth={280} minWidth={240} maxWidth={420} widthStorageKey="panel_width">
+        <aside data-sidebar-panel style={{ width: "var(--sidebar-width)" }}>
+          <SidebarPanelResizeHandle />
+        </aside>
+      </SidebarProvider>,
+    );
+
+    const wrapper = container.querySelector<HTMLElement>("[data-slot='sidebar-wrapper']")!;
+    const panel = container.querySelector<HTMLElement>("[data-sidebar-panel]")!;
+    const handle = container.querySelector<HTMLElement>("[data-slot='sidebar-panel-resize-handle']")!;
+    handle.setPointerCapture = vi.fn();
+    handle.hasPointerCapture = vi.fn(() => true);
+    handle.releasePointerCapture = vi.fn();
+    vi.spyOn(panel, "getBoundingClientRect").mockReturnValue({
+      bottom: 0,
+      height: 0,
+      left: 0,
+      right: 280,
+      top: 0,
+      width: 280,
+      x: 0,
+      y: 0,
+      toJSON: () => ({}),
+    });
+
+    fireEvent.pointerDown(handle, { button: 0, clientX: 340, isPrimary: true, pointerId: 11 });
+    expect(handle.setPointerCapture).toHaveBeenCalledWith(11);
+    expect(wrapper).toHaveAttribute("data-sidebar-resizing", "true");
+
+    fireEvent.pointerMove(document, { buttons: 1, clientX: 400, pointerId: 11 });
+    expect(panel.style.getPropertyValue("--sidebar-width")).toBe("340px");
+    expect(wrapper.style.getPropertyValue("--sidebar-width")).toBe("280px");
+    expect(localStorage.getItem("panel_width")).toBeNull();
+
+    fireEvent.pointerMove(document, { buttons: 1, clientX: 1200, pointerId: 11 });
+    expect(panel.style.getPropertyValue("--sidebar-width")).toBe("420px");
+
+    fireEvent.pointerUp(document, { pointerId: 11 });
+    expect(panel.style.getPropertyValue("--sidebar-width")).toBe("");
+    expect(wrapper.style.getPropertyValue("--sidebar-width")).toBe("420px");
+    expect(localStorage.getItem("panel_width")).toBe("420");
+    expect(wrapper).not.toHaveAttribute("data-sidebar-resizing");
+    expect(document.documentElement).not.toHaveAttribute("data-sidebar-resizing");
   });
 });
