@@ -584,6 +584,7 @@ export const RichContent = memo(function RichContent({
   // with the hast node positions the `code`/`pre` renderers observe. Computing
   // it from the raw pre-preprocess text would mis-match every rewritten node.
   const closedFences = useMemo(() => computeClosedFences(processed), [processed]);
+  const tableSource = useMemo(() => ({ source: content, rendered: processed }), [content, processed]);
 
   const wrapperRef = useRef<HTMLDivElement>(null);
   const hover = useLinkHover(wrapperRef);
@@ -598,7 +599,7 @@ export const RichContent = memo(function RichContent({
   const markdown = useMemo(
     () => (
       <ClosedFenceContext.Provider value={closedFences}>
-        <RichTableSourceContext.Provider value={processed}>
+        <RichTableSourceContext.Provider value={tableSource}>
           <ReactMarkdown
             remarkPlugins={REMARK_PLUGINS}
             rehypePlugins={REHYPE_PLUGINS}
@@ -610,7 +611,7 @@ export const RichContent = memo(function RichContent({
         </RichTableSourceContext.Provider>
       </ClosedFenceContext.Provider>
     ),
-    [processed, closedFences],
+    [processed, closedFences, tableSource],
   );
 
   return (

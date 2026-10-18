@@ -45,8 +45,14 @@ import {
   type RichTableModel,
 } from "./rich-table-model";
 
-/** The processed Markdown RichContent rendered, which node offsets index into. */
-export const RichTableSourceContext = createContext("");
+export interface RichTableSource {
+  /** The content as written. */
+  source: string;
+  /** The preprocessed copy RichContent rendered, which node offsets index into. */
+  rendered: string;
+}
+
+export const RichTableSourceContext = createContext<RichTableSource>({ source: "", rendered: "" });
 
 /** Marks the frame's own controls, which the editor must leave to the browser. */
 export const RICH_TABLE_CHROME_ATTRIBUTE = "data-rich-table-chrome";
@@ -493,10 +499,10 @@ type RichTableProps = ComponentPropsWithoutRef<"table"> & ExtraProps;
 
 /** react-markdown's `table` override. */
 export function RichTable({ children, node }: RichTableProps) {
-  const source = useContext(RichTableSourceContext);
+  const { source, rendered } = useContext(RichTableSourceContext);
   const model = useMemo(() => readTableModel(children), [children]);
   const getMarkdown = () =>
-    tableMarkdownFromSource(source, node?.position?.start.offset, node?.position?.end.offset);
+    tableMarkdownFromSource(source, rendered, node?.position?.start.offset, node?.position?.end.offset);
   return (
     <RichTableFrame model={model} getMarkdown={getMarkdown}>
       <TableContent>{children}</TableContent>

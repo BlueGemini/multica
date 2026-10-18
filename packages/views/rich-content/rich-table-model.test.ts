@@ -34,27 +34,47 @@ describe("readTableModel", () => {
 });
 
 describe("tableMarkdownFromSource", () => {
-  it("undoes the readonly preprocessing a table can contain", () => {
-    const processed = [
-      "intro",
-      "| Issue | Link | Note |",
-      "| --- | --- | --- |",
-      "| [MUL-12](mention://issue/MUL-12) | [https://example.com](https://example.com) | <mark>hot</mark> |",
-      "| [Docs](https://example.com/docs) | [example.com](http://example.com) | [MUL-9](mention://issue/9b1c0d3e) |",
-    ].join("\n");
-    const start = processed.indexOf("| Issue");
-    expect(tableMarkdownFromSource(processed, start, processed.length)).toBe(
-      [
-        "| Issue | Link | Note |",
-        "| --- | --- | --- |",
-        "| MUL-12 | https://example.com | ==hot== |",
-        "| [Docs](https://example.com/docs) | example.com | [MUL-9](mention://issue/9b1c0d3e) |",
-      ].join("\n"),
+  const source = [
+    "intro MUL-1",
+    "",
+    "| Issue | Link | Note |",
+    "| --- | --- | --- |",
+    "| MUL-12 | https://example.com | ==hot== |",
+    "| [https://x.com](https://x.com) | `<mark>hello</mark>` | `[a](b)` |",
+  ].join("\n");
+  const rendered = [
+    "intro [MUL-1](mention://issue/MUL-1)",
+    "",
+    "| Issue | Link | Note |",
+    "| --- | --- | --- |",
+    "| [MUL-12](mention://issue/MUL-12) | [https://example.com](https://example.com) | <mark>hot</mark> |",
+    "| [https://x.com](https://x.com) | `<mark>hello</mark>` | `[a](b)` |",
+  ].join("\n");
+
+  it("copies the table from the source, not the preprocessed copy", () => {
+    const start = rendered.indexOf("| Issue");
+    expect(tableMarkdownFromSource(source, rendered, start, rendered.length)).toBe(
+      source.slice(source.indexOf("| Issue")),
     );
   });
 
+  it("finds the table by its place among the tables", () => {
+    const second = "| A | B |\n| - | - |\n| 1 | 2 |";
+    const withTwo = (text: string) => `${text}\n\n${second}`;
+    const start = withTwo(rendered).lastIndexOf("| A");
+    expect(tableMarkdownFromSource(withTwo(source), withTwo(rendered), start, withTwo(rendered).length)).toBe(second);
+  });
+
+  it("drops a blockquote's or list item's markers so the copy is a table", () => {
+    const quoted = "> | A | B |\n> | - | - |\n> | 1 | 2 |";
+    expect(tableMarkdownFromSource(quoted, quoted, 2, quoted.length)).toBe("| A | B |\n| - | - |\n| 1 | 2 |");
+    const listed = "- item\n\n  | A | B |\n  | - | - |\n  | 1 | 2 |";
+    const start = listed.indexOf("| A");
+    expect(tableMarkdownFromSource(listed, listed, start, listed.length)).toBe("| A | B |\n| - | - |\n| 1 | 2 |");
+  });
+
   it("returns nothing without a source position", () => {
-    expect(tableMarkdownFromSource("| a |", undefined, 5)).toBe("");
+    expect(tableMarkdownFromSource("| a |", "| a |", undefined, 5)).toBe("");
   });
 });
 

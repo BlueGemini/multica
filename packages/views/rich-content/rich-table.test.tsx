@@ -133,6 +133,17 @@ describe("RichTable", () => {
     );
   });
 
+  it("copies code, explicit links and quoted tables unchanged", async () => {
+    const table = [
+      "| Code | Link |",
+      "| --- | --- |",
+      "| `<mark>hello</mark>` and `[a](b)` | [https://x.com](https://x.com) |",
+    ];
+    render(<RichContent content={["Quoted:", "", ...table.map((line) => `> ${line}`)].join("\n")} />);
+    await userEvent.click(screen.getByRole("button", { name: "Copy as Markdown" }));
+    expect(copyText).toHaveBeenCalledWith(table.join("\n"));
+  });
+
   it("expands into a sortable, filterable view of the same cells", async () => {
     renderTable();
     await userEvent.click(screen.getByRole("button", { name: "Expand table" }));
