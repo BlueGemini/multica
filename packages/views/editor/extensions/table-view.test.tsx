@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { EditorContent, useEditor, type Editor } from "@tiptap/react";
 
@@ -36,6 +36,16 @@ vi.mock("@multica/core/paths", () => ({
   useWorkspaceSlug: () => "acme",
 }));
 
+vi.mock("../../issues/components/issue-mention-card", () => ({
+  IssueMentionCard: ({ issueId, fallbackLabel }: { issueId: string; fallbackLabel?: string }) => (
+    <span>{fallbackLabel ?? issueId}</span>
+  ),
+}));
+
+vi.mock("../../projects/components/project-mention-card", () => ({
+  ProjectMentionCard: () => <span />,
+}));
+
 vi.mock("../link-hover-card", () => ({
   useLinkHover: () => ({}),
   LinkHoverCard: () => null,
@@ -52,14 +62,14 @@ const TABLE = [
 
 let current: Editor | null = null;
 
-function TestEditor() {
+function TestEditor({ content = TABLE }: { content?: string }) {
   const editor = useEditor({
     extensions: createEditorExtensions({
       placeholder: "",
       disableMentions: true,
       onUploadFileRef: { current: undefined },
     }),
-    content: TABLE,
+    content,
     contentType: "markdown",
     immediatelyRender: true,
   });
@@ -67,9 +77,9 @@ function TestEditor() {
   return <EditorContent editor={editor} className="rich-text-editor" />;
 }
 
-async function renderEditor() {
-  const view = render(<TestEditor />);
-  const handle = await screen.findByRole("separator", { name: "Resize Relation column" });
+async function renderEditor(content?: string, column = "Relation") {
+  const view = render(<TestEditor content={content} />);
+  const handle = await screen.findByRole("separator", { name: `Resize ${column} column` });
   const table = view.container.querySelector<HTMLTableElement>(".rich-table table");
   if (!table || !current) throw new Error("table not rendered");
   return { ...view, table, handle, editor: current };
@@ -118,6 +128,25 @@ describe("editor TableView", () => {
     await userEvent.click(screen.getByRole("button", { name: "Copy as Markdown" }));
     expect(copyText).toHaveBeenCalledWith(expect.stringContaining("| GitHub"));
     expect(copyText).toHaveBeenCalledWith(expect.stringContaining("`code`"));
+  });
+
+  it("filters and exports mentions as they display", async () => {
+    await renderEditor(
+      [
+        "| Owner | Issue |",
+        "| --- | --- |",
+        "| [@Alice](mention://member/u1) | [DEV-1](mention://issue/i1) |",
+        "| [@Bob](mention://member/u2) | none |",
+      ].join("\n"),
+      "Owner",
+    );
+    await userEvent.click(screen.getByRole("button", { name: "Expand table" }));
+    const dialog = await screen.findByRole("dialog");
+    await userEvent.click(within(dialog).getByRole("button", { name: "Copy as CSV" }));
+    expect(copyText).toHaveBeenCalledWith("Owner,Issue\n@Alice,DEV-1\n@Bob,none");
+
+    await userEvent.type(within(dialog).getByRole("searchbox"), "Alice");
+    expect(within(dialog).getAllByRole("row")).toHaveLength(2);
   });
 
   it("expands into the dialog with the cells rendered", async () => {

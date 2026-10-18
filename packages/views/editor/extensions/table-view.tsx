@@ -1,12 +1,18 @@
 "use client";
 
 import { useMemo } from "react";
-import type { Editor } from "@tiptap/core";
+import {
+  getTextBetween,
+  getTextSerializersFromSchema,
+  type Editor,
+  type TextSerializer,
+} from "@tiptap/core";
 import type { Node as ProseMirrorNode } from "@tiptap/pm/model";
 import { NodeViewWrapper, useReactNodeView, type NodeViewProps } from "@tiptap/react";
 import { RichContent } from "../../rich-content/rich-content";
 import { RichTableFrame } from "../../rich-content/rich-table";
 import type { RichTableModel } from "../../rich-content/rich-table-model";
+import { BaseMentionExtension, mentionText } from "./mention-extension";
 
 function serialize(editor: Editor, content: ProseMirrorNode[]): string {
   return (
@@ -26,8 +32,10 @@ function TableCellContent({ cell, editor }: { cell: ProseMirrorNode; editor: Edi
   return <RichContent content={markdown} density="compact" />;
 }
 
-function cellText(cell: ProseMirrorNode): string {
-  return cell.textBetween(0, cell.content.size, " ").trim();
+// The text sorting, filtering and CSV read. Atom nodes such as mentions have
+// no text content, so they are written out the way they display.
+function cellText(cell: ProseMirrorNode, textSerializers: Record<string, TextSerializer>): string {
+  return getTextBetween(cell, { from: 0, to: cell.content.size }, { blockSeparator: " ", textSerializers }).trim();
 }
 
 export function tableModelFromNode(node: ProseMirrorNode, editor: Editor): RichTableModel {
@@ -40,14 +48,19 @@ export function tableModelFromNode(node: ProseMirrorNode, editor: Editor): RichT
     grid.push(cells);
   });
   const [head = [], ...body] = grid;
+  const serializers: Record<string, TextSerializer> = {
+    ...getTextSerializersFromSchema(editor.schema),
+    [BaseMentionExtension.name]: ({ node: mention }) => mentionText(mention.attrs),
+  };
+  const text = (cell: ProseMirrorNode) => cellText(cell, serializers);
   const render = (cell: ProseMirrorNode, index: number) => (
     <TableCellContent key={index} cell={cell} editor={editor} />
   );
   return {
     header: head.map(render),
     rows: body.map((row) => row.map(render)),
-    headerText: head.map(cellText),
-    rowText: body.map((row) => row.map(cellText)),
+    headerText: head.map(text),
+    rowText: body.map((row) => row.map(text)),
   };
 }
 
