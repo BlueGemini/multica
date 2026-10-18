@@ -4,6 +4,7 @@ import { toast } from "sonner";
 import { ApiError } from "@multica/core/api";
 import type { InboxItem } from "@multica/core/types";
 import { useInboxFilterStore } from "@multica/core/inbox/filter-store";
+import { SidebarListSlot, SidebarListSlotProvider } from "../../layout/sidebar-list-slot";
 import { InboxPage } from "./inbox-page";
 
 vi.mock("sonner", () => ({
@@ -129,7 +130,7 @@ const replace = vi.fn();
 let searchParams = new URLSearchParams();
 
 vi.mock("../../navigation", () => ({
-  useNavigation: () => ({ searchParams, replace }),
+  useNavigation: () => ({ pathname: "/acme/inbox", searchParams, replace }),
   // Real hook: reports the detail-pane swap to the shell's progress bar.
   // Nothing here renders that bar, and the page reads nothing back from it.
   useReportNavigating: () => {},
@@ -305,6 +306,25 @@ describe("InboxPage", () => {
     expect(listPanel).toHaveAttribute("data-default-size", "260");
     expect(listPanel).toHaveAttribute("data-min-size", "240");
     expect(listPanel).toHaveAttribute("data-max-size", "400");
+  });
+
+  it("hands the list to the sidebar panel when it publishes a slot", () => {
+    reset();
+    layout.width = DESKTOP;
+    listData.active = [item({ id: "active-1" })];
+
+    render(
+      <SidebarListSlotProvider>
+        <aside data-testid="sidebar-panel">
+          <SidebarListSlot />
+        </aside>
+        <InboxPage />
+      </SidebarListSlotProvider>,
+    );
+
+    const panel = screen.getByTestId("sidebar-panel");
+    expect(panel).toContainElement(screen.getByTestId("list"));
+    expect(screen.queryByTestId("panel-list")).not.toBeInTheDocument();
   });
 
   it("keeps the title unread count static", () => {

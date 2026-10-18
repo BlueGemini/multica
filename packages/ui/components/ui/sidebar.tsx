@@ -54,8 +54,8 @@ const SIDEBAR_AUTO_COLLAPSE_QUERY = "(min-width: 1024px) and (max-width: 1279px)
  */
 const SIDEBAR_WRAPPER_FILL_CLASS = "bg-(--sidebar-wrapper-fill)"
 
-function clampSidebarWidth(width: number) {
-  return Math.max(SIDEBAR_WIDTH_MIN, Math.min(SIDEBAR_WIDTH_MAX, width))
+function clampWidth(width: number, min: number, max: number) {
+  return Math.max(min, Math.min(max, width))
 }
 
 type SidebarContextProps = {
@@ -86,6 +86,7 @@ type SidebarContextProps = {
 
 type SidebarResizeContextProps = {
   commitWidth: (width: number) => void
+  clampWidth: (width: number) => number
 }
 
 const SidebarContext = React.createContext<SidebarContextProps | null>(null)
@@ -121,6 +122,10 @@ function SidebarProvider({
   open: openProp,
   onOpenChange: setOpenProp,
   hasExternalTrigger = false,
+  defaultWidth = SIDEBAR_WIDTH_DEFAULT,
+  minWidth = SIDEBAR_WIDTH_MIN,
+  maxWidth = SIDEBAR_WIDTH_MAX,
+  widthStorageKey = SIDEBAR_WIDTH_STORAGE_KEY,
   className,
   style,
   children,
@@ -129,6 +134,16 @@ function SidebarProvider({
   defaultOpen?: boolean
   open?: boolean
   onOpenChange?: (open: boolean) => void
+  /**
+   * Width bounds for the expanded, resizable sidebar. A shell whose sidebar
+   * holds more than a single nav column (an icon rail beside a panel) needs
+   * wider bounds, and its own storage key so a width saved under the old
+   * layout is not read back as a narrower panel.
+   */
+  defaultWidth?: number
+  minWidth?: number
+  maxWidth?: number
+  widthStorageKey?: string
   /**
    * Declare that this shell keeps its own always-reachable `SidebarTrigger`
    * outside the page chrome. See `SidebarContextProps.hasExternalTrigger`.
@@ -142,21 +157,28 @@ function SidebarProvider({
   const isCompact = useIsCompact()
   const [openMobile, setOpenMobile] = React.useState(false)
 
-  const [width, _setWidth] = React.useState(SIDEBAR_WIDTH_DEFAULT)
+  const clampSidebarWidth = React.useCallback(
+    (w: number) => clampWidth(w, minWidth, maxWidth),
+    [minWidth, maxWidth]
+  )
+  const [width, _setWidth] = React.useState(defaultWidth)
   React.useEffect(() => {
-    const stored = localStorage.getItem(SIDEBAR_WIDTH_STORAGE_KEY)
+    const stored = localStorage.getItem(widthStorageKey)
     if (stored) {
       const storedWidth = Number(stored)
       if (Number.isFinite(storedWidth)) {
         _setWidth(clampSidebarWidth(storedWidth))
       }
     }
-  }, [])
-  const commitWidth = React.useCallback((w: number) => {
-    const clamped = clampSidebarWidth(w)
-    _setWidth(clamped)
-    localStorage.setItem(SIDEBAR_WIDTH_STORAGE_KEY, String(clamped))
-  }, [])
+  }, [widthStorageKey, clampSidebarWidth])
+  const commitWidth = React.useCallback(
+    (w: number) => {
+      const clamped = clampSidebarWidth(w)
+      _setWidth(clamped)
+      localStorage.setItem(widthStorageKey, String(clamped))
+    },
+    [widthStorageKey, clampSidebarWidth]
+  )
 
   // This is the internal state of the sidebar.
   // We use openProp and setOpenProp for control from outside the component.
@@ -249,8 +271,9 @@ function SidebarProvider({
   const resizeContextValue = React.useMemo<SidebarResizeContextProps>(
     () => ({
       commitWidth,
+      clampWidth: clampSidebarWidth,
     }),
-    [commitWidth]
+    [commitWidth, clampSidebarWidth]
   )
 
   return (
@@ -421,7 +444,7 @@ function SidebarTrigger({
 
 function SidebarRail({ className, ...props }: React.ComponentProps<"button">) {
   const { toggleSidebar } = useSidebar()
-  const { commitWidth } = useSidebarResize()
+  const { commitWidth, clampWidth: clampSidebarWidth } = useSidebarResize()
   const { t } = useTranslation("ui")
   const toggleLabel = t(($) => $.toggle_sidebar)
   const didDragRef = React.useRef(false)
@@ -443,11 +466,14 @@ function SidebarRail({ className, ...props }: React.ComponentProps<"button">) {
   const onPointerDown = React.useCallback(
     (e: React.PointerEvent<HTMLButtonElement>) => {
       if (e.button !== 0 || e.isPrimary === false) return
-      e.preventDefault()
-      cancelActiveDragRef.current?.()
       didDragRef.current = false
       const railEl = e.currentTarget
       const sidebarEl = railEl.closest<HTMLElement>("[data-slot='sidebar']")
+      // A sidebar collapsed to its icon strip has no width to drag; the
+      // handle only toggles it back open on click.
+      if (sidebarEl?.dataset.collapsible === "icon") return
+      e.preventDefault()
+      cancelActiveDragRef.current?.()
       const wrapperEl = railEl.closest<HTMLElement>("[data-slot='sidebar-wrapper']")
       const gapEl = sidebarEl?.querySelector<HTMLElement>("[data-slot='sidebar-gap']")
       const containerEl = sidebarEl?.querySelector<HTMLElement>("[data-slot='sidebar-container']")
@@ -552,7 +578,7 @@ function SidebarRail({ className, ...props }: React.ComponentProps<"button">) {
       cancelActiveDragRef.current = () => finishDrag("cancel")
       railEl.setPointerCapture?.(e.pointerId)
     },
-    [commitWidth]
+    [commitWidth, clampSidebarWidth]
   )
 
   const handleClick = React.useCallback(() => {

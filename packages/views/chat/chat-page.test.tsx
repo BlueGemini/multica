@@ -3,7 +3,8 @@
 import { StrictMode } from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { act, fireEvent, render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen, within } from "@testing-library/react";
+import { SidebarListSlot, SidebarListSlotProvider } from "../layout/sidebar-list-slot";
 import type { Agent } from "@multica/core/types";
 import { I18nProvider } from "@multica/core/i18n/react";
 import enCommon from "../locales/en/common.json";
@@ -206,7 +207,7 @@ const agent: Agent = {
 
 const NO_ACCESS_MSG = "You don't have access to chat with this agent.";
 
-function renderPage(search: string, { strict = false } = {}) {
+function renderPage(search: string, { strict = false, sidebarSlot = false } = {}) {
   const replace = vi.fn();
   let navigation: NavigationAdapter = {
     push: vi.fn(),
@@ -227,7 +228,14 @@ function renderPage(search: string, { strict = false } = {}) {
       <QueryClientProvider client={qc}>
         <I18nProvider locale="en" resources={TEST_RESOURCES}>
           <NavigationProvider value={navigation}>
-            <ChatPage />
+            <SidebarListSlotProvider>
+              {sidebarSlot && (
+                <aside data-testid="sidebar-panel">
+                  <SidebarListSlot />
+                </aside>
+              )}
+              <ChatPage />
+            </SidebarListSlotProvider>
           </NavigationProvider>
         </I18nProvider>
       </QueryClientProvider>
@@ -452,6 +460,25 @@ describe("ChatPage ?agent= deep link", () => {
 
 describe("ChatPage responsive layout", () => {
   const SELECT_PROMPT = "Pick a conversation, or start a new one with +";
+
+  it("hands the thread list to the sidebar panel when it publishes a slot", () => {
+    renderPage("", { sidebarSlot: true });
+
+    const panel = screen.getByTestId("sidebar-panel");
+    expect(within(panel).getByRole("button", { name: "select-thread" })).toBeInTheDocument();
+    expect(screen.getByText(SELECT_PROMPT)).toBeInTheDocument();
+    expect(panel).not.toHaveTextContent(SELECT_PROMPT);
+  });
+
+  it("keeps the thread list in the page on a folded screen even with a slot", () => {
+    layout.width = FOLD_INNER;
+    renderPage("", { sidebarSlot: true });
+
+    expect(
+      screen.getByTestId("sidebar-panel").querySelector('[data-slot="sidebar-list-slot"]'),
+    ).toBeEmptyDOMElement();
+    expect(screen.getByRole("button", { name: "select-thread" })).toBeInTheDocument();
+  });
 
   it("folds to a single column on a folded inner screen", () => {
     // 851px — the reported Pixel Fold inner screen. Too narrow for nav + thread

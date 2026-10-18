@@ -9,9 +9,10 @@ import { ApiError } from "@multica/core/api";
 import { renderWithI18n } from "../test/i18n";
 import { AppSidebar } from "./app-sidebar";
 
-const { appForeground, chatSessions, chatStore, detail, deletePin, invitationApi, navigation, pins, sidebarState, summary, workspaces } = vi.hoisted(() => ({
+const { agents, appForeground, chatSessions, chatStore, detail, deletePin, invitationApi, navigation, pins, presence, sidebarState, summary, workspaces } = vi.hoisted(() => ({
   appForeground: { current: true },
-  sidebarState: { setOpenMobile: vi.fn() },
+  sidebarState: { setOpenMobile: vi.fn(), setOpen: vi.fn(), open: true, isCompact: false },
+  presence: { current: new Map<string, { workload: string }>() },
   chatSessions: { current: [] as { id?: string; unread_count?: number }[] },
   chatStore: { current: { activeSessionId: null as string | null, isOpen: false } },
   detail: { current: { isPending: false, isError: false, data: null as unknown, error: null as unknown } },
@@ -25,6 +26,7 @@ const { appForeground, chatSessions, chatStore, detail, deletePin, invitationApi
     mutations: [] as Array<Record<string, unknown>>,
   },
   navigation: { current: { pathname: "/acme/issues" } },
+  agents: { current: [] as { id: string; name: string; avatar_url: string | null; archived_at: string | null }[] },
   summary: { current: [] as { workspace_id: string; count: number }[] },
   workspaces: {
     current: [] as { id: string; name: string; slug: string; avatar_url: string | null }[],
@@ -82,7 +84,7 @@ vi.mock("@multica/ui/components/ui/sidebar", () => ({
   ),
   SidebarMenuItem: ({ children }: { children: React.ReactNode }) => <>{children}</>,
   SidebarRail: () => null,
-  useSidebar: () => ({ setOpenMobile: sidebarState.setOpenMobile }),
+  useSidebar: () => sidebarState,
 }));
 vi.mock("@multica/ui/components/ui/dropdown-menu", () => ({
   DropdownMenu: ({ children }: { children: React.ReactNode }) => <>{children}</>,
@@ -98,11 +100,19 @@ vi.mock("@multica/ui/components/ui/collapsible", () => ({
   CollapsibleContent: ({ children }: { children: React.ReactNode }) => <>{children}</>,
   CollapsibleTrigger: () => <button type="button" />,
 }));
-vi.mock("@multica/ui/components/ui/tooltip", () => ({
+vi.mock("@multica/ui/components/ui/tooltip", async () => {
+  const React = await import("react");
+  return {
   Tooltip: ({ children }: { children: React.ReactNode }) => <>{children}</>,
   TooltipContent: ({ children }: { children: React.ReactNode }) => <>{children}</>,
-  TooltipTrigger: ({ children }: { children: React.ReactNode }) => <button type="button">{children}</button>,
-}));
+  TooltipTrigger: ({
+    children,
+    render,
+    ...props
+  }: { children?: React.ReactNode; render?: React.ReactElement<{ children?: React.ReactNode }> }) =>
+    render ? React.cloneElement(render, props, children ?? render.props.children) : <button type="button">{children}</button>,
+  };
+});
 vi.mock("../common/use-app-foreground", () => ({
   useAppForeground: () => appForeground.current,
 }));
@@ -110,8 +120,23 @@ vi.mock("./help-launcher", () => ({ HelpLauncher: () => null }));
 vi.mock("../auth", () => ({ useLogout: () => vi.fn() }));
 vi.mock("../issues/components/status-icon", () => ({ StatusIcon: () => <span /> }));
 vi.mock("../navigation", () => ({
-  AppLink: ({ children, href }: { children: React.ReactNode; href: string }) => <a href={href}>{children}</a>,
-  useNavigation: () => ({ pathname: navigation.current.pathname, push: vi.fn() }),
+  AppLink: ({
+    children,
+    href,
+    newTabTitle: _newTabTitle,
+    ...props
+  }: { children: React.ReactNode; href: string; newTabTitle?: string } & React.AnchorHTMLAttributes<HTMLAnchorElement>) => (
+    <a href={href} {...props}>{children}</a>
+  ),
+  useNavigation: () => ({
+    pathname: navigation.current.pathname,
+    searchParams: new URLSearchParams(),
+    push: vi.fn(),
+  }),
+}));
+vi.mock("../common/actor-avatar", () => ({ ActorAvatar: () => <span /> }));
+vi.mock("@multica/core/agents", () => ({
+  useWorkspacePresenceMap: () => ({ byAgent: presence.current, loading: false }),
 }));
 vi.mock("../projects/components/project-icon", () => ({ ProjectIcon: () => <span /> }));
 vi.mock("../workspace/workspace-avatar", () => ({ WorkspaceAvatar: () => <span /> }));
@@ -150,6 +175,7 @@ vi.mock("@multica/core/paths", async (importOriginal) => ({
     settings: () => "/acme/settings",
     issueDetail: (id: string) => `/acme/issues/${id}`,
     projectDetail: (id: string) => `/acme/projects/${id}`,
+    agentDetail: (id: string) => `/acme/agents/${id}`,
   }),
 }));
 vi.mock("@multica/core/api", async (importOriginal) => {
@@ -186,8 +212,12 @@ vi.mock("@multica/core/issues/stores/draft-store", () => ({ useIssueDraftStore: 
 vi.mock("@multica/core/modals", () => ({ useModalStore: { getState: () => ({ modal: null, open: vi.fn() }) } }));
 vi.mock("@multica/core/pins/mutations", () => ({ useDeletePin: () => ({ mutate: deletePin }), useReorderPins: () => ({ mutate: vi.fn() }) }));
 vi.mock("@multica/core/pins/queries", () => ({ pinListOptions: () => ({ queryKey: ["pins"] }) }));
-vi.mock("@multica/core/projects/queries", () => ({ projectDetailOptions: () => ({ queryKey: ["project"] }) }));
+vi.mock("@multica/core/projects/queries", () => ({
+  projectDetailOptions: () => ({ queryKey: ["project"] }),
+  projectListOptions: () => ({ queryKey: ["projects"] }),
+}));
 vi.mock("@multica/core/workspace/queries", () => ({
+  agentListOptions: () => ({ queryKey: ["agents"] }),
   myInvitationListOptions: () => ({ queryKey: ["invitations"] }),
   workspaceKeys: { myInvitations: () => ["invitations"] },
   workspaceListOptions: () => ({ queryKey: ["workspaces"] }),
@@ -204,6 +234,7 @@ vi.mock("@tanstack/react-query", async (importOriginal) => ({
     if (queryKey[0] === "inbox" && queryKey[1] === "unread-summary") return { data: summary.current };
     if (queryKey[0] === "workspaces") return { data: workspaces.current };
     if (queryKey[0] === "chat" && queryKey[2] === "sessions") return { data: chatSessions.current };
+    if (queryKey[0] === "agents") return { data: agents.current };
     return { data: [] };
   },
   useQueryClient: () => ({ fetchQuery: vi.fn(), invalidateQueries: invitationApi.invalidateQueries }),
@@ -329,8 +360,10 @@ describe("workspace-switcher unread dot", () => {
   });
 
   // The aggregate switcher dot is the only `.ring-sidebar` span in the tree
-  // (DraftDot is null when there's no draft, and there are no invitations).
-  const dot = (container: HTMLElement) => container.querySelector("span.bg-brand.ring-sidebar");
+  // besides the rail's count badges (DraftDot is null when there's no draft,
+  // and there are no invitations).
+  const dot = (container: HTMLElement) =>
+    container.querySelector("span.bg-brand.ring-sidebar:not([data-slot='rail-badge'])");
 
   it("shows a dot when another workspace has unread inbox items", () => {
     summary.current = [{ workspace_id: "ws-2", count: 3 }];
@@ -389,24 +422,103 @@ describe("workspace-switcher dropdown per-workspace dot", () => {
   });
 });
 
-describe("navigation item presentation", () => {
-  it("keeps Analytics and Settings styled like the other nav items", () => {
+describe("rail and module panel", () => {
+  beforeEach(() => {
+    navigation.current = { pathname: "/acme/issues" };
+    sidebarState.open = true;
+    sidebarState.isCompact = false;
+    sidebarState.setOpen.mockClear();
+    presence.current = new Map();
+    agents.current = [];
+  });
+
+  const railLink = (container: HTMLElement, module: string) =>
+    container.querySelector<HTMLElement>(`a[data-module="${module}"]`);
+  const panel = (container: HTMLElement) =>
+    container.querySelector<HTMLElement>('[data-slot="sidebar-module-panel"]');
+
+  it("lights the module the route belongs to and shows its panel", () => {
+    navigation.current = { pathname: "/acme/agents" };
+    const { container } = renderWithI18n(<AppSidebar />);
+
+    expect(railLink(container, "team")).toHaveAttribute("data-active");
+    expect(railLink(container, "issues")).not.toHaveAttribute("data-active");
+    expect(panel(container)).toHaveAttribute("data-module", "team");
+    expect(screen.getByText("No agents running")).toBeInTheDocument();
+  });
+
+  it("keeps the panel an issue was opened from", () => {
+    navigation.current = { pathname: "/acme/projects" };
+    const { container, rerender } = render(<AppSidebar />);
+    expect(panel(container)).toHaveAttribute("data-module", "projects");
+
+    navigation.current = { pathname: "/acme/issues/issue-9" };
+    rerender(<AppSidebar />);
+    expect(panel(container)).toHaveAttribute("data-module", "projects");
+  });
+
+  it("folds the panel when the active module's icon is clicked", () => {
+    navigation.current = { pathname: "/acme/my-issues" };
     const { container } = render(<AppSidebar />);
-    const referenceClassName = container.querySelector(
-      'button[data-href="/acme/issues"]',
-    )?.className;
 
-    expect(referenceClassName).toBeTruthy();
+    fireEvent.click(railLink(container, "issues")!);
+    expect(sidebarState.setOpen).toHaveBeenCalledWith(false);
+  });
 
-    for (const href of ["/acme/usage", "/acme/settings"]) {
-      expect(container.querySelector(`button[data-href="${href}"]`)?.className).toBe(
-        referenceClassName,
-      );
-    }
+  it("reopens the folded panel when a module icon is clicked", () => {
+    sidebarState.open = false;
+    const { container } = render(<AppSidebar />);
+
+    fireEvent.click(railLink(container, "projects")!);
+    expect(sidebarState.setOpen).toHaveBeenCalledWith(true);
+  });
+
+  it("reopens each module at the route it was left on", () => {
+    navigation.current = { pathname: "/acme/projects/p-1" };
+    const { container, rerender } = render(<AppSidebar />);
+
+    navigation.current = { pathname: "/acme/inbox" };
+    rerender(<AppSidebar />);
+
+    expect(railLink(container, "projects")).toHaveAttribute("href", "/acme/projects/p-1");
+    expect(railLink(container, "team")).toHaveAttribute("href", "/acme/agents");
+  });
+
+  it("hands the Inbox panel to the page's list while the panel is a column", () => {
+    navigation.current = { pathname: "/acme/inbox" };
+    const { container } = render(<AppSidebar />);
+    expect(container.querySelector('[data-slot="sidebar-list-slot"]')).not.toBeNull();
+  });
+
+  it("keeps the general panel in the compact sheet, where the page shows its own list", () => {
+    navigation.current = { pathname: "/acme/chat" };
+    sidebarState.isCompact = true;
+    const { container } = render(<AppSidebar />);
+
+    expect(container.querySelector('[data-slot="sidebar-list-slot"]')).toBeNull();
+    expect(panel(container)).toHaveAttribute("data-module", "issues");
+    expect(railLink(container, "chat")).toHaveAttribute("data-active");
+  });
+
+  it("marks AI team and lists agents with a task running", () => {
+    navigation.current = { pathname: "/acme/agents" };
+    agents.current = [
+      { id: "a-1", name: "Builder", avatar_url: null, archived_at: null },
+      { id: "a-2", name: "Idle", avatar_url: null, archived_at: null },
+    ];
+    presence.current = new Map([
+      ["a-1", { workload: "working" }],
+      ["a-2", { workload: "idle" }],
+    ]);
+    const { container } = render(<AppSidebar />);
+
+    expect(railLink(container, "team")?.querySelector('[data-slot="rail-running-dot"]')).not.toBeNull();
+    expect(screen.getByText("Builder")).toBeInTheDocument();
+    expect(screen.queryByText("Idle")).not.toBeInTheDocument();
   });
 });
 
-describe("personal nav — Chat", () => {
+describe("rail — Chat badge", () => {
   beforeEach(() => {
     chatSessions.current = [];
     summary.current = [];
@@ -415,10 +527,8 @@ describe("personal nav — Chat", () => {
     appForeground.current = true;
   });
 
-  // The mocked SidebarMenuButton exposes the AppLink target as `data-href`
-  // and renders the label + badge as its children.
   const chatNav = (container: HTMLElement) =>
-    container.querySelector<HTMLElement>('button[data-href="/acme/chat"]');
+    container.querySelector<HTMLElement>('a[data-module="chat"]');
   const chatBadge = (container: HTMLElement) =>
     chatNav(container)?.querySelector("number-flow-react") ?? null;
 
@@ -427,7 +537,7 @@ describe("personal nav — Chat", () => {
     chatSessions.current = [{ id: "chat-1", unread_count: 2 }];
     const { container } = render(<AppSidebar />);
     const inboxBadge = container
-      .querySelector<HTMLElement>('button[data-href="/acme/inbox"]')
+      .querySelector<HTMLElement>('a[data-module="inbox"]')
       ?.querySelector("number-flow-react") as (HTMLElement & { animated?: boolean }) | null;
     const currentChatBadge = chatBadge(container) as (HTMLElement & { animated?: boolean }) | null;
 
@@ -435,9 +545,9 @@ describe("personal nav — Chat", () => {
     expect(currentChatBadge?.animated).toBe(false);
   });
 
-  it("renders a Chat nav link to the workspace chat route", () => {
+  it("renders a Chat rail link to the workspace chat route", () => {
     const { container } = render(<AppSidebar />);
-    expect(chatNav(container)).not.toBeNull();
+    expect(chatNav(container)).toHaveAttribute("href", "/acme/chat");
   });
 
   it("badges the Chat nav with the summed unread_count of chat sessions", () => {
@@ -520,9 +630,12 @@ describe("Pending invitation self-heal", () => {
   // failure so the stale row drops instead of surviving until restart.
   it("invalidates the pending-invitations list when accept or decline fails", async () => {
     render(<AppSidebar />);
-    expect(invitationApi.mutations).toHaveLength(2);
+    // The mock records every render's options; the latest render's accept and
+    // decline pair is what the menu is wired to.
+    const latest = invitationApi.mutations.slice(-2);
+    expect(latest).toHaveLength(2);
 
-    for (const options of invitationApi.mutations as Array<{
+    for (const options of latest as Array<{
       mutationFn: (id: string) => Promise<unknown>;
       onError?: (...args: unknown[]) => unknown;
       onSettled?: (...args: unknown[]) => unknown;

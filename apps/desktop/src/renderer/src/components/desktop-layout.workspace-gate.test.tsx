@@ -79,6 +79,8 @@ vi.mock("@multica/views/platform", () => ({
 // Each workspace-scoped component gets a marker so the assertions can tell
 // which of them the shell decided to mount.
 vi.mock("@multica/views/layout", () => ({
+  APP_SIDEBAR_PROVIDER_PROPS: {},
+  SidebarListSlotProvider: ({ children }: { children: React.ReactNode }) => <>{children}</>,
   AppSidebar: () => <div data-testid="app-sidebar" />,
   GlobalShortcuts: () => <div data-testid="global-shortcuts" />,
   NavigationProgress: () => <div data-testid="navigation-progress" />,
@@ -101,7 +103,6 @@ vi.mock("@multica/views/search", () => ({
     }
     return <div data-testid="search-command" />;
   },
-  SearchTrigger: () => null,
 }));
 
 vi.mock("@multica/views/chat", () => ({

@@ -13,11 +13,13 @@ import {
 } from "@multica/ui/components/ui/sidebar";
 import { ModalRegistry } from "@multica/views/modals/registry";
 import {
+  APP_SIDEBAR_PROVIDER_PROPS,
   AppSidebar,
   GlobalShortcuts,
   NavigationProgress,
+  SidebarListSlotProvider,
 } from "@multica/views/layout";
-import { SearchCommand, SearchTrigger } from "@multica/views/search";
+import { SearchCommand } from "@multica/views/search";
 import { FloatingChat } from "@multica/views/chat";
 import { WorkspaceSlugProvider, paths, useCurrentWorkspace } from "@multica/core/paths";
 import { workspaceListOptions } from "@multica/core/workspace";
@@ -64,17 +66,26 @@ function useNativeNavigationGestures() {
 }
 
 
+// Main-flow width of a sidebar collapsed to its icon rail: the inset
+// variant's gap is the icon width plus its 8px padding on both sides.
+const SIDEBAR_RAIL_FLOW_WIDTH = "(var(--sidebar-width-icon) + 1rem)";
+
 // The main area's top bar doubles as a window drag region. When the sidebar
 // is not occupying enough main-flow width, leave the remainder here so tabs
-// do not land beneath the traffic lights / navigation controls. The matching
-// 200ms transition cancels the sidebar gap's movement during toggle; live
-// resize previews disable it through data-sidebar-resize-consumer.
+// do not land beneath the traffic lights / navigation controls. Collapsed,
+// the sidebar still holds its icon rail in the flow. The matching 200ms
+// transition cancels the sidebar gap's movement during toggle; live resize
+// previews disable it through data-sidebar-resize-consumer.
 function MainTopBar({ sidebarMounted }: { sidebarMounted: boolean }) {
   const { state, isCompact } = useSidebar();
-  const sidebarHidden = !sidebarMounted || state === "collapsed" || isCompact;
+  const sidebarHidden = !sidebarMounted || isCompact;
+  const sidebarFlowWidth =
+    state === "collapsed"
+      ? SIDEBAR_RAIL_FLOW_WIDTH
+      : "var(--sidebar-live-width, var(--sidebar-width))";
   const toolbarClearance: React.CSSProperties["paddingLeft"] = sidebarHidden
     ? WINDOW_TOOLBAR_CLEARANCE
-    : `max(0px, calc(${WINDOW_TOOLBAR_CLEARANCE}px - var(--sidebar-live-width, var(--sidebar-width))))`;
+    : `max(0px, calc(${WINDOW_TOOLBAR_CLEARANCE}px - ${sidebarFlowWidth}))`;
 
   return (
     <header
@@ -106,9 +117,10 @@ function MainTopBar({ sidebarMounted }: { sidebarMounted: boolean }) {
   );
 }
 
-// The canvas hugs the expanded sidebar with a hairline gap. When the sidebar
-// leaves the main flow, the left margin must grow to mirror the fixed mr-2 so
-// the floating canvas sits symmetrically inside the window frame.
+// The canvas hugs the sidebar — expanded or folded to its rail — with a
+// hairline gap. When the sidebar leaves the main flow, the left margin must
+// grow to mirror the fixed mr-2 so the floating canvas sits symmetrically
+// inside the window frame.
 function MainCanvas({
   children,
   showWorkspaceLoading,
@@ -116,9 +128,9 @@ function MainCanvas({
   children: React.ReactNode;
   showWorkspaceLoading: boolean;
 }) {
-  const { state, isCompact } = useSidebar();
+  const { isCompact } = useSidebar();
   const { t } = useT("layout");
-  const sidebarHidden = state === "collapsed" || isCompact;
+  const sidebarHidden = isCompact;
   const loadingLabel = t(($) => $.workspace_loader.loading_workspace);
 
   return (
@@ -268,24 +280,27 @@ export function DesktopShell() {
           <SidebarProvider
             hasExternalTrigger
             className="flex-1 bg-app-shell [--sidebar-wrapper-fill:var(--app-shell)]"
+            {...APP_SIDEBAR_PROVIDER_PROPS}
           >
-            {slug && <GlobalShortcuts />}
-            {slug && <WindowToolbar />}
-            {slug && <AppSidebar topSlot={<SidebarTopSpacer />} searchSlot={<SearchTrigger />} />}
-            {/* Right side: header + content container */}
-            <div className="flex flex-1 min-w-0 flex-col">
-              <MainTopBar sidebarMounted={Boolean(slug)} />
-              <MainCanvas showWorkspaceLoading={!slug}>
-                {/* Same indicator, same anchor as web: DashboardLayout puts it
-                    at the top of SidebarInset, and MainCanvas is desktop's
-                    equivalent relative/overflow-hidden content box. Desktop
-                    used to have no navigation feedback at all — a click just
-                    froze until the destination committed (MUL-6404). */}
-                <NavigationProgress />
-                <TabContent />
-                {slug && <FloatingChat />}
-              </MainCanvas>
-            </div>
+            <SidebarListSlotProvider>
+              {slug && <GlobalShortcuts />}
+              {slug && <WindowToolbar />}
+              {slug && <AppSidebar topSlot={<SidebarTopSpacer />} />}
+              {/* Right side: header + content container */}
+              <div className="flex flex-1 min-w-0 flex-col">
+                <MainTopBar sidebarMounted={Boolean(slug)} />
+                <MainCanvas showWorkspaceLoading={!slug}>
+                  {/* Same indicator, same anchor as web: DashboardLayout puts it
+                      at the top of SidebarInset, and MainCanvas is desktop's
+                      equivalent relative/overflow-hidden content box. Desktop
+                      used to have no navigation feedback at all — a click just
+                      froze until the destination committed (MUL-6404). */}
+                  <NavigationProgress />
+                  <TabContent />
+                  {slug && <FloatingChat />}
+                </MainCanvas>
+              </div>
+            </SidebarListSlotProvider>
           </SidebarProvider>
         </div>
         {slug && <ModalRegistry />}

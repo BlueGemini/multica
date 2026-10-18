@@ -66,6 +66,8 @@ vi.mock("@multica/views/platform", () => ({
 }));
 
 vi.mock("@multica/views/layout", () => ({
+  APP_SIDEBAR_PROVIDER_PROPS: {},
+  SidebarListSlotProvider: ({ children }: { children: React.ReactNode }) => <>{children}</>,
   AppSidebar: () => null,
   GlobalShortcuts: () => null,
   NavigationProgress: () => null,
@@ -74,7 +76,6 @@ vi.mock("@multica/views/layout", () => ({
 vi.mock("@multica/views/modals/registry", () => ({ ModalRegistry: () => null }));
 vi.mock("@multica/views/search", () => ({
   SearchCommand: () => null,
-  SearchTrigger: () => null,
 }));
 vi.mock("@multica/views/chat", () => ({ FloatingChat: () => null }));
 vi.mock("./tab-bar", () => ({ TabBar: () => null }));
@@ -158,10 +159,15 @@ describe("DesktopShell sidebar trigger", () => {
         "max(0px, calc(200px - var(--sidebar-live-width, var(--sidebar-width))))",
     });
 
+    // Collapsed, the sidebar keeps its icon rail in the flow, so the tabs
+    // only need the clearance the rail does not already cover.
     fireEvent.click(
       container.querySelector('[data-slot="sidebar-trigger"]')!,
     );
-    expect(mainTopBar).toHaveStyle({ paddingLeft: "200px" });
+    expect(mainTopBar).toHaveStyle({
+      paddingLeft:
+        "max(0px, calc(200px - (var(--sidebar-width-icon) + 1rem)))",
+    });
     expect(queryByRole("status", { name: /loading workspace/i })).toBeNull();
   });
 

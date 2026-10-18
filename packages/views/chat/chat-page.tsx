@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { useDefaultLayout } from "react-resizable-panels";
 import { ArrowLeft, MessageSquare } from "lucide-react";
 import { toast } from "sonner";
@@ -21,6 +22,7 @@ import { useQuickActionsFailureToast } from "./components/use-quick-actions-fail
 import { useQuery } from "@tanstack/react-query";
 import type { Agent, ChatSession } from "@multica/core/types";
 import { PageHeader } from "../layout/page-header";
+import { SidebarPanelHeader, useSidebarListSlot } from "../layout/sidebar-list-slot";
 import { useNavigation } from "../navigation";
 import { useT } from "../i18n";
 import { ChatMessageList, ChatMessageSkeleton } from "./components/chat-message-list";
@@ -67,6 +69,9 @@ export function ChatPage() {
   // can rehydrate the store before this page observes the destination URL.
   const isCurrentChatRoute = pathname === wsPaths.chat();
   const isCompact = useIsCompact();
+  // With the sidebar open on the Chat module, the thread list lives in its
+  // panel and this page renders only the conversation.
+  const listSlot = useSidebarListSlot(!isCompact && isCurrentChatRoute);
 
   const c = useChatController({
     isActive: isCurrentChatRoute && getCurrentSlug() === workspaceSlug,
@@ -228,7 +233,9 @@ export function ChatPage() {
     />
   );
 
-  const listHeader = (
+  const listHeader = listSlot ? (
+    <SidebarPanelHeader title={t(($) => $.page.title)}>{newChatButton}</SidebarPanelHeader>
+  ) : (
     <PageHeader>
       <h1 className="flex-1 text-body font-semibold">{t(($) => $.page.title)}</h1>
       {newChatButton}
@@ -395,6 +402,34 @@ export function ChatPage() {
   // picked via ⊕. With nothing selected there is no agent, so we show a neutral
   // prompt instead of an orphaned compose box. -------------------------------
   const hasTarget = !!c.activeSessionId || composingNew;
+  const conversationPane = (
+    <div className="flex flex-col min-h-0 h-full">
+      {hasTarget ? (
+        conversation
+      ) : (
+        <div className="flex h-full flex-col items-center justify-center gap-3 text-muted-foreground">
+          <MessageSquare className="h-10 w-10 text-faint-foreground" />
+          <p className="text-body">{t(($) => $.page.select_prompt)}</p>
+        </div>
+      )}
+    </div>
+  );
+
+  if (listSlot) {
+    return (
+      <>
+        {createPortal(
+          <>
+            {listHeader}
+            <div className="flex-1 min-h-0 overflow-y-auto">{listBody}</div>
+          </>,
+          listSlot,
+        )}
+        <div className="flex flex-1 min-h-0 flex-col">{conversationPane}</div>
+      </>
+    );
+  }
+
   return (
     <ResizablePanelGroup
       orientation="horizontal"
@@ -416,16 +451,7 @@ export function ChatPage() {
       </ResizablePanel>
       <ResizableHandle />
       <ResizablePanel id="detail" minSize="40%">
-        <div className="flex flex-col min-h-0 h-full">
-          {hasTarget ? (
-            conversation
-          ) : (
-            <div className="flex h-full flex-col items-center justify-center gap-3 text-muted-foreground">
-              <MessageSquare className="h-10 w-10 text-faint-foreground" />
-              <p className="text-body">{t(($) => $.page.select_prompt)}</p>
-            </div>
-          )}
-        </div>
+        {conversationPane}
       </ResizablePanel>
     </ResizablePanelGroup>
   );

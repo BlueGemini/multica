@@ -1,4 +1,5 @@
-export { AppSidebar } from "./app-sidebar";
+export { APP_SIDEBAR_PROVIDER_PROPS, AppSidebar } from "./app-sidebar";
+export { SidebarListSlotProvider } from "./sidebar-list-slot";
 export {
   CollectionPageHeader,
   CollectionPageHeaderAction,

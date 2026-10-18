@@ -162,4 +162,64 @@ describe("left sidebar resizing", () => {
     expect(wrapper).not.toHaveAttribute("data-sidebar-resizing");
     expect(document.documentElement).not.toHaveAttribute("data-sidebar-resizing");
   });
+
+  it("clamps to the shell's own bounds and stores under its own key", () => {
+    localStorage.setItem("rail_width", "900");
+    const { container } = renderWithI18n(
+      <SidebarProvider defaultWidth={324} minWidth={284} maxWidth={464} widthStorageKey="rail_width">
+        <Sidebar>
+          <SidebarRail />
+        </Sidebar>
+      </SidebarProvider>,
+    );
+
+    const wrapper = container.querySelector<HTMLElement>("[data-slot='sidebar-wrapper']")!;
+    const sidebarContainer = container.querySelector<HTMLElement>("[data-slot='sidebar-container']")!;
+    const rail = container.querySelector<HTMLButtonElement>("[data-slot='sidebar-rail']")!;
+    rail.setPointerCapture = vi.fn();
+    rail.hasPointerCapture = vi.fn(() => true);
+    rail.releasePointerCapture = vi.fn();
+    expect(wrapper.style.getPropertyValue("--sidebar-width")).toBe("464px");
+
+    vi.spyOn(sidebarContainer, "getBoundingClientRect").mockReturnValue({
+      bottom: 0,
+      height: 0,
+      left: 0,
+      right: 464,
+      top: 0,
+      width: 464,
+      x: 0,
+      y: 0,
+      toJSON: () => ({}),
+    });
+    fireEvent.pointerDown(rail, { button: 0, clientX: 464, isPrimary: true, pointerId: 9 });
+    fireEvent.pointerMove(document, { buttons: 1, clientX: 100, pointerId: 9 });
+    fireEvent.pointerUp(document, { pointerId: 9 });
+
+    expect(wrapper.style.getPropertyValue("--sidebar-width")).toBe("284px");
+    expect(localStorage.getItem("rail_width")).toBe("284");
+    expect(localStorage.getItem("sidebar_width")).toBeNull();
+  });
+
+  it("only toggles, never drags, while folded to the icon strip", () => {
+    const { container } = renderWithI18n(
+      <SidebarProvider defaultOpen={false}>
+        <Sidebar collapsible="icon">
+          <SidebarRail />
+        </Sidebar>
+      </SidebarProvider>,
+    );
+
+    const wrapper = container.querySelector<HTMLElement>("[data-slot='sidebar-wrapper']")!;
+    const sidebar = container.querySelector<HTMLElement>("[data-slot='sidebar']")!;
+    const rail = container.querySelector<HTMLButtonElement>("[data-slot='sidebar-rail']")!;
+    rail.setPointerCapture = vi.fn();
+
+    fireEvent.pointerDown(rail, { button: 0, clientX: 66, isPrimary: true, pointerId: 10 });
+    expect(rail.setPointerCapture).not.toHaveBeenCalled();
+    expect(wrapper).not.toHaveAttribute("data-sidebar-resizing");
+
+    fireEvent.click(rail);
+    expect(sidebar).toHaveAttribute("data-state", "expanded");
+  });
 });
