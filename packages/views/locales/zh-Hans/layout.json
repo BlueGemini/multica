@@ -56,7 +56,6 @@
     "active_projects": "进行中",
     "new_project": "新建项目",
     "running_label": "运行中",
-    "running_empty": "暂无运行中的智能体",
     "running_badge": "运行中的智能体：{{count}}",
     "team_group": "团队",
     "capabilities_group": "能力与用量",

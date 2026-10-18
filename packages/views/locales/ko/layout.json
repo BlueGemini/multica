@@ -56,7 +56,6 @@
     "active_projects": "진행 중",
     "new_project": "새 프로젝트",
     "running_label": "실행 중",
-    "running_empty": "실행 중인 에이전트가 없습니다",
     "running_badge": "실행 중인 에이전트: {{count}}",
     "team_group": "팀",
     "capabilities_group": "기능 및 사용량",

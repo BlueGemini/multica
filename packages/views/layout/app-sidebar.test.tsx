@@ -454,7 +454,7 @@ describe("rail and module panel", () => {
     expect(railLink(container, "team")).toHaveAttribute("data-active");
     expect(railLink(container, "issues")).not.toHaveAttribute("data-active");
     expect(panel(container)).toHaveAttribute("data-module", "team");
-    expect(screen.getByText("No agents running")).toBeInTheDocument();
+    expect(screen.queryByText("Running")).not.toBeInTheDocument();
   });
 
   it("keeps the panel an issue was opened from", () => {

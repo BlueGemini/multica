@@ -9,6 +9,7 @@ import {
   ChevronRight,
   Clock,
   Loader2,
+  MessageSquare,
   Pin,
   PinOff,
   Square,
@@ -517,8 +518,9 @@ export function ChatThreadList({
   if (historySessions.length === 0) {
     return (
       <>
-        <div className="px-2 py-1.5 text-caption text-muted-foreground">
-          {t(($) => $.window.no_previous)}
+        <div className="flex flex-col items-center justify-center py-16 text-muted-foreground">
+          <MessageSquare className="mb-3 h-8 w-8 text-faint-foreground" />
+          <p className="text-body">{t(($) => $.window.no_previous)}</p>
         </div>
         {archivedEntry}
       </>

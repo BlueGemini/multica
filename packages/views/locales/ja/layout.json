@@ -56,7 +56,6 @@
     "active_projects": "進行中",
     "new_project": "新規プロジェクト",
     "running_label": "実行中",
-    "running_empty": "実行中のエージェントはありません",
     "running_badge": "実行中のエージェント: {{count}}",
     "team_group": "チーム",
     "capabilities_group": "機能と使用量",

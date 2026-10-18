@@ -186,16 +186,42 @@ export function TeamPanel({ wsId, pathname }: { wsId: string; pathname: string }
       <SidebarPanelHeader title={t(($) => $.sidebar.ai_team_group)} />
       <PanelBody>
         <SidebarGroup>
-          <SidebarGroupLabel>
-            <span>{t(($) => $.sidebar.running_label)}</span>
-            {running.length > 0 && <PanelCount value={running.length} />}
-          </SidebarGroupLabel>
+          <SidebarGroupLabel>{t(($) => $.sidebar.team_group)}</SidebarGroupLabel>
           <SidebarGroupContent>
-            {running.length === 0 ? (
-              <p className="px-2 py-1.5 text-caption text-muted-foreground">
-                {t(($) => $.sidebar.running_empty)}
-              </p>
-            ) : (
+            <SidebarMenu className="gap-0.5">
+              {manage.map((item) => (
+                <PanelNavItem
+                  key={item.href}
+                  href={item.href}
+                  label={item.label}
+                  isActive={isNavActive(pathname, item.href)}
+                />
+              ))}
+            </SidebarMenu>
+          </SidebarGroupContent>
+        </SidebarGroup>
+        <SidebarGroup>
+          <SidebarGroupLabel>{t(($) => $.sidebar.capabilities_group)}</SidebarGroupLabel>
+          <SidebarGroupContent>
+            <SidebarMenu className="gap-0.5">
+              {capabilities.map((item) => (
+                <PanelNavItem
+                  key={item.href}
+                  href={item.href}
+                  label={item.label}
+                  isActive={isNavActive(pathname, item.href)}
+                />
+              ))}
+            </SidebarMenu>
+          </SidebarGroupContent>
+        </SidebarGroup>
+        {running.length > 0 && (
+          <SidebarGroup>
+            <SidebarGroupLabel>
+              <span>{t(($) => $.sidebar.running_label)}</span>
+              <PanelCount value={running.length} />
+            </SidebarGroupLabel>
+            <SidebarGroupContent>
               <SidebarMenu className="gap-0.5">
                 {running.map((agent) => {
                   const href = p.agentDetail(agent.id);
@@ -226,39 +252,9 @@ export function TeamPanel({ wsId, pathname }: { wsId: string; pathname: string }
                   );
                 })}
               </SidebarMenu>
-            )}
-          </SidebarGroupContent>
-        </SidebarGroup>
-        <SidebarGroup>
-          <SidebarGroupLabel>{t(($) => $.sidebar.team_group)}</SidebarGroupLabel>
-          <SidebarGroupContent>
-            <SidebarMenu className="gap-0.5">
-              {manage.map((item) => (
-                <PanelNavItem
-                  key={item.href}
-                  href={item.href}
-                  label={item.label}
-                  isActive={isNavActive(pathname, item.href)}
-                />
-              ))}
-            </SidebarMenu>
-          </SidebarGroupContent>
-        </SidebarGroup>
-        <SidebarGroup>
-          <SidebarGroupLabel>{t(($) => $.sidebar.capabilities_group)}</SidebarGroupLabel>
-          <SidebarGroupContent>
-            <SidebarMenu className="gap-0.5">
-              {capabilities.map((item) => (
-                <PanelNavItem
-                  key={item.href}
-                  href={item.href}
-                  label={item.label}
-                  isActive={isNavActive(pathname, item.href)}
-                />
-              ))}
-            </SidebarMenu>
-          </SidebarGroupContent>
-        </SidebarGroup>
+            </SidebarGroupContent>
+          </SidebarGroup>
+        )}
       </PanelBody>
     </>
   );

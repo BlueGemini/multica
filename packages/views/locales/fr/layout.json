@@ -56,7 +56,6 @@
     "active_projects": "Actifs",
     "new_project": "Nouveau projet",
     "running_label": "En cours d'exécution",
-    "running_empty": "Aucun agent en cours d'exécution",
     "running_badge": "Agents en cours d'exécution : {{count}}",
     "team_group": "Équipe",
     "capabilities_group": "Capacités et usage",

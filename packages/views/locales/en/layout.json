@@ -56,7 +56,6 @@
     "active_projects": "Active",
     "new_project": "New project",
     "running_label": "Running",
-    "running_empty": "No agents running",
     "running_badge": "Agents running: {{count}}",
     "team_group": "Team",
     "capabilities_group": "Capabilities",

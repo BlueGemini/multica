@@ -122,7 +122,7 @@ const PINNED_PREVIEW_LIMIT = 5;
  * list column Inbox and Chat used to keep in the page.
  */
 export const APP_SIDEBAR_PROVIDER_PROPS = {
-  defaultWidth: 280,
+  defaultWidth: 300,
   minWidth: 240,
   maxWidth: 420,
   widthStorageKey: "sidebar_panel_width",
@@ -640,7 +640,15 @@ function WorkspaceMenu() {
             title={workspace?.name ?? "Multica"}
             className="relative flex size-9 shrink-0 items-center justify-center rounded-md outline-hidden transition-colors hover:bg-sidebar-accent/70 focus-visible:ring-2 focus-visible:ring-sidebar-ring data-popup-open:bg-sidebar-accent"
           >
-            <WorkspaceAvatar name={workspace?.name ?? "M"} avatarUrl={workspace?.avatar_url} size="md" />
+            <WorkspaceAvatar
+              name={workspace?.name ?? "M"}
+              avatarUrl={workspace?.avatar_url}
+              size="md"
+              className={cn(
+                "rounded-md",
+                !workspace?.avatar_url && "border-0 bg-primary text-primary-foreground",
+              )}
+            />
             {/* Shared brand dot: a pending invitation OR another workspace
                 with unread inbox items. The active workspace's own unread
                 stays on the Inbox rail badge, so it is deliberately excluded
