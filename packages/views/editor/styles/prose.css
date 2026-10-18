@@ -339,8 +339,9 @@
 }
 
 /* Tiptap tables have no <thead>, so their header row is tbody's first row —
-   without this it draws a border-top right against the wrapper's own border. */
-.rich-text-editor table > tbody:first-child > tr:first-child {
+   without this it draws a border-top right against the wrapper's own border.
+   The table frame renders a <colgroup> ahead of the editor's rows. */
+.rich-text-editor :is(table > tbody:first-child, table > colgroup:first-child + tbody) > tr:first-child {
   border-top: 0;
 }
 
@@ -368,7 +369,6 @@
 
 /* The header label sets its column's minimum width rather than wrapping. */
 .rich-text-editor th {
-  position: relative;
   font-size: var(--text-label);
   font-weight: 500;
   color: var(--muted-foreground);
@@ -392,13 +392,15 @@
   max-width: 18rem;
 }
 
-/* Readonly tables (RichTable): the outer box carries the margin and anchors
-   the toolbar and scroll shadows to the table. */
+/* Table frame (RichTableFrame): the outer box carries the margin and anchors
+   the toolbar and scroll shadows to the table; the wrapper anchors the resize
+   handles, so they scroll with the columns. */
 .rich-text-editor .rich-table {
   margin: 1rem 0;
 }
 
 .rich-text-editor .rich-table > .tableWrapper {
+  position: relative;
   margin: 0;
 }
 
@@ -424,23 +426,16 @@
   max-width: 100%;
 }
 
+/* Placed over a column edge by RichTableFrame, which sets left, top and
+   height from the header row. */
 .rich-text-editor .rich-table-resize-handle {
   position: absolute;
-  top: 0;
-  right: -4px;
   z-index: 10;
   width: 8px;
-  height: 100%;
   cursor: col-resize;
   touch-action: none;
   user-select: none;
   outline: none;
-}
-
-/* Inside the wrapper's scroll box: overhanging the last edge would add a
-   few pixels of horizontal scroll to every table. */
-.rich-text-editor th:last-child > .rich-table-resize-handle {
-  right: 0;
 }
 
 .rich-text-editor .rich-table-resize-handle::after {
@@ -453,7 +448,7 @@
   transition: background-color 100ms;
 }
 
-.rich-text-editor th:last-child > .rich-table-resize-handle::after {
+.rich-text-editor .rich-table-resize-handle[data-edge="end"]::after {
   left: auto;
   right: 0;
 }

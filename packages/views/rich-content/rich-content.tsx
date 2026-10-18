@@ -80,7 +80,7 @@ import {
   isRichFenceLanguage,
   shouldUpgradeFence,
 } from "./rich-code-block";
-import { RichTable, RichTableHeaderCell, RichTableSourceContext } from "./rich-table";
+import { RichTable, RichTableSourceContext } from "./rich-table";
 import { getTextContent } from "./rich-table-model";
 import "katex/dist/katex.min.css";
 import "../editor/styles/index.css";
@@ -511,7 +511,6 @@ const COMPONENTS: Partial<Components> = {
   // Tables keep Tiptap's tableWrapper (border/radius/scroll) and add column
   // resizing, an expanded view and copy.
   table: RichTable,
-  th: RichTableHeaderCell,
 
   code: RichCode,
   pre: RichPre,

@@ -70,7 +70,7 @@ describe("RichTable", () => {
     const { table } = renderTable();
     expect(table.closest(".tableWrapper")).not.toBeNull();
     expect(table).not.toHaveAttribute("data-column-widths");
-    expect(table.querySelector("colgroup")).toBeNull();
+    expect(table.querySelectorAll("colgroup col")).toHaveLength(0);
     expect(screen.queryByRole("button", { name: "Reset widths" })).toBeNull();
   });
 
@@ -115,7 +115,7 @@ describe("RichTable", () => {
 
     await userEvent.click(screen.getByRole("button", { name: "Reset widths" }));
     expect(remounted.table).not.toHaveAttribute("data-column-widths");
-    expect(remounted.table.querySelector("colgroup")).toBeNull();
+    expect(remounted.table.querySelectorAll("colgroup col")).toHaveLength(0);
     expect(window.localStorage.getItem("multica:rich-table-widths")).toBe("{}");
   });
 
