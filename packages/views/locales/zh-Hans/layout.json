@@ -52,17 +52,12 @@
     "new_issue": "新建任务",
     "new_issue_shortcut": "C",
     "all_issues": "全部任务",
-    "all_projects": "全部项目",
-    "active_projects": "进行中",
     "new_project": "新建项目",
     "running_label": "运行中",
     "running_badge": "运行中的智能体：{{count}}",
-    "team_group": "团队",
-    "capabilities_group": "能力与用量",
     "search": "搜索",
     "modules_label": "工作区导航",
     "pinned_label": "固定",
-    "ai_team_group": "AI 团队",
     "show_more_pins": "再显示 {{count}} 项...",
     "show_fewer_pins": "收起",
     "unread_overflow": "99+",
@@ -70,5 +65,40 @@
       "title": "加入 Discord",
       "dismiss": "关闭"
     }
+  },
+  "rail": {
+    "mine": "我的",
+    "chat": "聊天",
+    "work": "工作",
+    "team": "团队",
+    "settings": "设置"
+  },
+  "mine": {
+    "tab_queue": "待处理",
+    "tab_activity": "全部动态",
+    "group_review": "待你验收",
+    "group_mentioned": "提到你",
+    "group_blocked": "阻塞",
+    "group_assigned": "分配给你",
+    "reason_review": "{{name}} 交付了，等你验收",
+    "reason_review_pending": "等你验收",
+    "reason_review_requested": "{{name}} 请你评审",
+    "reason_mentioned": "{{name}} 提到了你",
+    "reason_blocked": "卡住了",
+    "reason_blocked_by": "{{name}} 卡住了",
+    "reason_in_progress": "进行中",
+    "reason_todo": "待开始",
+    "someone": "有人",
+    "empty_title": "没有需要你处理的事",
+    "empty_hint": "等你验收、提到你和卡住的事都会出现在这里。"
+  },
+  "work": {
+    "view_all": "查看全部",
+    "no_open_issues": "没有未完成的任务",
+    "paused": "已暂停"
+  },
+  "team": {
+    "members": "成员",
+    "new_agent": "新建智能体"
   }
 }

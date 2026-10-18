@@ -413,6 +413,7 @@
     "groups": {
       "personal": "개인",
       "workspace": "워크스페이스",
+      "capabilities": "기능",
       "issues": "태스크 및 워크플로",
       "connections": "연결 및 확장",
       "device": "이 기기"

@@ -42,9 +42,14 @@ vi.mock("./connected-apps-tab", () => ({
   useComposioAvailable: () => shell.appsAvailable,
 }));
 
-vi.mock("@multica/core/paths", () => ({
-  useCurrentWorkspace: () => ({ id: "ws-1", name: "Acme" }),
-}));
+vi.mock("@multica/core/paths", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@multica/core/paths")>();
+  return {
+    ...actual,
+    useCurrentWorkspace: () => ({ id: "ws-1", name: "Acme" }),
+    useWorkspacePaths: () => actual.paths.workspace("acme"),
+  };
+});
 vi.mock("@multica/core/workspace/avatar-url", () => ({
   resolvePublicFileUrl: (url: string | null | undefined) => url ?? null,
 }));
@@ -83,6 +88,8 @@ vi.mock("@multica/ui/hooks/use-mobile", () => ({
   useIsCompact: () => layout.compact,
 }));
 
+import { AppSidebarProvider } from "../../layout/sidebar-module-state";
+import { SettingsExtraTabsProvider } from "./settings-nav";
 import { SettingsPage } from "./settings-page";
 
 function NavStateProbe() {
@@ -304,8 +311,8 @@ describe("SettingsPage information architecture", () => {
 
   it("places platform settings in a device group", () => {
     renderWithI18n(
-      <SettingsPage
-        extraDeviceTabs={[
+      <SettingsExtraTabsProvider
+        tabs={[
           {
             value: "updates",
             label: "Updates",
@@ -313,12 +320,40 @@ describe("SettingsPage information architecture", () => {
             content: <div>Device updates</div>,
           },
         ]}
-      />,
+      >
+        <SettingsPage />
+      </SettingsExtraTabsProvider>,
     );
     const device = screen.getByRole("region", { name: "This device" });
     expect(
       within(device).getByRole("link", { name: "Updates" }),
     ).toBeInTheDocument();
+  });
+
+  it("links workspace capabilities to their own pages", () => {
+    renderWithI18n(<SettingsPage />);
+    const capabilities = screen.getByRole("group", { name: "Capabilities" });
+    expect(within(capabilities).getByRole("link", { name: "Skills" })).toHaveAttribute(
+      "href",
+      "/acme/skills",
+    );
+    expect(within(capabilities).getByRole("link", { name: "Runtimes" })).toHaveAttribute(
+      "href",
+      "/acme/runtimes",
+    );
+  });
+
+  it("leaves its navigation to the Settings panel inside the module shell", () => {
+    layout.compact = false;
+    renderWithI18n(
+      <SidebarProvider>
+        <AppSidebarProvider>
+          <SettingsPage />
+        </AppSidebarProvider>
+      </SidebarProvider>,
+    );
+    expect(screen.queryByRole("navigation", { name: "Settings" })).not.toBeInTheDocument();
+    expect(screen.getByText("AccountTab")).toBeInTheDocument();
   });
 
   it("navigates from the compact selector and clears the old detail", () => {

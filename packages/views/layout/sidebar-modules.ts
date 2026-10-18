@@ -1,20 +1,19 @@
 import type { WorkspacePaths } from "@multica/core/paths";
 
-/** A rail entry; its panel fills the column beside the rail. */
-export type SidebarModule = "inbox" | "chat" | "issues" | "projects" | "team";
+/**
+ * A rail entry; its panel fills the first column of the canvas.
+ *
+ * The rail splits the product by what the user is doing rather than by page:
+ * handling what needs them (mine), talking to agents (chat), moving work
+ * forward (work), looking after the people and agents doing it (team), and
+ * configuring the workspace (settings).
+ */
+export type SidebarModule = "mine" | "chat" | "work" | "team" | "settings";
 
-export const SIDEBAR_MODULES: readonly SidebarModule[] = [
-  "inbox",
-  "chat",
-  "issues",
-  "projects",
-  "team",
-];
+/** The modules listed in the rail's main group; settings sits at its foot. */
+export const SIDEBAR_MODULES: readonly SidebarModule[] = ["mine", "chat", "work", "team"];
 
-/** Modules whose panel is the page's own list, portaled in by the page. */
-export const LIST_MODULES: ReadonlySet<SidebarModule> = new Set(["inbox", "chat"]);
-
-// Top-level nav stays lit on child routes (Projects on /:slug/projects/:id).
+/** Top-level nav stays lit on child routes (Projects on /:slug/projects/:id). */
 export function isNavActive(pathname: string, href: string): boolean {
   return pathname === href || pathname.startsWith(href + "/");
 }
@@ -26,68 +25,88 @@ type ModulePaths = Pick<
   | "myIssues"
   | "issues"
   | "projects"
+  | "autopilots"
   | "agents"
   | "squads"
-  | "autopilots"
   | "skills"
   | "runtimes"
   | "usage"
->;
+  | "settings"
+> & { memberDetail: (id: string) => string };
 
 /** Where a rail entry lands the first time it is opened. */
 export function sidebarModuleHome(module: SidebarModule, p: ModulePaths): string {
   switch (module) {
-    case "inbox":
-      return p.inbox();
+    case "mine":
+      return p.myIssues();
     case "chat":
       return p.chat();
-    case "issues":
-      return p.myIssues();
-    case "projects":
-      return p.projects();
+    case "work":
+      return p.issues();
     case "team":
       return p.agents();
+    case "settings":
+      return p.settings();
   }
 }
 
-const TEAM_ROUTES = ["agents", "squads", "autopilots", "skills", "runtimes", "usage"] as const;
+// Members have detail pages but no list route; the prefix is their parent.
+const membersPrefix = (p: ModulePaths) => p.memberDetail("").replace(/\/$/, "");
+
+function routeModule(pathname: string, p: ModulePaths): SidebarModule | null {
+  if (isNavActive(pathname, p.inbox()) || isNavActive(pathname, p.myIssues())) return "mine";
+  if (isNavActive(pathname, p.chat())) return "chat";
+  if (
+    pathname === p.issues() ||
+    isNavActive(pathname, p.projects()) ||
+    isNavActive(pathname, p.autopilots())
+  ) {
+    return "work";
+  }
+  if (
+    isNavActive(pathname, p.agents()) ||
+    isNavActive(pathname, p.squads()) ||
+    isNavActive(pathname, membersPrefix(p))
+  ) {
+    return "team";
+  }
+  if (
+    isNavActive(pathname, p.settings()) ||
+    isNavActive(pathname, p.skills()) ||
+    isNavActive(pathname, p.runtimes()) ||
+    isNavActive(pathname, p.usage())
+  ) {
+    return "settings";
+  }
+  return null;
+}
 
 /**
  * Whether a route is somewhere a module's panel leads, so a rail entry may
- * reopen it later. Settings and other unowned routes are not remembered.
+ * reopen it later. Issue details are reached from every panel and are
+ * remembered too; unowned routes (attachment previews) are not.
  */
 export function ownsSidebarRoute(pathname: string, p: ModulePaths): boolean {
-  return [
-    p.inbox(),
-    p.chat(),
-    p.myIssues(),
-    p.issues(),
-    p.projects(),
-    ...TEAM_ROUTES.map((key) => p[key]()),
-  ].some((href) => isNavActive(pathname, href));
+  return routeModule(pathname, p) !== null || isNavActive(pathname, p.issues());
 }
 
 /**
  * The module a route belongs to, given the module already showing.
  *
- * An issue detail is reached from every panel — a project's issue, a running
- * agent's task, a pin — so it keeps the panel it was opened from rather than
- * yanking the user to Issues. Inbox and Chat are the exception: their panel
- * is a list for their own page, which an issue page does not have. Routes no
- * module owns (settings, member pages) keep the current panel as well.
+ * An issue detail is reached from Mine's queue, a project in Work, or an
+ * agent in Team, so it keeps the panel it was opened from. Chat and Settings
+ * have no issue rows of their own; an issue opened from there belongs to
+ * Work. Routes no module owns keep the current panel.
  */
 export function resolveSidebarModule(
   pathname: string,
   p: ModulePaths,
   current: SidebarModule,
 ): SidebarModule {
-  if (isNavActive(pathname, p.inbox())) return "inbox";
-  if (isNavActive(pathname, p.chat())) return "chat";
-  if (pathname === p.issues() || isNavActive(pathname, p.myIssues())) return "issues";
+  const owner = routeModule(pathname, p);
+  if (owner) return owner;
   if (isNavActive(pathname, p.issues())) {
-    return LIST_MODULES.has(current) ? "issues" : current;
+    return current === "chat" || current === "settings" ? "work" : current;
   }
-  if (isNavActive(pathname, p.projects())) return "projects";
-  if (TEAM_ROUTES.some((key) => isNavActive(pathname, p[key]()))) return "team";
   return current;
 }

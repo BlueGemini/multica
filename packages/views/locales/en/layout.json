@@ -52,17 +52,12 @@
     "new_issue": "New Issue",
     "new_issue_shortcut": "C",
     "all_issues": "All issues",
-    "all_projects": "All projects",
-    "active_projects": "Active",
     "new_project": "New project",
     "running_label": "Running",
     "running_badge": "Agents running: {{count}}",
-    "team_group": "Team",
-    "capabilities_group": "Capabilities",
     "search": "Search",
     "modules_label": "Workspace navigation",
     "pinned_label": "Pinned",
-    "ai_team_group": "AI Team",
     "show_more_pins": "Show {{count}} more…",
     "show_fewer_pins": "Show fewer",
     "unread_overflow": "99+",
@@ -70,5 +65,40 @@
       "title": "Join our Discord",
       "dismiss": "Dismiss"
     }
+  },
+  "rail": {
+    "mine": "Mine",
+    "chat": "Chat",
+    "work": "Work",
+    "team": "Team",
+    "settings": "Settings"
+  },
+  "mine": {
+    "tab_queue": "Needs you",
+    "tab_activity": "Activity",
+    "group_review": "Awaiting your review",
+    "group_mentioned": "Mentions",
+    "group_blocked": "Blocked",
+    "group_assigned": "Assigned to you",
+    "reason_review": "{{name}} delivered, ready for review",
+    "reason_review_pending": "Ready for your review",
+    "reason_review_requested": "{{name}} asked for your review",
+    "reason_mentioned": "{{name}} mentioned you",
+    "reason_blocked": "Blocked",
+    "reason_blocked_by": "{{name}} is blocked",
+    "reason_in_progress": "In progress",
+    "reason_todo": "To do",
+    "someone": "Someone",
+    "empty_title": "You're all caught up",
+    "empty_hint": "Reviews, mentions and blocked work land here."
+  },
+  "work": {
+    "view_all": "View all",
+    "no_open_issues": "No open issues",
+    "paused": "Paused"
+  },
+  "team": {
+    "members": "Members",
+    "new_agent": "New agent"
   }
 }

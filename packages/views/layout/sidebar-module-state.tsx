@@ -56,9 +56,18 @@ export function useSidebarModule() {
   const p = useWorkspacePaths();
   const { state, setState } = ctx;
   let module: SidebarModule;
-  if (state === null) module = resolveSidebarModule(pathname, p, "issues");
+  if (state === null) module = resolveSidebarModule(pathname, p, "work");
   else if (state.pathname === pathname) module = state.module;
   else if (state.pending?.pathname === pathname) module = state.pending.module;
   else module = resolveSidebarModule(pathname, p, state.module);
   return { module, pathname, state, setState };
+}
+
+/**
+ * Whether the page renders inside the rail + panel shell. A page whose own
+ * navigation the module panel already shows (Settings) drops that column
+ * when this is true and the viewport is not compact.
+ */
+export function useInModuleShell(): boolean {
+  return use(SidebarModuleContext) !== null;
 }

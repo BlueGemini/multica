@@ -52,17 +52,12 @@
     "new_issue": "新規タスク",
     "new_issue_shortcut": "C",
     "all_issues": "すべてのタスク",
-    "all_projects": "すべてのプロジェクト",
-    "active_projects": "進行中",
     "new_project": "新規プロジェクト",
     "running_label": "実行中",
     "running_badge": "実行中のエージェント: {{count}}",
-    "team_group": "チーム",
-    "capabilities_group": "機能と使用量",
     "search": "検索",
     "modules_label": "ワークスペースのナビゲーション",
     "pinned_label": "ピン留め済み",
-    "ai_team_group": "AI チーム",
     "show_more_pins": "さらに {{count}} 件を表示…",
     "show_fewer_pins": "表示を減らす",
     "unread_overflow": "99+",
@@ -70,5 +65,40 @@
       "title": "Discord に参加",
       "dismiss": "閉じる"
     }
+  },
+  "rail": {
+    "mine": "マイ",
+    "chat": "チャット",
+    "work": "ワーク",
+    "team": "チーム",
+    "settings": "設定"
+  },
+  "mine": {
+    "tab_queue": "要対応",
+    "tab_activity": "アクティビティ",
+    "group_review": "レビュー待ち",
+    "group_mentioned": "メンション",
+    "group_blocked": "ブロック中",
+    "group_assigned": "自分の担当",
+    "reason_review": "{{name}} が納品、レビュー待ち",
+    "reason_review_pending": "レビュー待ち",
+    "reason_review_requested": "{{name}} がレビューを依頼",
+    "reason_mentioned": "{{name}} がメンション",
+    "reason_blocked": "ブロック中",
+    "reason_blocked_by": "{{name}} がブロック中",
+    "reason_in_progress": "進行中",
+    "reason_todo": "未着手",
+    "someone": "誰か",
+    "empty_title": "対応が必要なものはありません",
+    "empty_hint": "レビュー、メンション、ブロック中の作業がここに表示されます。"
+  },
+  "work": {
+    "view_all": "すべて表示",
+    "no_open_issues": "未完了の課題はありません",
+    "paused": "一時停止"
+  },
+  "team": {
+    "members": "メンバー",
+    "new_agent": "エージェントを作成"
   }
 }

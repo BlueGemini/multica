@@ -415,6 +415,7 @@
     "groups": {
       "personal": "Personnel",
       "workspace": "Espace de travail",
+      "capabilities": "Capacités",
       "issues": "Tâches et flux de travail",
       "connections": "Connexions et extensions",
       "device": "Cet appareil"

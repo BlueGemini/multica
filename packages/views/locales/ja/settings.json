@@ -413,6 +413,7 @@
     "groups": {
       "personal": "個人",
       "workspace": "ワークスペース",
+      "capabilities": "機能",
       "issues": "タスクとワークフロー",
       "connections": "接続と拡張機能",
       "device": "このデバイス"

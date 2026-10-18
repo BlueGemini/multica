@@ -87,7 +87,8 @@ import {
 import { useIsCompact } from "@multica/ui/hooks/use-mobile";
 import { cn } from "@multica/ui/lib/utils";
 import { PAGE_GUTTER, PageHeader } from "../../layout/page-header";
-import { SidebarPanelHeader, useSidebarListSlot } from "../../layout/sidebar-list-slot";
+import { useSidebarListSlot } from "../../layout/sidebar-list-slot";
+import { MinePanelHeader } from "../../layout/sidebar-panels";
 import { useTimeAgo } from "./inbox-list-item";
 import { InboxList } from "./inbox-list";
 import { InboxFilterMenu } from "./inbox-filter-menu";
@@ -280,8 +281,8 @@ export function InboxPage() {
   });
 
   const isCompact = useIsCompact();
-  // With the sidebar open on the Inbox module, the list lives in its panel
-  // and this page renders only the detail.
+  // With the sidebar open on Mine, the list lives in its panel under Mine's
+  // header and this page renders only the detail.
   const listSlot = useSidebarListSlot(!isCompact && pathname === wsPaths.inbox());
   const unreadCount = useInboxUnreadCount(wsId);
 
@@ -561,16 +562,9 @@ export function InboxPage() {
   );
 
   const listHeader = listSlot ? (
-    <SidebarPanelHeader
-      title={
-        <>
-          <span className="truncate">{t(($) => $.page.title)}</span>
-          {unreadCountLabel}
-        </>
-      }
-    >
+    <MinePanelHeader wsId={wsId} active="activity">
       {listActions}
-    </SidebarPanelHeader>
+    </MinePanelHeader>
   ) : (
     <PageHeader>
       <div className="flex flex-1 items-center gap-2">

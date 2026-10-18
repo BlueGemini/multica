@@ -74,6 +74,7 @@ vi.mock("@multica/ui/components/ui/sidebar", () => ({
   SidebarContent: ({ children }: { children: React.ReactNode }) => <>{children}</>,
   SidebarFooter: ({ children }: { children: React.ReactNode }) => <>{children}</>,
   SidebarGroup: ({ children }: { children: React.ReactNode }) => <>{children}</>,
+  SidebarGroupAction: () => null,
   SidebarGroupContent: ({ children }: { children: React.ReactNode }) => <>{children}</>,
   SidebarGroupLabel: ({ children }: { children: React.ReactNode }) => <>{children}</>,
   SidebarHeader: ({ children }: { children: React.ReactNode }) => <>{children}</>,
@@ -93,6 +94,10 @@ vi.mock("@multica/ui/components/ui/sidebar", () => ({
     </button>
   ),
   SidebarMenuItem: ({ children }: { children: React.ReactNode }) => <>{children}</>,
+  SidebarMenuAction: () => null,
+  SidebarMenuSub: ({ children }: { children: React.ReactNode }) => <>{children}</>,
+  SidebarMenuSubItem: ({ children }: { children: React.ReactNode }) => <>{children}</>,
+  SidebarMenuSubButton: ({ children }: { children: React.ReactNode }) => <>{children}</>,
   SidebarPanelResizeHandle: () => <div data-slot="sidebar-panel-resize-handle" />,
   useSidebar: () => sidebarState,
 }));
@@ -127,6 +132,13 @@ vi.mock("../common/use-app-foreground", () => ({
   useAppForeground: () => appForeground.current,
 }));
 vi.mock("./help-launcher", () => ({ HelpLauncher: () => null }));
+vi.mock("../settings/components/settings-nav", () => ({
+  SettingsPanel: () => <div data-testid="settings-panel" />,
+}));
+vi.mock("../inbox/components/inbox-list-item", () => ({ useTimeAgo: () => () => "1m" }));
+vi.mock("@multica/core/workspace/hooks", () => ({
+  useActorName: () => ({ getActorName: () => "Someone" }),
+}));
 vi.mock("../auth", () => ({ useLogout: () => vi.fn() }));
 vi.mock("../issues/components/status-icon", () => ({ StatusIcon: () => <span /> }));
 vi.mock("../navigation", () => ({
@@ -183,9 +195,13 @@ vi.mock("@multica/core/paths", async (importOriginal) => ({
     runtimes: () => "/acme/runtimes",
     skills: () => "/acme/skills",
     settings: () => "/acme/settings",
+    newAgent: () => "/acme/agents/new",
     issueDetail: (id: string) => `/acme/issues/${id}`,
     projectDetail: (id: string) => `/acme/projects/${id}`,
+    autopilotDetail: (id: string) => `/acme/autopilots/${id}`,
     agentDetail: (id: string) => `/acme/agents/${id}`,
+    squadDetail: (id: string) => `/acme/squads/${id}`,
+    memberDetail: (id: string) => `/acme/members/${id}`,
   }),
 }));
 vi.mock("@multica/core/api", async (importOriginal) => {
@@ -201,6 +217,7 @@ vi.mock("@multica/core/api", async (importOriginal) => {
   };
 });
 vi.mock("@multica/core/inbox/queries", () => ({
+  inboxListOptions: () => ({ queryKey: ["inbox", "ws-1", "list"] }),
   inboxUnreadSummaryOptions: () => ({ queryKey: ["inbox", "unread-summary"] }),
   // The nav badge and the switcher dot read the SAME cross-workspace summary,
   // so the fixture that drives one drives the other.
@@ -213,7 +230,10 @@ vi.mock("@multica/core/inbox/queries", () => ({
   unreadWorkspaceIds: (entries: { workspace_id: string; count: number }[]) =>
     new Set(entries.filter((s) => s.count > 0).map((s) => s.workspace_id)),
 }));
-vi.mock("@multica/core/issues/queries", () => ({ issueDetailOptions: () => ({ queryKey: ["issue"] }) }));
+vi.mock("@multica/core/issues/queries", () => ({
+  issueDetailOptions: () => ({ queryKey: ["issue"] }),
+  issueKeys: { tableAll: (wsId: string) => ["issues", wsId, "table-query"] },
+}));
 vi.mock("@multica/core/issues/stores/create-mode-store", () => ({
   useCreateModeStore: { getState: () => ({ lastMode: "agent" }) },
   openCreateIssueWithPreference: vi.fn(),
@@ -228,6 +248,8 @@ vi.mock("@multica/core/projects/queries", () => ({
 }));
 vi.mock("@multica/core/workspace/queries", () => ({
   agentListOptions: () => ({ queryKey: ["agents"] }),
+  memberListOptions: () => ({ queryKey: ["members"] }),
+  squadListOptions: () => ({ queryKey: ["squads"] }),
   myInvitationListOptions: () => ({ queryKey: ["invitations"] }),
   workspaceKeys: { myInvitations: () => ["invitations"] },
   workspaceListOptions: () => ({ queryKey: ["workspaces"] }),
@@ -245,6 +267,7 @@ vi.mock("@tanstack/react-query", async (importOriginal) => ({
     if (queryKey[0] === "workspaces") return { data: workspaces.current };
     if (queryKey[0] === "chat" && queryKey[2] === "sessions") return { data: chatSessions.current };
     if (queryKey[0] === "agents") return { data: agents.current };
+    if (queryKey[2] === "table-query") return { data: undefined, isPending: false };
     return { data: [] };
   },
   useQueryClient: () => ({ fetchQuery: vi.fn(), invalidateQueries: invitationApi.invalidateQueries }),
@@ -452,26 +475,33 @@ describe("rail and module panel", () => {
     const { container } = renderWithI18n(<Shell />);
 
     expect(railLink(container, "team")).toHaveAttribute("data-active");
-    expect(railLink(container, "issues")).not.toHaveAttribute("data-active");
+    expect(railLink(container, "work")).not.toHaveAttribute("data-active");
     expect(panel(container)).toHaveAttribute("data-module", "team");
     expect(screen.queryByText("Running")).not.toBeInTheDocument();
   });
 
+  it("labels each rail entry under its icon", () => {
+    const { container } = renderWithI18n(<Shell />);
+    expect(railLink(container, "mine")).toHaveTextContent("Mine");
+    expect(railLink(container, "work")).toHaveTextContent("Work");
+    expect(railLink(container, "settings")).toHaveTextContent("Settings");
+  });
+
   it("keeps the panel an issue was opened from", () => {
-    navigation.current = { pathname: "/acme/projects" };
+    navigation.current = { pathname: "/acme/agents" };
     const { container, rerender } = render(<Shell />);
-    expect(panel(container)).toHaveAttribute("data-module", "projects");
+    expect(panel(container)).toHaveAttribute("data-module", "team");
 
     navigation.current = { pathname: "/acme/issues/issue-9" };
     rerender(<Shell />);
-    expect(panel(container)).toHaveAttribute("data-module", "projects");
+    expect(panel(container)).toHaveAttribute("data-module", "team");
   });
 
   it("folds the panel when the active module's icon is clicked", () => {
     navigation.current = { pathname: "/acme/my-issues" };
     const { container } = render(<Shell />);
 
-    fireEvent.click(railLink(container, "issues")!);
+    fireEvent.click(railLink(container, "mine")!);
     expect(sidebarState.setOpen).toHaveBeenCalledWith(false);
   });
 
@@ -479,7 +509,7 @@ describe("rail and module panel", () => {
     sidebarState.open = false;
     const { container } = render(<Shell />);
 
-    fireEvent.click(railLink(container, "projects")!);
+    fireEvent.click(railLink(container, "team")!);
     expect(sidebarState.setOpen).toHaveBeenCalledWith(true);
   });
 
@@ -490,14 +520,29 @@ describe("rail and module panel", () => {
     navigation.current = { pathname: "/acme/inbox" };
     rerender(<Shell />);
 
-    expect(railLink(container, "projects")).toHaveAttribute("href", "/acme/projects/p-1");
+    expect(railLink(container, "work")).toHaveAttribute("href", "/acme/projects/p-1");
     expect(railLink(container, "team")).toHaveAttribute("href", "/acme/agents");
+    expect(railLink(container, "mine")).toHaveAttribute("href", "/acme/inbox");
   });
 
-  it("hands the Inbox panel to the page's list while the panel is a column", () => {
+  it("hands Mine's panel to the Inbox list on the activity route only", () => {
     navigation.current = { pathname: "/acme/inbox" };
-    const { container } = render(<Shell />);
+    const { container, rerender } = renderWithI18n(<Shell />);
     expect(panel(container)?.querySelector('[data-slot="sidebar-list-slot"]')).not.toBeNull();
+
+    navigation.current = { pathname: "/acme/my-issues" };
+    rerender(<Shell />);
+    expect(panel(container)).toHaveAttribute("data-module", "mine");
+    expect(panel(container)?.querySelector('[data-slot="sidebar-list-slot"]')).toBeNull();
+    expect(screen.getByText("You're all caught up")).toBeInTheDocument();
+  });
+
+  it("shows the settings navigation on the capability routes it absorbed", () => {
+    navigation.current = { pathname: "/acme/skills" };
+    const { container } = render(<Shell />);
+    expect(railLink(container, "settings")).toHaveAttribute("data-active");
+    expect(panel(container)).toHaveAttribute("data-module", "settings");
+    expect(screen.getByTestId("settings-panel")).toBeInTheDocument();
   });
 
   it("keeps a folded panel mounted at zero width, list slot included", () => {
@@ -532,12 +577,12 @@ describe("rail and module panel", () => {
     expect(container.querySelector('[data-slot="sidebar-list-slot"]')).toBeNull();
     expect(container.querySelector('[data-slot="sidebar-sheet-panel"]')).toHaveAttribute(
       "data-module",
-      "issues",
+      "work",
     );
     expect(railLink(container, "chat")).toHaveAttribute("data-active");
   });
 
-  it("marks AI team and lists agents with a task running", () => {
+  it("marks Team and lists agents with a task running first", () => {
     navigation.current = { pathname: "/acme/agents" };
     agents.current = [
       { id: "a-1", name: "Builder", avatar_url: null, archived_at: null },
@@ -551,7 +596,11 @@ describe("rail and module panel", () => {
 
     expect(railLink(container, "team")?.querySelector('[data-slot="rail-running-dot"]')).not.toBeNull();
     expect(screen.getByText("Builder")).toBeInTheDocument();
-    expect(screen.queryByText("Idle")).not.toBeInTheDocument();
+    expect(screen.getByText("Idle")).toBeInTheDocument();
+    expect(
+      screen.getByText("Builder").compareDocumentPosition(screen.getByText("Idle")) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
   });
 });
 
@@ -574,7 +623,7 @@ describe("rail — Chat badge", () => {
     chatSessions.current = [{ id: "chat-1", unread_count: 2 }];
     const { container } = render(<Shell />);
     const inboxBadge = container
-      .querySelector<HTMLElement>('a[data-module="inbox"]')
+      .querySelector<HTMLElement>('a[data-module="mine"]')
       ?.querySelector("number-flow-react") as (HTMLElement & { animated?: boolean }) | null;
     const currentChatBadge = chatBadge(container) as (HTMLElement & { animated?: boolean }) | null;
 

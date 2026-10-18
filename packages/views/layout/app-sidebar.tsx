@@ -17,15 +17,22 @@ import {
 } from "@dnd-kit/core";
 import { SortableContext, verticalListSortingStrategy, useSortable, arrayMove } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { Layers,
+import {
+  Layers,
   ChevronRight,
+  Inbox,
   LogOut,
+  MessageSquare,
   Plus,
   Check,
   Search,
+  Settings,
   SquarePen,
+  Users,
   X,
+  type LucideIcon,
 } from "lucide-react";
+import { Button } from "@multica/ui/components/ui/button";
 import { WorkspaceAvatar } from "../workspace/workspace-avatar";
 import { ActorAvatar } from "@multica/ui/components/common/actor-avatar";
 import { Tooltip, TooltipTrigger, TooltipContent } from "@multica/ui/components/ui/tooltip";
@@ -78,7 +85,6 @@ import { projectDetailOptions } from "@multica/core/projects/queries";
 import type { PinnedItem } from "@multica/core/types";
 import { useLogout } from "../auth";
 import { ProjectIcon } from "../projects/components/project-icon";
-import { routeIconForPath } from "./route-icon-components";
 import { useT } from "../i18n";
 import {
   useShortcut,
@@ -88,7 +94,6 @@ import { useAppForeground } from "../common/use-app-foreground";
 import { useSearchStore } from "../search/search-store";
 import { SidebarListSlot, SidebarPanelHeader } from "./sidebar-list-slot";
 import {
-  LIST_MODULES,
   SIDEBAR_MODULES,
   isNavActive,
   ownsSidebarRoute,
@@ -97,13 +102,16 @@ import {
 } from "./sidebar-modules";
 import { useSidebarModule } from "./sidebar-module-state";
 import {
+  MinePanel,
   NAV_ITEM_CLASS_NAME,
   PanelBody,
   PanelNavItem,
-  ProjectsPanel,
   TeamPanel,
+  WorkAutopilotsGroup,
+  WorkProjectsGroup,
   useRunningAgentCount,
 } from "./sidebar-panels";
+import { SettingsPanel } from "../settings/components/settings-nav";
 
 // Stable empty arrays for query defaults. Using an inline `= []` default on
 // `useQuery` creates a new array reference on every render when `data` is
@@ -130,6 +138,13 @@ export const APP_SIDEBAR_PROVIDER_PROPS = {
 
 const RAIL_ITEM_CLASS_NAME =
   "relative flex size-9 shrink-0 items-center justify-center rounded-md text-muted-foreground outline-hidden transition-colors hover:bg-sidebar-accent/70 hover:text-sidebar-accent-foreground focus-visible:ring-2 focus-visible:ring-sidebar-ring data-active:bg-sidebar-accent data-active:text-sidebar-accent-foreground [&_svg]:size-[18px] [&_svg]:shrink-0";
+
+// A module entry: icon over its name. The tile carries the hover and active
+// fill so the label stays readable beneath it.
+const RAIL_MODULE_CLASS_NAME =
+  "group/rail-item flex w-13 shrink-0 flex-col items-center gap-0.5 rounded-md text-muted-foreground outline-hidden transition-colors hover:text-sidebar-accent-foreground focus-visible:ring-2 focus-visible:ring-sidebar-ring data-active:text-sidebar-accent-foreground [&_svg]:size-[18px] [&_svg]:shrink-0";
+const RAIL_MODULE_ICON_CLASS_NAME =
+  "relative flex h-8 w-9 items-center justify-center rounded-md transition-colors group-hover/rail-item:bg-sidebar-accent/70 group-data-active/rail-item:bg-sidebar-accent";
 
 function DraftDot() {
   const hasDraft = useIssueDraftStore((s) => s.hasDraft());
@@ -405,12 +420,11 @@ function PinSkeleton() {
   );
 }
 
-/** Tasks panel: the personal and workspace issue lists, then the user's pins. */
-function IssuesPanel({ wsId, pathname }: { wsId: string; pathname: string }) {
+/** Work panel: every issue, the user's pins, active projects, scheduled work. */
+function WorkPanel({ wsId, pathname }: { wsId: string; pathname: string }) {
   const { t } = useT("layout");
   const p = useWorkspacePaths();
   const userId = useAuthStore((s) => s.user?.id);
-  const createIssueShortcut = useShortcut("createIssue");
   const { data: pinnedItems = EMPTY_PINS } = useQuery({
     ...pinListOptions(wsId, userId ?? ""),
     enabled: !!wsId && !!userId,
@@ -474,31 +488,23 @@ function IssuesPanel({ wsId, pathname }: { wsId: string; pathname: string }) {
 
   return (
     <>
-      <SidebarPanelHeader title={t(($) => $.nav.issues)} />
+      <SidebarPanelHeader title={t(($) => $.rail.work)}>
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          className="relative text-muted-foreground"
+          aria-label={t(($) => $.sidebar.new_issue)}
+          title={t(($) => $.sidebar.new_issue)}
+          onClick={() => openCreateIssueWithPreference()}
+        >
+          <SquarePen />
+          <DraftDot />
+        </Button>
+      </SidebarPanelHeader>
       <PanelBody>
         <SidebarGroup>
           <SidebarGroupContent>
             <SidebarMenu className="gap-0.5">
-              <SidebarMenuItem>
-                <SidebarMenuButton
-                  className="text-muted-foreground"
-                  onClick={() => openCreateIssueWithPreference()}
-                >
-                  <span className="relative">
-                    <SquarePen />
-                    <DraftDot />
-                  </span>
-                  <span>{t(($) => $.sidebar.new_issue)}</span>
-                  {createIssueShortcut ? (
-                    <ShortcutKeycaps shortcut={createIssueShortcut} decorative className="pointer-events-none ml-auto" />
-                  ) : null}
-                </SidebarMenuButton>
-              </SidebarMenuItem>
-              <PanelNavItem
-                href={p.myIssues()}
-                label={t(($) => $.nav.my_issues)}
-                isActive={isNavActive(pathname, p.myIssues())}
-              />
               <PanelNavItem
                 href={p.issues()}
                 label={t(($) => $.sidebar.all_issues)}
@@ -556,6 +562,8 @@ function IssuesPanel({ wsId, pathname }: { wsId: string; pathname: string }) {
             </SidebarGroup>
           </Collapsible>
         )}
+        <WorkProjectsGroup wsId={wsId} pathname={pathname} />
+        <WorkAutopilotsGroup wsId={wsId} pathname={pathname} />
       </PanelBody>
     </>
   );
@@ -789,12 +797,15 @@ function ModulePanelContent({
   if (listSlot) return <SidebarListSlot />;
   return (
     <>
-      {module === "issues" && <IssuesPanel wsId={wsId} pathname={pathname} />}
-      {module === "projects" && <ProjectsPanel wsId={wsId} pathname={pathname} />}
+      {module === "mine" && <MinePanel wsId={wsId} pathname={pathname} />}
+      {module === "work" && <WorkPanel wsId={wsId} pathname={pathname} />}
       {module === "team" && <TeamPanel wsId={wsId} pathname={pathname} />}
-      <SidebarFooter className="p-2">
-        <JoinDiscordCard />
-      </SidebarFooter>
+      {module === "settings" && <SettingsPanel />}
+      {module !== "settings" && (
+        <SidebarFooter className="p-2">
+          <JoinDiscordCard />
+        </SidebarFooter>
+      )}
     </>
   );
 }
@@ -810,6 +821,7 @@ export function AppSidebarPanel() {
   const { open, isCompact } = useSidebar();
   const { module, pathname } = useSidebarModule();
   const workspace = useCurrentWorkspace();
+  const p = useWorkspacePaths();
   if (isCompact) return null;
   return (
     <aside
@@ -831,7 +843,7 @@ export function AppSidebarPanel() {
           module={module}
           wsId={workspace?.id ?? ""}
           pathname={pathname}
-          listSlot={LIST_MODULES.has(module)}
+          listSlot={module === "chat" || (module === "mine" && pathname === p.inbox())}
         />
       </div>
       {open && <SidebarPanelResizeHandle />}
@@ -843,16 +855,16 @@ function useModuleLabel() {
   const { t } = useT("layout");
   return (module: SidebarModule) => {
     switch (module) {
-      case "inbox":
-        return t(($) => $.nav.inbox);
+      case "mine":
+        return t(($) => $.rail.mine);
       case "chat":
-        return t(($) => $.nav.chat);
-      case "issues":
-        return t(($) => $.nav.issues);
-      case "projects":
-        return t(($) => $.nav.projects);
+        return t(($) => $.rail.chat);
+      case "work":
+        return t(($) => $.rail.work);
       case "team":
-        return t(($) => $.sidebar.ai_team_group);
+        return t(($) => $.rail.team);
+      case "settings":
+        return t(($) => $.rail.settings);
     }
   };
 }
@@ -862,10 +874,18 @@ interface AppSidebarProps {
   topSlot?: React.ReactNode;
 }
 
+const RAIL_ICONS: Record<SidebarModule, LucideIcon> = {
+  mine: Inbox,
+  chat: MessageSquare,
+  work: Layers,
+  team: Users,
+  settings: Settings,
+};
+
 /**
- * The icon rail: the shell's outer frame. It switches between modules (Inbox,
- * Chat, Issues, Projects, AI team), whose panel `AppSidebarPanel` renders
- * inside the canvas. Clicking the active module folds that panel away.
+ * The rail: the shell's outer frame. It switches between modules (Mine, Chat,
+ * Work, Team, Settings), whose panel `AppSidebarPanel` renders inside the
+ * canvas. Clicking the active module folds that panel away.
  */
 export function AppSidebar({ topSlot }: AppSidebarProps = {}) {
   const { t } = useT("layout");
@@ -977,10 +997,48 @@ export function AppSidebar({ topSlot }: AppSidebarProps = {}) {
     });
   };
 
-  const settingsHref = p.settings();
-  // In the compact sheet the Inbox and Chat pages show their list themselves,
-  // so the panel beside the rail offers the general task navigation instead.
-  const sheetModule: SidebarModule = LIST_MODULES.has(activeModule) ? "issues" : activeModule;
+  // In the compact sheet the Chat page shows its list itself, so the panel
+  // beside the rail offers Work's navigation instead.
+  const sheetModule: SidebarModule = activeModule === "chat" ? "work" : activeModule;
+
+  const railModule = (module: SidebarModule) => {
+    const href = moduleHref(module);
+    const Icon = RAIL_ICONS[module];
+    const label = moduleLabel(module);
+    const isActive = module === activeModule;
+    return (
+        <AppLink
+          key={module}
+          href={href}
+          aria-label={label}
+          aria-current={isActive ? "page" : undefined}
+          data-active={isActive ? "" : undefined}
+          data-module={module}
+          className={RAIL_MODULE_CLASS_NAME}
+          onClick={onRailModuleClick(module, href)}
+        >
+          <span className={RAIL_MODULE_ICON_CLASS_NAME}>
+            <Icon />
+            {module === "mine" && (
+              <RailBadge value={inboxUnreadCount} label={String(inboxUnreadCount)} />
+            )}
+            {module === "chat" && (
+              <RailBadge value={chatUnreadCount} label={String(chatUnreadCount)} />
+            )}
+            {module === "team" && runningAgentCount > 0 && (
+              <span
+                data-slot="rail-running-dot"
+                aria-label={t(($) => $.sidebar.running_badge, { count: runningAgentCount })}
+                className="pointer-events-none absolute top-0.5 right-0.5 size-2 rounded-full bg-success ring-2 ring-sidebar"
+              />
+            )}
+          </span>
+          <span aria-hidden className="max-w-full truncate px-0.5 text-micro">
+            {label}
+          </span>
+        </AppLink>
+    );
+  };
 
   return (
     <Sidebar variant="inset" collapsible="rail">
@@ -989,7 +1047,7 @@ export function AppSidebar({ topSlot }: AppSidebarProps = {}) {
         <nav
           aria-label={t(($) => $.sidebar.modules_label)}
           data-slot="sidebar-module-rail"
-          className="flex w-12 shrink-0 flex-col items-center gap-1 pt-2 pb-2"
+          className="flex w-14 shrink-0 flex-col items-center gap-1 pt-2 pb-2"
         >
           <WorkspaceMenu />
           <RailTooltip
@@ -1010,45 +1068,9 @@ export function AppSidebar({ topSlot }: AppSidebarProps = {}) {
             </button>
           </RailTooltip>
           <div className="my-1 h-px w-5 shrink-0 bg-sidebar-border" />
-          {SIDEBAR_MODULES.map((module) => {
-            const href = moduleHref(module);
-            const Icon = routeIconForPath(
-              module === "issues" ? p.issues() : sidebarModuleHome(module, p),
-            );
-            const label = moduleLabel(module);
-            const isActive = module === activeModule && !isNavActive(pathname, settingsHref);
-            return (
-              <React.Fragment key={module}>
-                {module === "issues" && <div className="my-1 h-px w-5 shrink-0 bg-sidebar-border" />}
-                <RailTooltip label={label}>
-                  <AppLink
-                    href={href}
-                    aria-label={label}
-                    aria-current={isActive ? "page" : undefined}
-                    data-active={isActive ? "" : undefined}
-                    data-module={module}
-                    className={RAIL_ITEM_CLASS_NAME}
-                    onClick={onRailModuleClick(module, href)}
-                  >
-                    <Icon />
-                    {module === "inbox" && (
-                      <RailBadge value={inboxUnreadCount} label={String(inboxUnreadCount)} />
-                    )}
-                    {module === "chat" && (
-                      <RailBadge value={chatUnreadCount} label={String(chatUnreadCount)} />
-                    )}
-                    {module === "team" && runningAgentCount > 0 && (
-                      <span
-                        data-slot="rail-running-dot"
-                        aria-label={t(($) => $.sidebar.running_badge, { count: runningAgentCount })}
-                        className="pointer-events-none absolute top-1 right-1 size-2 rounded-full bg-success ring-2 ring-sidebar"
-                      />
-                    )}
-                  </AppLink>
-                </RailTooltip>
-              </React.Fragment>
-            );
-          })}
+          <div className="flex flex-col items-center gap-1.5">
+            {SIDEBAR_MODULES.map(railModule)}
+          </div>
           <div className="flex-1" />
           <RailTooltip
             label={
@@ -1069,16 +1091,7 @@ export function AppSidebar({ topSlot }: AppSidebarProps = {}) {
             </button>
           </RailTooltip>
           <HelpLauncher />
-          <RailTooltip label={t(($) => $.nav.settings)}>
-            <AppLink
-              href={settingsHref}
-              aria-label={t(($) => $.nav.settings)}
-              data-active={isNavActive(pathname, settingsHref) ? "" : undefined}
-              className={RAIL_ITEM_CLASS_NAME}
-            >
-              {React.createElement(routeIconForPath(settingsHref))}
-            </AppLink>
-          </RailTooltip>
+          {railModule("settings")}
         </nav>
 
         {isCompact && (

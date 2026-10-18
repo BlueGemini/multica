@@ -31,7 +31,7 @@ const SIDEBAR_WIDTH_MIN = 200
 const SIDEBAR_WIDTH_MAX = 360
 const SIDEBAR_WIDTH_STORAGE_KEY = "sidebar_width"
 const SIDEBAR_WIDTH_MOBILE = "18rem"
-const SIDEBAR_WIDTH_ICON = "3rem"
+const SIDEBAR_WIDTH_ICON = "3.5rem"
 const SIDEBAR_DRAG_THRESHOLD = 2
 // Tailwind `lg`–`xl`: wide enough to keep a two-pane list/detail surface, too
 // narrow to also spend 256px on the nav. The nav starts collapsed here and the

@@ -7,6 +7,11 @@ import { useInboxFilterStore } from "@multica/core/inbox/filter-store";
 import { SidebarListSlot, SidebarListSlotProvider } from "../../layout/sidebar-list-slot";
 import { InboxPage } from "./inbox-page";
 
+vi.mock("../../layout/sidebar-panels", () => ({
+  MinePanelHeader: ({ children }: { children?: React.ReactNode }) => (
+    <header data-testid="mine-header">{children}</header>
+  ),
+}));
 vi.mock("sonner", () => ({
   toast: { success: vi.fn(), error: vi.fn() },
 }));
@@ -324,6 +329,7 @@ describe("InboxPage", () => {
 
     const panel = screen.getByTestId("sidebar-panel");
     expect(panel).toContainElement(screen.getByTestId("list"));
+    expect(panel).toContainElement(screen.getByTestId("mine-header"));
     expect(screen.queryByTestId("panel-list")).not.toBeInTheDocument();
   });
 

@@ -413,6 +413,7 @@
     "groups": {
       "personal": "个人",
       "workspace": "工作区",
+      "capabilities": "能力",
       "issues": "任务与工作流",
       "connections": "连接与扩展",
       "device": "本设备"

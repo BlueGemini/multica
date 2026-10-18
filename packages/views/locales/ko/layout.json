@@ -52,17 +52,12 @@
     "new_issue": "새 태스크",
     "new_issue_shortcut": "C",
     "all_issues": "모든 태스크",
-    "all_projects": "모든 프로젝트",
-    "active_projects": "진행 중",
     "new_project": "새 프로젝트",
     "running_label": "실행 중",
     "running_badge": "실행 중인 에이전트: {{count}}",
-    "team_group": "팀",
-    "capabilities_group": "기능 및 사용량",
     "search": "검색",
     "modules_label": "워크스페이스 탐색",
     "pinned_label": "고정됨",
-    "ai_team_group": "AI 팀",
     "show_more_pins": "{{count}}개 더 보기…",
     "show_fewer_pins": "접기",
     "unread_overflow": "99+",
@@ -70,5 +65,40 @@
       "title": "Discord 참여하기",
       "dismiss": "닫기"
     }
+  },
+  "rail": {
+    "mine": "내 일",
+    "chat": "채팅",
+    "work": "업무",
+    "team": "팀",
+    "settings": "설정"
+  },
+  "mine": {
+    "tab_queue": "처리 대기",
+    "tab_activity": "활동",
+    "group_review": "검토 대기",
+    "group_mentioned": "멘션",
+    "group_blocked": "차단됨",
+    "group_assigned": "내게 할당됨",
+    "reason_review": "{{name}} 님이 전달함, 검토 필요",
+    "reason_review_pending": "검토 대기 중",
+    "reason_review_requested": "{{name}} 님이 검토를 요청함",
+    "reason_mentioned": "{{name}} 님이 멘션함",
+    "reason_blocked": "차단됨",
+    "reason_blocked_by": "{{name}} 님이 막힘",
+    "reason_in_progress": "진행 중",
+    "reason_todo": "할 일",
+    "someone": "누군가",
+    "empty_title": "처리할 항목이 없습니다",
+    "empty_hint": "검토, 멘션, 막힌 작업이 여기에 표시됩니다."
+  },
+  "work": {
+    "view_all": "모두 보기",
+    "no_open_issues": "열린 이슈가 없습니다",
+    "paused": "일시 중지"
+  },
+  "team": {
+    "members": "멤버",
+    "new_agent": "새 에이전트"
   }
 }
