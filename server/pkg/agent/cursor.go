@@ -60,7 +60,20 @@ func (b *cursorBackend) Execute(ctx context.Context, prompt string, opts ExecOpt
 	stderrBuf := newStderrTail(newLogWriter(b.cfg.Logger, "[cursor:stderr] "), agentStderrTailBytes)
 	cmd.Stderr = stderrBuf
 
+	var supplements *cursorSupplementSession
+	if opts.EnableTaskSupplement {
+		supplements, err = startCursorSupplementSession(runCtx, opts.Cwd, opts.CursorHookCommand, b.cfg.Logger)
+		if err != nil {
+			b.cfg.Logger.Warn("cursor additional messages unavailable for this run", "error", err)
+			supplements = nil
+		} else {
+			cmd.Env = append(cmd.Env, supplements.env()...)
+			prompt += supplements.promptNote()
+		}
+	}
+
 	if err := startOwnedProcessTree(cmd, b.cfg.Logger); err != nil {
+		supplements.close()
 		closeStdin()
 		cancel()
 		return nil, fmt.Errorf("start cursor-agent: %w", err)
@@ -90,6 +103,7 @@ func (b *cursorBackend) Execute(ctx context.Context, prompt string, opts ExecOpt
 		defer close(msgCh)
 		defer close(resCh)
 		defer background.Close()
+		defer supplements.close()
 
 		// Close stdout when the context is cancelled so scanner.Scan() unblocks.
 		// Closing stdin too releases a prompt write still blocked on a full pipe
@@ -161,6 +175,7 @@ func (b *cursorBackend) Execute(ctx context.Context, prompt string, opts ExecOpt
 
 			if sid := evt.readSessionID(); sid != "" {
 				sessionID = sid
+				supplements.activate(sid)
 			}
 
 			switch evt.Type {
@@ -253,6 +268,7 @@ func (b *cursorBackend) Execute(ctx context.Context, prompt string, opts ExecOpt
 
 			case "result":
 				resultSeen = true
+				supplements.end()
 				// Publish the decided outcome BEFORE cleanup. Close() can block
 				// on the tracker lock behind a tool watchdog Interrupt already in
 				// progress, and that Interrupt can return false without moving
@@ -331,6 +347,7 @@ func (b *cursorBackend) Execute(ctx context.Context, prompt string, opts ExecOpt
 				}
 			}
 		}
+		supplements.end()
 		scanErr := scanner.Err()
 		if scanErr != nil {
 			// Scanner stopped consuming stdout. Close the pipe before Wait so a
@@ -348,6 +365,7 @@ func (b *cursorBackend) Execute(ctx context.Context, prompt string, opts ExecOpt
 		background.Close()
 		exitErr := cmd.Wait()
 		releaseProcessGroup(cmd)
+		supplements.close()
 		duration := time.Since(startTime)
 
 		// Wait has already closed the stdin pipe, so a prompt write still blocked
@@ -463,13 +481,18 @@ func (b *cursorBackend) Execute(ctx context.Context, prompt string, opts ExecOpt
 		}
 	}()
 
-	return &Session{
+	session := &Session{
 		Messages:                 msgCh,
 		Result:                   resCh,
 		ToolActivity:             background.Activity,
 		InterruptBackgroundTools: background.Interrupt,
 		TerminalObserved:         background.TerminalObserved,
-	}, nil
+	}
+	if supplements != nil {
+		session.Supplement = supplements.supplement
+		session.SupplementReady = supplements.ready
+	}
+	return session, nil
 }
 
 const cursorIncompleteFinalizationWarning = "actions completed before finalization may already have taken effect"
