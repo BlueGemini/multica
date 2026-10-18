@@ -392,14 +392,14 @@
   max-width: 18rem;
 }
 
-/* Table frame (RichTableFrame): the outer box carries the margin and anchors
-   the toolbar and scroll shadows to the table; the wrapper anchors the resize
-   handles, so they scroll with the columns. */
+/* Table frame (RichTableFrame): the outer box carries the margin, and its
+   toolbar row takes the place of most of the top margin. The wrapper anchors
+   the resize handles, so they scroll with the columns. */
 .rich-text-editor .rich-table {
-  margin: 1rem 0;
+  margin: 0.25rem 0 1rem;
 }
 
-.rich-text-editor .rich-table > .tableWrapper {
+.rich-text-editor .rich-table .tableWrapper {
   position: relative;
   margin: 0;
 }

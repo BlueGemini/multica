@@ -312,6 +312,7 @@ export function RichTableFrame({ model, getMarkdown, tableRef: onTable, children
         const { pointerId } = event;
         const table = tableRef.current;
         const badge = handle.querySelector<HTMLElement>("[data-width-badge]");
+        const restingHeight = handle.style.height;
         let base: number[] | null = null;
         let latest: number[] | null = null;
 
@@ -337,7 +338,7 @@ export function RichTableFrame({ model, getMarkdown, tableRef: onTable, children
           handle.removeEventListener("lostpointercapture", stop);
           if (handle.hasPointerCapture?.(pointerId)) handle.releasePointerCapture?.(pointerId);
           delete handle.dataset.resizing;
-          handle.style.height = "";
+          handle.style.height = restingHeight;
           setDragging(false);
           if (latest) commit(latest);
         };
@@ -388,13 +389,15 @@ export function RichTableFrame({ model, getMarkdown, tableRef: onTable, children
 
   const chrome = { [RICH_TABLE_CHROME_ATTRIBUTE]: "", contentEditable: false } as const;
   const toolbarButton =
-    "flex h-6 items-center justify-center gap-1 rounded-xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring";
+    "flex h-6 items-center justify-center gap-1 rounded-sm text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring";
 
   return (
-    <div className="rich-table group/table relative" data-resized={resized ? "" : undefined}>
+    <div className="rich-table group/table" data-resized={resized ? "" : undefined}>
+      {/* A row of its own above the table: over the table it would cover the
+          last columns' headers and resize handles. */}
       <div
         {...chrome}
-        className="rich-table-toolbar absolute top-1.5 right-1.5 z-20 flex items-center gap-0.5 rounded-md border border-surface-border bg-surface-raised p-0.5 opacity-0 shadow-[var(--menu-shadow)] transition-opacity group-hover/table:opacity-100 focus-within:opacity-100 [@media(hover:none)]:opacity-100"
+        className="rich-table-toolbar flex h-7 items-center justify-end gap-0.5 opacity-0 transition-opacity group-hover/table:opacity-100 focus-within:opacity-100 [@media(hover:none)]:opacity-100"
       >
         {resized && (
           <button type="button" onClick={resetWidths} className={cn(toolbarButton, "px-1.5 text-caption")}>
@@ -421,59 +424,61 @@ export function RichTableFrame({ model, getMarkdown, tableRef: onTable, children
           {copied ? <Check className="size-3.5" /> : <Copy className="size-3.5" />}
         </button>
       </div>
-      <div ref={wrapperRef} className="tableWrapper">
-        <table
-          ref={setTable}
-          data-column-widths={columnWidths ? "" : undefined}
-          style={columnWidths ? { width: sum(columnWidths) } : undefined}
-        >
-          {/* Always rendered, so it stays ahead of rows appended outside React. */}
-          <colgroup>
-            {columnWidths?.map((width, index) => (
-              <col key={index} style={{ width }} />
-            ))}
-          </colgroup>
-          {children}
-        </table>
-        {model.headerText.map((name, index) => (
-          <div
-            key={index}
-            {...chrome}
-            role="separator"
-            aria-orientation="vertical"
-            aria-label={t(($) => $.table.resize_column, { name })}
-            tabIndex={0}
-            data-column={index}
-            data-edge={index === columnCount - 1 ? "end" : undefined}
-            className="rich-table-resize-handle"
-            style={{ left: edges.lefts[index] ?? 0, top: edges.top, height: edges.headerHeight || undefined }}
-            onPointerDown={resize.begin}
-            onDoubleClick={(event) => {
-              event.preventDefault();
-              resize.autoFit(event.currentTarget);
-            }}
-            onKeyDown={resize.nudge}
+      <div className="relative">
+        <div ref={wrapperRef} className="tableWrapper">
+          <table
+            ref={setTable}
+            data-column-widths={columnWidths ? "" : undefined}
+            style={columnWidths ? { width: sum(columnWidths) } : undefined}
           >
-            <span data-width-badge="" aria-hidden />
-          </div>
-        ))}
+            {/* Always rendered, so it stays ahead of rows appended outside React. */}
+            <colgroup>
+              {columnWidths?.map((width, index) => (
+                <col key={index} style={{ width }} />
+              ))}
+            </colgroup>
+            {children}
+          </table>
+          {model.headerText.map((name, index) => (
+            <div
+              key={index}
+              {...chrome}
+              role="separator"
+              aria-orientation="vertical"
+              aria-label={t(($) => $.table.resize_column, { name })}
+              tabIndex={0}
+              data-column={index}
+              data-edge={index === columnCount - 1 ? "end" : undefined}
+              className="rich-table-resize-handle"
+              style={{ left: edges.lefts[index] ?? 0, top: edges.top, height: edges.headerHeight || undefined }}
+              onPointerDown={resize.begin}
+              onDoubleClick={(event) => {
+                event.preventDefault();
+                resize.autoFit(event.currentTarget);
+              }}
+              onKeyDown={resize.nudge}
+            >
+              <span data-width-badge="" aria-hidden />
+            </div>
+          ))}
+        </div>
+        {/* Columns continue past the edge: a shadow, not a fade to a background
+            colour, because the same table renders on cards, pages and chat. */}
+        {overflow.start && (
+          <div
+            aria-hidden
+            className="pointer-events-none absolute inset-y-px left-px w-3 rounded-l-[var(--radius)]"
+            style={{ background: `linear-gradient(to right, ${SCROLL_SHADOW}, transparent)` }}
+          />
+        )}
+        {overflow.end && (
+          <div
+            aria-hidden
+            className="pointer-events-none absolute inset-y-px right-px w-3 rounded-r-[var(--radius)]"
+            style={{ background: `linear-gradient(to left, ${SCROLL_SHADOW}, transparent)` }}
+          />
+        )}
       </div>
-      {/* Columns continue past the edge: a shadow, not a fade to a background
-          colour, because the same table renders on cards, pages and chat. */}
-      {overflow.start && (
-        <div
-          aria-hidden
-          className="pointer-events-none absolute inset-y-px left-px w-3 rounded-l-[var(--radius)]"
-          style={{ background: `linear-gradient(to right, ${SCROLL_SHADOW}, transparent)` }}
-        />
-      )}
-      {overflow.end && (
-        <div
-          aria-hidden
-          className="pointer-events-none absolute inset-y-px right-px w-3 rounded-r-[var(--radius)]"
-          style={{ background: `linear-gradient(to left, ${SCROLL_SHADOW}, transparent)` }}
-        />
-      )}
       {expanded && (
         <RichTableDialog model={model} open={expanded} onOpenChange={setExpanded} getMarkdown={getMarkdown} />
       )}

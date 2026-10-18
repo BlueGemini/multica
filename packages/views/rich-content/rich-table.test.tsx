@@ -119,6 +119,15 @@ describe("RichTable", () => {
     expect(window.localStorage.getItem("multica:rich-table-widths")).toBe("{}");
   });
 
+  it("keeps a handle's height after a click, so a double-click lands", () => {
+    renderTable();
+    const handle = screen.getByRole("separator", { name: "Resize Relation column" });
+    handle.style.height = "38px";
+    fireEvent.pointerDown(handle, { clientX: 100, pointerId: 1 });
+    fireEvent.pointerUp(window, { clientX: 100, pointerId: 1 });
+    expect(handle.style.height).toBe("38px");
+  });
+
   it("copies the table as the author wrote it", async () => {
     renderTable();
     await userEvent.click(screen.getByRole("button", { name: "Copy as Markdown" }));
