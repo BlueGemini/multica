@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"io"
 	"log/slog"
 	"os"
 	"path/filepath"
@@ -122,11 +123,98 @@ func TestCursorSupplementDeliversThroughHookRelay(t *testing.T) {
 	if !strings.Contains(s.promptNote(), s.tag()) {
 		t.Fatal("prompt note does not declare the delivery tag")
 	}
+	assertSupplementWaiting(t, done)
+	if reply := relayCursorHook(t, s.testEnv, postToolUse("conv-main")); len(reply) != 0 {
+		t.Fatalf("second hook replayed claimed guidance: %#v", reply)
+	}
+
+	s.receipt("call-other", []string{"unrelated hook context"})
+	assertSupplementWaiting(t, done)
+	s.receipt("call-1", []string{guidance})
 	if err := <-done; err != nil {
 		t.Fatalf("supplement = %v, want delivered", err)
 	}
-	if reply := relayCursorHook(t, s.testEnv, postToolUse("conv-main")); len(reply) != 0 {
-		t.Fatalf("second hook replayed guidance: %#v", reply)
+}
+
+func assertSupplementWaiting(t *testing.T, done <-chan error) {
+	t.Helper()
+	select {
+	case err := <-done:
+		t.Fatalf("supplement settled (%v) before Cursor echoed the guidance", err)
+	case <-time.After(50 * time.Millisecond):
+	}
+}
+
+type closedHookStdout struct{}
+
+func (closedHookStdout) Write([]byte) (int, error) { return 0, io.ErrClosedPipe }
+
+func TestCursorSupplementRelayFailureIsNotDelivery(t *testing.T) {
+	s, _ := startTestCursorSupplements(t, t.Context())
+	s.activate("conv-main")
+	done := supplementAsync(t, s, t.Context(), "Stop before making the next change.")
+	payload := postToolUse("conv-main")
+	payload["tool_use_id"] = "call-1\nfc_1"
+	data, err := json.Marshal(payload)
+	if err != nil {
+		t.Fatal(err)
+	}
+	RunCursorHookRelay(strings.NewReader(string(data)), closedHookStdout{}, s.testEnv)
+	assertSupplementWaiting(t, done)
+
+	// Cursor reports the call without the guidance, so it never reached the
+	// model and goes out again at the next tool boundary.
+	s.receipt("call-1", nil)
+	assertSupplementWaiting(t, done)
+	reply := relayCursorHook(t, s.testEnv, postToolUse("conv-main"))
+	guidance, _ := reply["additional_context"].(string)
+	if !strings.HasSuffix(guidance, "Stop before making the next change.") {
+		t.Fatalf("retried additional_context = %q", guidance)
+	}
+	s.receipt("call-2", []string{guidance})
+	if err := <-done; err != nil {
+		t.Fatalf("supplement = %v, want delivered on retry", err)
+	}
+}
+
+func TestCursorSupplementRetriesDroppedGuidanceFirst(t *testing.T) {
+	s, _ := startTestCursorSupplements(t, t.Context())
+	s.activate("conv-main")
+	input := func(text string) *cursorSupplementInput {
+		return &cursorSupplementInput{ctx: t.Context(), text: text, done: make(chan error, 1)}
+	}
+	first, second := input("first"), input("second")
+	s.pending = []*cursorSupplementInput{first}
+	s.prepareHook(cursorHookRequest{Event: "postToolUseFailure", ConversationID: "conv-main", ToolUseID: "call-read"})
+	s.pending = append(s.pending, second)
+
+	s.receipt("call-read", []string{})
+	output := s.prepareHook(cursorHookRequest{Event: "postToolUse", ConversationID: "conv-main", ToolUseID: "call-next"})
+	if output["additional_context"] != "first\n\nsecond" {
+		t.Fatalf("retry hook = %q, want dropped guidance ahead of newer guidance", output["additional_context"])
+	}
+	s.receipt("call-next", []string{"first\n\nsecond"})
+	for _, in := range []*cursorSupplementInput{first, second} {
+		if err := <-in.done; err != nil {
+			t.Fatalf("%s = %v, want delivered", in.text, err)
+		}
+	}
+}
+
+func TestCursorSupplementWithoutReceiptFailsAtTurnEnd(t *testing.T) {
+	s, _ := startTestCursorSupplements(t, t.Context())
+	s.activate("conv-main")
+	ctx, cancel := context.WithCancel(t.Context())
+	done := supplementAsync(t, s, ctx, "no receipt")
+	if reply := relayCursorHook(t, s.testEnv, postToolUse("conv-main")); len(reply) == 0 {
+		t.Fatal("hook received no guidance")
+	}
+	// Cancelling cannot withdraw guidance Cursor may already hold.
+	cancel()
+	assertSupplementWaiting(t, done)
+	s.end()
+	if err := <-done; !errors.Is(err, context.Canceled) {
+		t.Fatalf("unconfirmed supplement at turn end = %v, want context.Canceled", err)
 	}
 }
 
@@ -209,14 +297,14 @@ func TestCursorSupplementBatchesInCommentOrder(t *testing.T) {
 	s.pending = []*cursorSupplementInput{first, second, third}
 
 	req := cursorHookRequest{Event: "postToolUse", ConversationID: "conv-main"}
-	output, delivered := s.prepareHook(req)
-	if len(delivered) != 1 || delivered[0] != first || output["additional_context"] != first.text {
-		t.Fatalf("first hook delivered %d inputs, want only the first", len(delivered))
+	output := s.prepareHook(req)
+	if len(s.inflight) != 1 || s.inflight[0] != first || output["additional_context"] != first.text {
+		t.Fatalf("first hook claimed %d inputs, want only the first", len(s.inflight))
 	}
-	output, delivered = s.prepareHook(req)
-	if len(delivered) != 2 || delivered[0] != second || delivered[1] != third ||
+	output = s.prepareHook(req)
+	if len(s.inflight) != 3 || s.inflight[1] != second || s.inflight[2] != third ||
 		output["additional_context"] != second.text+"\n\n"+third.text {
-		t.Fatalf("second hook delivered %d inputs, want second then third", len(delivered))
+		t.Fatalf("second hook claimed %d inputs in total, want second then third", len(s.inflight))
 	}
 }
 

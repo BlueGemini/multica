@@ -282,10 +282,14 @@ type executionEnvironmentCommand func() ([]string, error)
 // cursorSupplementHookCommand returns the hook relay a steerable Cursor run
 // installs in .cursor/hooks.json. That file lands in the workdir, so steering
 // is offered only for daemon-managed workdirs, never inside a user's own
-// directory or worktree. Windows is excluded because Cursor runs hooks there
-// through PowerShell, whose quoting the relay command is not verified against.
+// directory or worktree, and only when the workdir has no hooks.json of its
+// own. Windows is excluded because Cursor runs hooks there through PowerShell,
+// whose quoting the relay command is not verified against.
 func cursorSupplementHookCommand(env *execenv.Environment) ([]string, bool) {
 	if runtime.GOOS == "windows" || env == nil || env.LocalDirectory || env.LocalWorktree != nil {
+		return nil, false
+	}
+	if agent.CursorHooksInstallable(env.WorkDir) != nil {
 		return nil, false
 	}
 	executable, err := resolveSelfExecutable()

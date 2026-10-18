@@ -61,10 +61,11 @@ func (b *cursorBackend) Execute(ctx context.Context, prompt string, opts ExecOpt
 	cmd.Stderr = stderrBuf
 
 	var supplements *cursorSupplementSession
+	var supplementErr error
 	if opts.EnableTaskSupplement {
-		supplements, err = startCursorSupplementSession(runCtx, opts.Cwd, opts.CursorHookCommand, b.cfg.Logger)
-		if err != nil {
-			b.cfg.Logger.Warn("cursor additional messages unavailable for this run", "error", err)
+		supplements, supplementErr = startCursorSupplementSession(runCtx, opts.Cwd, opts.CursorHookCommand, b.cfg.Logger)
+		if supplementErr != nil {
+			b.cfg.Logger.Warn("cursor additional messages unavailable for this run", "error", supplementErr)
 			supplements = nil
 		} else {
 			cmd.Env = append(cmd.Env, supplements.env()...)
@@ -237,6 +238,7 @@ func (b *cursorBackend) Execute(ctx context.Context, prompt string, opts ExecOpt
 					})
 				case "completed":
 					call := parseCursorToolCall(&evt)
+					supplements.receipt(call.CallID, call.HookContexts)
 					if call.Background {
 						background.Add(call)
 					} else {
@@ -488,9 +490,18 @@ func (b *cursorBackend) Execute(ctx context.Context, prompt string, opts ExecOpt
 		InterruptBackgroundTools: background.Interrupt,
 		TerminalObserved:         background.TerminalObserved,
 	}
-	if supplements != nil {
+	switch {
+	case supplements != nil:
 		session.Supplement = supplements.supplement
 		session.SupplementReady = supplements.ready
+	case supplementErr != nil:
+		// The daemon already offered steering for this run and there is no way
+		// to withdraw it, so settle each message as failed right away instead of
+		// leaving it pending until the turn ends.
+		session.Supplement = func(context.Context, string) error {
+			return fmt.Errorf("cursor hooks unavailable: %w", supplementErr)
+		}
+		session.SupplementReady = func() bool { return runCtx.Err() == nil }
 	}
 	return session, nil
 }
@@ -716,6 +727,10 @@ type cursorToolCall struct {
 
 	Background bool
 	PID        int
+
+	// HookContexts are the additional_context values Cursor attached to the
+	// tool result, the receipt for hook-delivered guidance.
+	HookContexts []string
 }
 
 // cursorToolCallKeySuffix is how Cursor names the per-tool payload: the tool is
@@ -742,6 +757,14 @@ func parseCursorToolCall(evt *cursorStreamEvent) cursorToolCall {
 		var nestedID string
 		if err := json.Unmarshal(envelope["toolCallId"], &nestedID); err == nil {
 			call.CallID = cursorCallID(nestedID)
+		}
+	}
+	var hookContexts []struct {
+		Content string `json:"content"`
+	}
+	if raw, ok := envelope["hookAdditionalContexts"]; ok && json.Unmarshal(raw, &hookContexts) == nil {
+		for _, c := range hookContexts {
+			call.HookContexts = append(call.HookContexts, c.Content)
 		}
 	}
 

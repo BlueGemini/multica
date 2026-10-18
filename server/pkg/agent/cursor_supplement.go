@@ -54,6 +54,7 @@ var cursorSupplementEvents = []string{"postToolUse", "postToolUseFailure"}
 type cursorHookRequest struct {
 	Event            string `json:"hook_event_name"`
 	ConversationID   string `json:"conversation_id"`
+	ToolUseID        string `json:"tool_use_id,omitempty"`
 	ParentToolCallID string `json:"parent_tool_call_id,omitempty"`
 }
 
@@ -63,6 +64,11 @@ type cursorHookRequest struct {
 // over a token-protected loopback endpoint, for guidance to attach as
 // additional_context. Cursor shows that context to the model beside the tool
 // result, so the prompt declares the per-run tag that marks it as genuine.
+//
+// A hook response is not delivery: the relay can fail after it, and Cursor
+// drops additional_context on some paths (e.g. a failed Read). Guidance counts
+// as delivered only when the tool call's completed stream event echoes it in
+// hookAdditionalContexts.
 type cursorSupplementSession struct {
 	ctx       context.Context
 	logger    *slog.Logger
@@ -78,14 +84,18 @@ type cursorSupplementSession struct {
 	active    bool
 	ended     bool
 	pending   []*cursorSupplementInput
+	inflight  []*cursorSupplementInput
 	closeOnce sync.Once
 }
 
 type cursorSupplementInput struct {
-	ctx     context.Context
-	text    string
-	done    chan error
-	writing bool
+	ctx  context.Context
+	text string
+	done chan error
+	// claimed is set while a hook response carries the input; only the stream
+	// receipt or the end of the turn settles it then.
+	claimed   bool
+	toolUseID string
 }
 
 func startCursorSupplementSession(ctx context.Context, cwd string, hookCommand []string, logger *slog.Logger) (*cursorSupplementSession, error) {
@@ -129,15 +139,34 @@ func startCursorSupplementSession(ctx context.Context, cwd string, hookCommand [
 	return s, nil
 }
 
-// writeHooksFile never replaces a hooks.json it did not write: a workdir that
-// already carries its own hooks keeps them, and the run goes without steering.
-func (s *cursorSupplementSession) writeHooksFile() error {
-	existing, err := os.ReadFile(s.hooksPath)
+// CursorHooksInstallable reports whether a run in cwd can carry Multica's
+// managed hooks.json. Multica never replaces hooks it did not write: a workdir
+// with its own keeps them and goes without steering, so the daemon must check
+// this before it offers steering for the run.
+func CursorHooksInstallable(cwd string) error {
+	if strings.TrimSpace(cwd) == "" {
+		return errors.New("cursor hooks require a working directory")
+	}
+	dir := filepath.Join(cwd, ".cursor")
+	if info, err := os.Stat(dir); err == nil && !info.IsDir() {
+		return fmt.Errorf("%s is not a directory", dir)
+	} else if err != nil && !errors.Is(err, fs.ErrNotExist) {
+		return fmt.Errorf("inspect cursor dir: %w", err)
+	}
+	path := filepath.Join(dir, "hooks.json")
+	existing, err := os.ReadFile(path)
 	switch {
 	case err == nil && !bytes.Contains(existing, []byte(CursorHookHelperArg)):
-		return fmt.Errorf("workdir already has an unmanaged %s", s.hooksPath)
+		return fmt.Errorf("workdir already has an unmanaged %s", path)
 	case err != nil && !errors.Is(err, fs.ErrNotExist):
 		return fmt.Errorf("read cursor hooks: %w", err)
+	}
+	return nil
+}
+
+func (s *cursorSupplementSession) writeHooksFile() error {
+	if err := CursorHooksInstallable(filepath.Dir(filepath.Dir(s.hooksPath))); err != nil {
+		return err
 	}
 	if err := os.MkdirAll(filepath.Dir(s.hooksPath), 0o755); err != nil {
 		return fmt.Errorf("create .cursor dir: %w", err)
@@ -227,11 +256,12 @@ func (s *cursorSupplementSession) supplement(ctx context.Context, text string) e
 	case <-ctx.Done():
 	case <-s.ctx.Done():
 	}
-	// Serialize cancellation with hook delivery: once a hook owns the input its
-	// response write decides the outcome, otherwise withdraw it so a later
-	// hook cannot deliver it after this call has reported failure.
+	// Serialize cancellation with hook delivery: once a hook carries the input
+	// it may already be in Cursor's context, so only the receipt or the end of
+	// the turn decides the outcome; otherwise withdraw it so a later hook
+	// cannot deliver it after this call has reported failure.
 	s.mu.Lock()
-	if input.writing {
+	if input.claimed {
 		s.mu.Unlock()
 		return <-input.done
 	}
@@ -253,14 +283,14 @@ func (s *cursorSupplementSession) supplement(ctx context.Context, text string) e
 // prepareHook claims the pending guidance that fits one hook response. Only
 // the main conversation's own tool calls may consume it: subagents run their
 // own loops, and Cursor marks their tool calls with parent_tool_call_id.
-func (s *cursorSupplementSession) prepareHook(req cursorHookRequest) (map[string]any, []*cursorSupplementInput) {
+func (s *cursorSupplementSession) prepareHook(req cursorHookRequest) map[string]any {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if !slices.Contains(cursorSupplementEvents, req.Event) || req.ParentToolCallID != "" ||
 		!s.active || s.ended || s.ctx.Err() != nil || req.ConversationID != s.sessionID {
-		return map[string]any{}, nil
+		return map[string]any{}
 	}
-	var delivered []*cursorSupplementInput
+	var claimed []*cursorSupplementInput
 	var texts []string
 	size := 0
 	full := false
@@ -282,16 +312,52 @@ func (s *cursorSupplementSession) prepareHook(req cursorHookRequest) (map[string
 			continue
 		}
 		size += n
-		input.writing = true
-		delivered = append(delivered, input)
+		input.claimed = true
+		input.toolUseID = cursorCallID(req.ToolUseID)
+		claimed = append(claimed, input)
 		texts = append(texts, input.text)
 	}
 	clear(s.pending[len(kept):])
 	s.pending = kept
 	if len(texts) == 0 {
-		return map[string]any{}, nil
+		return map[string]any{}
 	}
-	return map[string]any{"additional_context": strings.Join(texts, "\n\n")}, delivered
+	s.inflight = append(s.inflight, claimed...)
+	return map[string]any{"additional_context": strings.Join(texts, "\n\n")}
+}
+
+// receipt settles claimed guidance from a completed tool call. Guidance that
+// Cursor echoes back reached the model. Guidance claimed by this very call but
+// missing from the echo never did, so it returns to the head of the queue for
+// the next tool boundary; anything else keeps waiting for its own call.
+func (s *cursorSupplementSession) receipt(callID string, contexts []string) {
+	if s == nil || callID == "" && len(contexts) == 0 {
+		return
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	var retry []*cursorSupplementInput
+	kept := s.inflight[:0]
+	for _, input := range s.inflight {
+		switch {
+		case slices.ContainsFunc(contexts, func(c string) bool { return strings.Contains(c, input.text) }):
+			input.done <- nil
+		case input.toolUseID != "" && input.toolUseID == callID:
+			input.claimed, input.toolUseID = false, ""
+			if err := input.ctx.Err(); err != nil {
+				input.done <- err
+			} else {
+				retry = append(retry, input)
+			}
+		default:
+			kept = append(kept, input)
+		}
+	}
+	clear(s.inflight[len(kept):])
+	s.inflight = kept
+	if len(retry) > 0 {
+		s.pending = append(retry, s.pending...)
+	}
 }
 
 func (s *cursorSupplementSession) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -308,17 +374,13 @@ func (s *cursorSupplementSession) ServeHTTP(w http.ResponseWriter, r *http.Reque
 		http.Error(w, "invalid hook request", http.StatusBadRequest)
 		return
 	}
-	output, delivered := s.prepareHook(req)
-	body, err := json.Marshal(output)
+	body, err := json.Marshal(s.prepareHook(req))
 	if err == nil {
 		w.Header().Set("Content-Type", "application/json")
 		_, err = w.Write(body)
 	}
-	if err == nil {
-		err = http.NewResponseController(w).Flush()
-	}
-	for _, input := range delivered {
-		input.done <- err
+	if err != nil && s.logger != nil {
+		s.logger.Warn("cursor hook response failed", "error", err)
 	}
 }
 
@@ -330,10 +392,10 @@ func (s *cursorSupplementSession) end() {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.ended, s.active = true, false
-	for _, input := range s.pending {
+	for _, input := range slices.Concat(s.pending, s.inflight) {
 		input.done <- context.Canceled
 	}
-	s.pending = nil
+	s.pending, s.inflight = nil, nil
 }
 
 func (s *cursorSupplementSession) close() {
