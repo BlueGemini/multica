@@ -1748,5 +1748,8 @@
         }
       }
     }
+  },
+  "hover_card": {
+    "created_updated": "a créé {{created}} · mis à jour {{updated}}"
   }
 }

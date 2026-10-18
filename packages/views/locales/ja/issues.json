@@ -1683,5 +1683,8 @@
         }
       }
     }
+  },
+  "hover_card": {
+    "created_updated": "{{created}}に作成 · {{updated}}に更新"
   }
 }

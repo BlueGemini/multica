@@ -1683,5 +1683,8 @@
         }
       }
     }
+  },
+  "hover_card": {
+    "created_updated": "创建于 {{created}} · 更新于 {{updated}}"
   }
 }
