@@ -48,7 +48,7 @@ const LEVELS: readonly LogLevel[] = ["DEBUG", "INFO", "WARN", "ERROR"];
 const LEVEL_BADGE_CLASS: Record<LogLevel, string> = {
   DEBUG: "border-muted-foreground/25 text-muted-foreground",
   INFO: "border-foreground/15 text-foreground",
-  WARN: "border-warning/40 text-warning",
+  WARN: "border-warning/40 text-warning-subtle-foreground",
   ERROR: "border-destructive/40 text-destructive",
 };
 
@@ -325,7 +325,7 @@ export function DaemonPanel({
         <div
           ref={logContainerRef}
           onScroll={handleScroll}
-          className="min-h-0 flex-1 overflow-y-auto bg-muted/20 px-2 py-1 font-mono text-caption"
+          className="min-h-0 flex-1 overflow-y-auto bg-fill-subtle px-2 py-1 font-mono text-caption"
         >
           {displayed.length === 0 ? (
             <EmptyState
@@ -365,7 +365,7 @@ export function DaemonPanel({
             communicated implicitly by the presence of the Jump-to-latest
             button below; an explicit "Paused" word read as "log stream is
             paused" (it isn't — data keeps flowing into the buffer). */}
-        <div className="flex shrink-0 items-center justify-between border-t bg-muted/30 px-4 py-1.5 text-caption text-muted-foreground">
+        <div className="flex shrink-0 items-center justify-between border-t bg-fill-subtle px-4 py-1.5 text-caption text-muted-foreground">
           <span className="tabular-nums">
             {t(($) => $.desktop.daemon.showing_logs, {
               shown: filtered.length,
@@ -582,7 +582,7 @@ function GroupRows({
         <button
           type="button"
           onClick={onToggle}
-          className="my-0.5 ml-2 inline-flex w-fit items-center gap-2 rounded-xs border border-dashed border-muted-foreground/25 bg-muted/30 px-2 py-0.5 text-micro italic text-muted-foreground hover:bg-muted/60 hover:text-foreground"
+          className="my-0.5 ml-2 inline-flex w-fit items-center gap-2 rounded-xs border border-dashed border-muted-foreground/25 bg-fill-subtle px-2 py-0.5 text-micro italic text-muted-foreground hover:bg-fill-hover hover:text-foreground"
         >
           <span>···</span>
           <span>

@@ -115,7 +115,7 @@ function createComponents(
           return <>{renderFileCard({ href, filename })}</>
         }
         return (
-          <div className="my-1 flex items-center gap-2 rounded-md border border-border bg-muted/50 px-2.5 py-1 transition-colors hover:bg-muted">
+          <div className="my-1 flex items-center gap-2 rounded-md border border-border bg-fill-hover px-2.5 py-1 transition-colors hover:bg-muted">
             <FileText className="size-4 shrink-0 text-muted-foreground" />
             <div className="min-w-0 flex-1">
               <p className="truncate text-body">{filename}</p>
@@ -334,11 +334,11 @@ function createComponents(
         <table className="min-w-full divide-y divide-border">{children}</table>
       </div>
     ),
-    thead: ({ children }) => <thead className="bg-muted/50">{children}</thead>,
+    thead: ({ children }) => <thead className="bg-fill-subtle">{children}</thead>,
     tbody: ({ children }) => <tbody className="divide-y divide-border">{children}</tbody>,
     th: ({ children }) => <th className="text-left py-3 px-4 font-semibold text-body">{children}</th>,
     td: ({ children }) => <td className="py-3 px-4 text-body">{children}</td>,
-    tr: ({ children }) => <tr className="hover:bg-muted/30 transition-colors">{children}</tr>,
+    tr: ({ children }) => <tr className="hover:bg-fill-hover transition-colors">{children}</tr>,
     // Rich headings
     h1: ({ children }) => <h1 className="font-sans text-title-sm font-bold mt-7 mb-4">{children}</h1>,
     h2: ({ children }) => (
@@ -348,7 +348,7 @@ function createComponents(
     h4: ({ children }) => <h4 className="text-body font-semibold mt-3 mb-1">{children}</h4>,
     // Styled blockquotes
     blockquote: ({ children }) => (
-      <blockquote className="border-l-4 border-foreground/30 bg-muted/30 pl-4 pr-3 py-2 my-3 rounded-r-md">
+      <blockquote className="border-l-4 border-foreground/30 bg-fill-subtle pl-4 pr-3 py-2 my-3 rounded-r-md">
         {children}
       </blockquote>
     ),

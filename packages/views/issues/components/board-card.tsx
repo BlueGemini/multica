@@ -137,7 +137,7 @@ export const BoardCardContent = memo(function BoardCardContent({
             <button
               type="button"
               aria-label={priorityLabel}
-              className="inline-flex size-5 shrink-0 items-center justify-center rounded-xs hover:bg-muted/60"
+              className="inline-flex size-5 shrink-0 items-center justify-center rounded-xs hover:bg-fill-hover"
             >
               <PriorityIcon priority={issue.priority} />
             </button>
@@ -230,7 +230,7 @@ export const BoardCardContent = memo(function BoardCardContent({
         <div className="mt-1.5 flex items-center gap-1.5 flex-wrap">
           <CustomStatusChip status={issue.status} />
           {showProject && (
-            <span className="inline-flex items-center gap-1 rounded-full bg-muted/60 px-1.5 py-0.5 text-micro text-muted-foreground max-w-[160px]">
+            <span className="inline-flex items-center gap-1 rounded-full bg-fill-hover px-1.5 py-0.5 text-micro text-muted-foreground max-w-[160px]">
               <ProjectIcon project={project} size="sm" />
               <span className="truncate">{project!.title}</span>
             </span>
@@ -246,7 +246,7 @@ export const BoardCardContent = memo(function BoardCardContent({
           {cardCustomProperties.map((property) => (
             <span
               key={property.id}
-              className="inline-flex max-w-[160px] items-center gap-1 rounded-full bg-muted/60 px-1.5 py-0.5 text-micro text-muted-foreground"
+              className="inline-flex max-w-[160px] items-center gap-1 rounded-full bg-fill-hover px-1.5 py-0.5 text-micro text-muted-foreground"
             >
               <PropertyIcon property={property} className="size-3 text-micro" />
               <CustomPropertyValueDisplay property={property} value={issue.properties?.[property.id]} />

@@ -291,7 +291,7 @@ function InstructionsStep({ onClose }: { onClose: () => void }) {
         </div>
       </div>
 
-      <DialogFooter className="m-0 rounded-b-xl border-t bg-muted/30 px-6 py-3">
+      <DialogFooter className="m-0 rounded-b-xl border-t bg-fill-subtle px-6 py-3">
         <Button variant="outline" size="sm" onClick={onClose}>
           {t(($) => $.connect.cancel)}
         </Button>
@@ -363,7 +363,7 @@ function LiveListening() {
   const { t } = useT("runtimes");
   return (
     <div
-      className="flex items-center gap-2.5 rounded-lg border bg-muted/40 px-3 py-2.5 text-caption"
+      className="flex items-center gap-2.5 rounded-lg border bg-fill-subtle px-3 py-2.5 text-caption"
       role="status"
       aria-live="polite"
     >
@@ -408,7 +408,7 @@ function SuccessStep({
         </div>
       </div>
 
-      <DialogFooter className="m-0 rounded-b-xl border-t bg-muted/30 px-6 py-3">
+      <DialogFooter className="m-0 rounded-b-xl border-t bg-fill-subtle px-6 py-3">
         {onGoToRuntime && (
           <Button variant="ghost" size="sm" onClick={onGoToRuntime}>
             {t(($) => $.connect.view_runtime)}

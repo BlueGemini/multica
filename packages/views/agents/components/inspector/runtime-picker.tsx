@@ -22,6 +22,7 @@ import {
   runtimeRowLabel,
   type RuntimeMachine,
 } from "../../../runtimes/components/runtime-machines";
+import { Badge } from "@multica/ui/components/ui/badge";
 import { Label } from "@multica/ui/components/ui/label";
 import { CHIP_CLASS } from "./chip";
 import { useT } from "../../../i18n";
@@ -320,7 +321,7 @@ export function RuntimePicker({
             type="button"
             onClick={() => setMachineId(null)}
             aria-label={t(($) => $.pickers.runtime_back_to_machines)}
-            className="flex w-full items-center gap-2 px-2 py-2 text-left text-body transition-colors hover:bg-muted/60"
+            className="flex w-full items-center gap-2 px-2 py-2 text-left text-body transition-colors hover:bg-fill-hover"
           >
             <ChevronLeft className="h-4 w-4 shrink-0 text-muted-foreground" />
             <span className="min-w-0 flex-1 truncate font-medium">
@@ -383,9 +384,9 @@ export function RuntimePicker({
                 {label}
               </span>
               {rt.runtime_mode === "cloud" && (
-                <span className="shrink-0 rounded-xs bg-info/10 px-1 text-micro font-medium text-info">
+                <Badge variant="info" className="shrink-0">
                   {t(($) => $.create_dialog.runtime_cloud_badge)}
-                </span>
+                </Badge>
               )}
               {locked && (
                 <span className="shrink-0 inline-flex items-center gap-0.5 rounded-xs bg-muted px-1 text-micro font-medium text-muted-foreground">
@@ -428,9 +429,9 @@ export function RuntimePicker({
                     {machine.title}
                   </span>
                   {machine.mode === "cloud" && (
-                    <span className="shrink-0 rounded-xs bg-info/10 px-1 text-micro font-medium text-info">
+                    <Badge variant="info" className="shrink-0">
                       {t(($) => $.create_dialog.runtime_cloud_badge)}
-                    </span>
+                    </Badge>
                   )}
                 </div>
                 <div className="mt-0.5 flex items-center gap-1.5 text-caption text-muted-foreground">

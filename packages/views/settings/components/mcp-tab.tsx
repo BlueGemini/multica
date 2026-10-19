@@ -449,7 +449,7 @@ function ToolSourcesOverview() {
               {body}
             </AppLink>
           ) : (
-            <div key={source.key} className={cn(className, "bg-muted/30")}>
+            <div key={source.key} className={cn(className, "bg-fill-subtle")}>
               {body}
             </div>
           );

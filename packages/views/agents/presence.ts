@@ -50,12 +50,12 @@ export interface AvailabilityVisual {
 export const availabilityConfig: Record<AgentAvailability, AvailabilityVisual> = {
   online: {
     dotClass: "bg-success",
-    textClass: "text-success",
+    textClass: "text-success-subtle-foreground",
     icon: CircleDot,
   },
   unstable: {
     dotClass: "bg-warning",
-    textClass: "text-warning",
+    textClass: "text-warning-subtle-foreground",
     icon: PlugZap,
   },
   offline: {
@@ -91,14 +91,14 @@ export interface WorkloadVisual {
 
 export const workloadConfig: Record<Workload, WorkloadVisual> = {
   working: {
-    textClass: "text-brand",
+    textClass: "text-brand-subtle-foreground",
     icon: Loader2,
   },
   queued: {
     // Amber chip: nothing running but tasks waiting. On an offline runtime
     // this is the "stuck" signal we explicitly surface (replacing the old
     // misleading "Running 0/N +Mq" copy).
-    textClass: "text-warning",
+    textClass: "text-warning-subtle-foreground",
     icon: Clock,
   },
   idle: {

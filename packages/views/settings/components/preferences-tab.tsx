@@ -374,7 +374,7 @@ function IssueFieldsMatrix() {
     <SettingsCard>
       <table className="w-full text-body">
         <thead>
-          <tr className="border-b border-surface-border bg-muted/20 text-caption font-medium text-muted-foreground">
+          <tr className="border-b border-surface-border bg-fill-subtle text-caption font-medium text-muted-foreground">
             <th scope="col" className="px-4 py-2 text-left font-medium">
               {t(($) => $.preferences.issue_fields.field)}
             </th>

@@ -81,7 +81,7 @@ function YourSide() {
 
 function MulticaSide() {
   return (
-    <div className="rounded-lg border border-border/70 bg-muted/25 p-6 flex flex-col">
+    <div className="rounded-lg border border-border/70 bg-fill-subtle p-6 flex flex-col">
       <div className="text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground mb-5">
         Multica
       </div>

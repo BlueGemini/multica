@@ -55,7 +55,7 @@ export const SubIssuesAgentWorkingChip = memo(
       <HoverCard>
         <HoverCardTrigger
           render={
-            <span className="inline-flex shrink-0 items-center gap-1.5 rounded-full bg-muted/60 px-2 py-0.5" />
+            <span className="inline-flex shrink-0 items-center gap-1.5 rounded-full bg-fill-hover px-2 py-0.5" />
           }
         >
           <AgentAvatarStack agentIds={agentIds} size="xs" max={3} />

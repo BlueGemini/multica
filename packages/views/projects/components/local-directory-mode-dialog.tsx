@@ -207,7 +207,7 @@ function ModeOption({
       className={`flex w-full items-start gap-3 rounded-lg border p-3 text-left transition-colors ${
         selected
           ? "border-primary ring-1 ring-primary"
-          : "border-border hover:bg-muted/50"
+          : "border-border hover:bg-fill-hover"
       } ${disabled ? "cursor-not-allowed opacity-60" : ""}`}
     >
       <span
@@ -228,7 +228,7 @@ function ModeOption({
           {description}
         </span>
         {disabled && disabledReason && (
-          <span className="mt-1.5 flex items-start gap-1.5 text-caption text-warning">
+          <span className="mt-1.5 flex items-start gap-1.5 text-caption text-warning-subtle-foreground">
             <TriangleAlert className="size-3 mt-0.5 shrink-0" />
             <span>{disabledReason}</span>
           </span>

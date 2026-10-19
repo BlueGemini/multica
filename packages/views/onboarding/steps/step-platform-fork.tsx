@@ -427,7 +427,7 @@ function CliWaitingStatus({ dialogOpen }: { dialogOpen: boolean }) {
           : "stalled";
 
   return (
-    <div className="flex flex-col gap-3 rounded-lg border bg-muted/30 p-4">
+    <div className="flex flex-col gap-3 rounded-lg border bg-fill-subtle p-4">
       <div className="flex items-center gap-2 text-body">
         {/* Pulsing green dot signals active WS subscription — the
             useRuntimePicker hook is already subscribed to `daemon:register`,

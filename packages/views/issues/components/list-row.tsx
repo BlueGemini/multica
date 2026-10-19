@@ -136,7 +136,7 @@ function ListRowContent({
             <CustomStatusChip status={issue.status} className="shrink-0" />
             <IssueDuplicateOfMarker issue={issue} insideLink />
             {showChildProgress && (
-              <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-muted/60 px-1.5 py-0.5">
+              <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-fill-hover px-1.5 py-0.5">
                 <ProgressRing done={childProgress!.done} total={childProgress!.total} size={14} />
                 <span className="text-micro text-muted-foreground tabular-nums font-medium">
                   {childProgress!.done}/{childProgress!.total}
@@ -160,7 +160,7 @@ function ListRowContent({
                 {cardCustomProperties.slice(0, 3).map((property) => (
                   <span
                     key={property.id}
-                    className="inline-flex max-w-[120px] items-center gap-1 rounded-full bg-muted/60 px-1.5 py-0.5 text-micro text-muted-foreground"
+                    className="inline-flex max-w-[120px] items-center gap-1 rounded-full bg-fill-hover px-1.5 py-0.5 text-micro text-muted-foreground"
                   >
                     <PropertyIcon property={property} className="size-3 text-micro" />
                     <CustomPropertyValueDisplay property={property} value={issue.properties?.[property.id]} />

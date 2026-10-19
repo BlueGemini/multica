@@ -16,6 +16,7 @@ import { AppLink } from "../../navigation";
 import { BreadcrumbHeader } from "../../layout/breadcrumb-header";
 import { PageHeader } from "../../layout/page-header";
 import { Users, Plus, Trash2, ArrowUpRight, Crown, Loader2, Pencil, FileText, Save } from "lucide-react";
+import { Badge } from "@multica/ui/components/ui/badge";
 import { Button } from "@multica/ui/components/ui/button";
 import { Input } from "@multica/ui/components/ui/input";
 import { Label } from "@multica/ui/components/ui/label";
@@ -1186,10 +1187,10 @@ function SquadMembersTab({
                     {t(($) => $.member_type[m.member_type])}
                   </span>
                   {isLeader(m) && (
-                    <span className="inline-flex items-center gap-0.5 text-caption bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 px-1.5 py-0.5 rounded-xs">
-                      <Crown className="size-3" />
+                    <Badge variant="warning">
+                      <Crown data-icon="inline-start" />
                       {t(($) => $.members_tab.leader_chip)}
-                    </span>
+                    </Badge>
                   )}
                   {m.member_type === "agent" && statusLabel && (
                     <span className="inline-flex items-center gap-1 text-caption text-muted-foreground">
@@ -1215,7 +1216,7 @@ function SquadMembersTab({
                       <span className="font-mono text-micro uppercase shrink-0">{primaryIssue.identifier}</span>
                       <span className="truncate">{primaryIssue.title}</span>
                       {primaryIssue.issue_status === "blocked" && (
-                        <span className="shrink-0 inline-flex items-center text-micro uppercase tracking-wide text-warning">
+                        <span className="shrink-0 inline-flex items-center text-micro uppercase tracking-wide text-warning-subtle-foreground">
                           {t(($) => $.members_tab.issue_status_blocked)}
                         </span>
                       )}
@@ -1261,7 +1262,7 @@ function SquadMembersTab({
                       <Button
                         size="sm"
                         variant="ghost"
-                        className="text-muted-foreground hover:text-amber-600 h-8 w-8 p-0"
+                        className="text-muted-foreground hover:text-warning h-8 w-8 p-0"
                         onClick={() => onSetLeader(m.member_id)}
                         disabled={setLeaderPending}
                         aria-label={t(($) => $.members_tab.make_leader_tooltip)}

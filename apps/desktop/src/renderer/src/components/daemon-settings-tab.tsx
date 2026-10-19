@@ -124,7 +124,7 @@ export function DaemonSettingsTab() {
       )}
 
       {externallyManaged && (
-        <div className="mt-4 flex items-start gap-3 rounded-lg border bg-muted/30 px-4 py-3">
+        <div className="mt-4 flex items-start gap-3 rounded-lg border bg-fill-subtle px-4 py-3">
           <Info className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
           <p className="min-w-0 text-body text-muted-foreground">
             {t(($) => $.desktop.daemon.external_description_before)}{" "}

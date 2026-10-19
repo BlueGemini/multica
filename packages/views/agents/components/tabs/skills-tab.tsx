@@ -477,7 +477,7 @@ function SkillDetailDialog({
           </dl>
         ) : workspaceSkill ? (
           <div className="space-y-4">
-            <div className="max-h-96 overflow-auto rounded-lg border bg-muted/30 p-4">
+            <div className="max-h-96 overflow-auto rounded-lg border bg-fill-subtle p-4">
               <pre className="whitespace-pre-wrap break-words font-mono text-caption leading-5">
                 {workspaceSkill.content}
               </pre>

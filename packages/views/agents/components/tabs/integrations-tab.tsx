@@ -167,7 +167,7 @@ export function IntegrationsTab({ agent }: { agent: Agent }) {
         {dingtalkInstallation ? (
           <section className="rounded-lg border">
             <div className="flex items-start gap-3 p-4">
-              <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md border bg-muted/40 text-muted-foreground">
+              <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md border bg-fill-subtle text-muted-foreground">
                 <DingTalkMark className="h-5 w-5" />
               </span>
               <div className="min-w-0 flex-1 space-y-1">
@@ -218,7 +218,7 @@ export function IntegrationsTab({ agent }: { agent: Agent }) {
 
       <section className="rounded-lg border">
         <div className="flex items-start gap-3 p-4">
-          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md border bg-muted/40 text-muted-foreground">
+          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md border bg-fill-subtle text-muted-foreground">
             <LarkMark className="h-4 w-4" />
           </span>
           <div className="min-w-0 flex-1 space-y-1">
@@ -265,7 +265,7 @@ export function IntegrationsTab({ agent }: { agent: Agent }) {
 
       <section className="rounded-lg border">
         <div className="flex items-start gap-3 p-4">
-          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md border bg-muted/40 text-muted-foreground">
+          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md border bg-fill-subtle text-muted-foreground">
             <SlackMark className="h-4 w-4" />
           </span>
           <div className="min-w-0 flex-1 space-y-1">
@@ -305,7 +305,7 @@ export function IntegrationsTab({ agent }: { agent: Agent }) {
 
       <section className="rounded-lg border">
         <div className="flex items-start gap-3 p-4">
-          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md border bg-muted/40 text-muted-foreground">
+          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md border bg-fill-subtle text-muted-foreground">
             <DingTalkMark className="h-5 w-5" />
           </span>
           <div className="min-w-0 flex-1 space-y-1">
@@ -373,7 +373,7 @@ export function IntegrationsTab({ agent }: { agent: Agent }) {
 
       <section className="rounded-lg border">
         <div className="flex items-start gap-3 p-4">
-          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md border bg-muted/40 text-muted-foreground">
+          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md border bg-fill-subtle text-muted-foreground">
             <WecomMark className="h-4 w-4" />
           </span>
           <div className="min-w-0 flex-1 space-y-1">
@@ -407,7 +407,7 @@ export function IntegrationsTab({ agent }: { agent: Agent }) {
 
       <section className="rounded-lg border">
         <div className="flex items-start gap-3 p-4">
-          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md border bg-muted/40 text-muted-foreground">
+          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md border bg-fill-subtle text-muted-foreground">
             <TelegramMark className="h-4 w-4" />
           </span>
           <div className="min-w-0 flex-1 space-y-1">

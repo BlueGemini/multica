@@ -14,6 +14,7 @@ import {
   PopoverTrigger,
   PopoverContent,
 } from "@multica/ui/components/ui/popover";
+import { Badge } from "@multica/ui/components/ui/badge";
 import { Label } from "@multica/ui/components/ui/label";
 import { useT } from "../../i18n";
 import {
@@ -179,9 +180,9 @@ export function RuntimePicker({
                     : t(($) => $.create_dialog.runtime_none)}
               </span>
               {selectedRuntime?.runtime_mode === "cloud" && (
-                <span className="shrink-0 rounded-xs bg-info/10 px-1.5 py-0.5 text-caption font-medium text-info">
+                <Badge variant="info" className="shrink-0">
                   {t(($) => $.create_dialog.runtime_cloud_badge)}
-                </span>
+                </Badge>
               )}
             </div>
             {selectedRuntime && (
@@ -273,9 +274,9 @@ export function RuntimePicker({
                               {runtimeRowLabel(device, machine.title)}
                             </span>
                             {device.runtime_mode === "cloud" && (
-                              <span className="shrink-0 rounded-xs bg-info/10 px-1.5 py-0.5 text-caption font-medium text-info">
+                              <Badge variant="info" className="shrink-0">
                                 {t(($) => $.create_dialog.runtime_cloud_badge)}
-                              </span>
+                              </Badge>
                             )}
                             {disabled && (
                               <span className="shrink-0 inline-flex items-center gap-1 rounded-xs bg-muted px-1.5 py-0.5 text-micro font-medium text-muted-foreground">

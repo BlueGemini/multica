@@ -154,7 +154,7 @@ function MiniCard({
 function BoardVignette() {
   return (
     <div aria-hidden="true" className="flex w-49 gap-1.5">
-      <div className="flex flex-1 flex-col gap-1 rounded-md bg-muted/70 p-1.5">
+      <div className="flex flex-1 flex-col gap-1 rounded-md bg-fill-selected p-1.5">
         <div className="h-1.5 w-6.5 rounded-full bg-muted-foreground/20" />
         <MiniCard>
           <Bar className="w-4/5" />
@@ -164,7 +164,7 @@ function BoardVignette() {
           <Bar className="w-2/3" />
         </MiniCard>
       </div>
-      <div className="flex flex-1 flex-col gap-1 rounded-md bg-muted/70 p-1.5">
+      <div className="flex flex-1 flex-col gap-1 rounded-md bg-fill-selected p-1.5">
         <div className="h-1.5 w-8 rounded-full bg-brand/30" />
         <MiniCard className="border-brand/45">
           <Bar className="w-3/4" />
@@ -176,7 +176,7 @@ function BoardVignette() {
           </div>
         </MiniCard>
       </div>
-      <div className="flex flex-1 flex-col gap-1 rounded-md bg-muted/70 p-1.5">
+      <div className="flex flex-1 flex-col gap-1 rounded-md bg-fill-selected p-1.5">
         <div className="h-1.5 w-6.5 rounded-full bg-muted-foreground/20" />
         <MiniCard>
           <Bar className="w-3/4" />

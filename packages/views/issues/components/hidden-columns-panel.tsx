@@ -94,7 +94,7 @@ export function HiddenColumnRow({
   // follows (MUL-7420), so filtering by the status is how to see it.
   const outsideWorkflow = !useViewStore((s) => s.hiddenStatuses.includes(status));
   return (
-    <div className="flex items-center justify-between rounded-lg px-2.5 py-2 hover:bg-muted/50">
+    <div className="flex items-center justify-between rounded-lg px-2.5 py-2 hover:bg-fill-hover">
       <div className="flex min-w-0 items-center gap-2">
         <StatusIcon category={categoryOf(status)} color={colorOf(status)} icon={iconOf(status)} status={status} className="h-3.5 w-3.5 shrink-0" />
         <span className="min-w-0">

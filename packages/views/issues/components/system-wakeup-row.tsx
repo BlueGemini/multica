@@ -80,7 +80,7 @@ export function SystemWakeupRow({
             <span className="line-clamp-2 min-w-0 break-words font-medium">{title}</span>
             <SystemBadge />
           </span>
-          <span className={`col-span-2 min-w-0 break-words pl-7.5 pr-2 ${paused ? "text-warning" : "text-muted-foreground"}`}>
+          <span className={`col-span-2 min-w-0 break-words pl-7.5 pr-2 ${paused ? "text-warning-subtle-foreground" : "text-muted-foreground"}`}>
             {summary}
           </span>
         </PopoverTrigger>

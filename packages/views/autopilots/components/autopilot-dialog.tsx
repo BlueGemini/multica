@@ -607,7 +607,7 @@ export function AutopilotDialog(props: AutopilotDialogProps) {
           </div>
 
           {/* Right: Configuration */}
-          <aside className="w-full lg:w-[380px] shrink-0 overflow-visible lg:overflow-y-auto px-5 py-5 space-y-5 bg-muted/30">
+          <aside className="w-full lg:w-[380px] shrink-0 overflow-visible lg:overflow-y-auto px-5 py-5 space-y-5 bg-fill-subtle">
             <AgentSection
               ref={assigneeTriggerRef}
               selectedType={assigneeType}
@@ -692,7 +692,7 @@ export function AutopilotDialog(props: AutopilotDialogProps) {
           <div className="flex items-center gap-1.5 text-caption text-muted-foreground min-w-0">
             {!showScheduleEmptyState && (
               <>
-                <Zap className="size-3.5 text-amber-500 shrink-0" />
+                <Zap className="size-3.5 text-warning shrink-0" />
                 <span className="truncate">{t(($) => $.dialog.auto_run_hint)}</span>
               </>
             )}
@@ -1105,7 +1105,7 @@ function WebhookCreatedPanel({
             <WebhookUrlField url={url} size="md" />
           </div>
 
-          <div className="rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-caption text-amber-700 dark:text-amber-400 leading-relaxed">
+          <div className="rounded-md border border-warning/30 bg-warning-subtle px-3 py-2 text-caption text-warning-subtle-foreground leading-relaxed">
             {t(($) => $.dialog.webhook_created_warning)}
           </div>
         </div>

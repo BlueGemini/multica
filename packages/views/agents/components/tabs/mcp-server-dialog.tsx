@@ -655,7 +655,7 @@ export function McpServerDialog({
 
               <div
                 data-slot="mcp-dialog-footer"
-                className="flex shrink-0 justify-end gap-2 border-t bg-muted/30 px-6 py-3 sm:px-8"
+                className="flex shrink-0 justify-end gap-2 border-t bg-fill-subtle px-6 py-3 sm:px-8"
               >
                 <Button
                   type="button"

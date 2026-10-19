@@ -573,7 +573,7 @@ function AccessSection({
       </fieldset>
 
       {isMembers && (
-        <div className="mt-2 rounded-lg border bg-muted/30 px-3 py-2">
+        <div className="mt-2 rounded-lg border bg-fill-subtle px-3 py-2">
           <div>
             {otherMembers.length === 0 ? (
               <div className="py-1 text-caption text-muted-foreground">

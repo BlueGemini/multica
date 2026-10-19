@@ -149,7 +149,7 @@ export function Mermaid({ chart }: { chart: string }) {
 
   return (
     <div
-      className="my-6 flex justify-center overflow-x-auto rounded-md border border-border/60 bg-muted/20 p-6 [&_.label_foreignObject>div]:!font-[inherit] [&_.nodeLabel]:!font-[inherit] [&_.edgeLabel]:!font-[inherit] [&_text]:!font-[inherit]"
+      className="my-6 flex justify-center overflow-x-auto rounded-md border border-border/60 bg-fill-subtle p-6 [&_.label_foreignObject>div]:!font-[inherit] [&_.nodeLabel]:!font-[inherit] [&_.edgeLabel]:!font-[inherit] [&_text]:!font-[inherit]"
       dangerouslySetInnerHTML={{ __html: svg }}
     />
   );

@@ -267,7 +267,7 @@ export function AccessPicker({
       </div>
 
       {draftScope === "members" ? (
-        <div className="border-t border-surface-border bg-muted/20 px-4 py-5 sm:px-6">
+        <div className="border-t border-surface-border bg-fill-subtle px-4 py-5 sm:px-6">
           <div>
             {editableMembers.length === 0 ? (
               <p className="text-caption text-muted-foreground">
@@ -318,7 +318,7 @@ export function AccessPicker({
       ) : null}
 
       {hasComposioAllowlist && persistedPrivate && draftScope !== "private" ? (
-        <div className="border-t border-surface-border bg-muted/20 px-4 py-4 sm:px-6">
+        <div className="border-t border-surface-border bg-fill-subtle px-4 py-4 sm:px-6">
           <p className="border-l-2 border-warning pl-3 text-caption leading-5 text-muted-foreground">
             {t(($) => $.access.composio_switch_hint)}
           </p>

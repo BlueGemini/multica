@@ -129,7 +129,7 @@ export function RefreshSkillDialog({
             <TooltipContent side="top">{sourceUrl}</TooltipContent>
           </Tooltip>
         )}
-        <div className="rounded-md bg-warning/10 px-3 py-2 text-caption text-muted-foreground">
+        <div className="rounded-md bg-warning-subtle px-3 py-2 text-caption text-muted-foreground">
           {t(($) => $.detail.refresh.dialog.warning)}
         </div>
         <DialogFooter>

@@ -639,7 +639,7 @@ function SkillsVisual() {
                 {selectedFile === "SKILL.md" ? (
                   <div className="space-y-3 text-caption">
                     {/* Frontmatter */}
-                    <div className="rounded-md border bg-muted/30 p-3">
+                    <div className="rounded-md border bg-fill-subtle p-3">
                       <div className="grid grid-cols-[80px_1fr] gap-y-1">
                         <span className="font-medium text-muted-foreground">name</span>
                         <span>write-migration</span>

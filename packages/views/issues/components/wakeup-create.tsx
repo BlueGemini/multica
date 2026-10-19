@@ -238,7 +238,7 @@ export function WakeupCreateForm({
         </div>
       </div>
       {wakesAssigneeOnComments(draft, issue?.assignee_type === "agent" ? (issue.assignee_id ?? null) : null) && (
-        <p className="mt-2.5 rounded-md bg-muted/60 px-2.5 py-2 text-caption leading-5 text-muted-foreground">
+        <p className="mt-2.5 rounded-md bg-fill-subtle px-2.5 py-2 text-caption leading-5 text-muted-foreground">
           {t(($) => $.wakeups.create.assignee_comment_hint, { name: agentName ?? "" })}
         </p>
       )}

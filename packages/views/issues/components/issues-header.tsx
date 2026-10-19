@@ -2354,7 +2354,7 @@ export function IssueDisplayControls({
                         variant="outline"
                         pressed={cardProperties[opt.key]}
                         onPressedChange={() => act.toggleCardProperty(opt.key)}
-                        className="h-6 rounded-md px-2 text-caption text-muted-foreground hover:bg-muted/60 aria-pressed:border-transparent aria-pressed:bg-accent aria-pressed:text-accent-foreground aria-pressed:hover:bg-accent/80"
+                        className="h-6 rounded-md px-2 text-caption text-muted-foreground hover:bg-fill-hover aria-pressed:border-transparent aria-pressed:bg-accent aria-pressed:text-accent-foreground aria-pressed:hover:bg-accent/80"
                       >
                         {t(($) => $.display[CARD_PROPERTY_LABEL_KEY[opt.key]])}
                       </Toggle>
@@ -2366,7 +2366,7 @@ export function IssueDisplayControls({
                         variant="outline"
                         pressed={cardPropertyIds.includes(property.id)}
                         onPressedChange={() => act.toggleCardPropertyId(property.id)}
-                        className="h-6 max-w-40 rounded-md px-2 text-caption text-muted-foreground hover:bg-muted/60 aria-pressed:border-transparent aria-pressed:bg-accent aria-pressed:text-accent-foreground aria-pressed:hover:bg-accent/80"
+                        className="h-6 max-w-40 rounded-md px-2 text-caption text-muted-foreground hover:bg-fill-hover aria-pressed:border-transparent aria-pressed:bg-accent aria-pressed:text-accent-foreground aria-pressed:hover:bg-accent/80"
                       >
                         <span className="truncate">{property.name}</span>
                       </Toggle>

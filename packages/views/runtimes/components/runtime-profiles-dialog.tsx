@@ -318,7 +318,7 @@ function CatalogList({
           <section aria-labelledby="runtime-profile-builtin-section">
             <button
               type="button"
-              className="flex w-full items-center justify-between gap-3 rounded-md border bg-muted/30 px-3 py-2.5 text-left transition-colors hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              className="flex w-full items-center justify-between gap-3 rounded-md border bg-fill-subtle px-3 py-2.5 text-left transition-colors hover:bg-fill-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
               aria-expanded={builtinsOpen}
               aria-controls="runtime-profile-builtin-list"
               onClick={() =>
@@ -379,7 +379,7 @@ function CatalogList({
 function EmptyCustomState({ onAddNew }: { onAddNew: () => void }) {
   const { t } = useT("runtimes");
   return (
-    <div className="rounded-md border bg-muted/20 p-4">
+    <div className="rounded-md border bg-fill-subtle p-4">
       <div className="flex items-start gap-3">
         <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md border bg-background">
           <Server aria-hidden="true" className="h-4 w-4 text-muted-foreground" />
@@ -430,7 +430,7 @@ function CatalogRow({
         "flex w-full min-w-0 items-center gap-2.5 rounded-md px-3 py-2 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
         active && "bg-accent",
         !active && !isBuiltin && "hover:bg-accent/50",
-        isBuiltin && !active && "text-muted-foreground hover:bg-muted/40",
+        isBuiltin && !active && "text-muted-foreground hover:bg-fill-hover",
       )}
     >
       <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md border bg-background">
@@ -579,7 +579,7 @@ function DetailPanel({
         </dl>
       </div>
 
-      <div className="flex shrink-0 justify-end gap-2 border-t bg-muted/30 px-6 py-3">
+      <div className="flex shrink-0 justify-end gap-2 border-t bg-fill-subtle px-6 py-3">
         <Button
           type="button"
           variant="outline"
@@ -695,7 +695,7 @@ function ProfileFormView({
         </div>
         <div
           className={cn(
-            "flex shrink-0 gap-2 border-t bg-muted/30 px-6 py-3",
+            "flex shrink-0 gap-2 border-t bg-fill-subtle px-6 py-3",
             standaloneCreate ? "justify-end" : "justify-start",
           )}
         >
@@ -872,7 +872,7 @@ function ProfileDetailsForm({
           <Label className="text-caption text-muted-foreground">
             {t(($) => $.profiles.form.family_label)}
           </Label>
-          <div className="flex items-center gap-2 rounded-md border bg-muted/30 px-3 py-2">
+          <div className="flex items-center gap-2 rounded-md border bg-fill-subtle px-3 py-2">
             <ProviderLogo provider={family} className="h-4 w-4 shrink-0" />
             <span className="text-body capitalize">
               {runtimeTypeLabel(family)}
@@ -950,7 +950,7 @@ function ProfileDetailsForm({
             </p>
           )}
           {parsedCommand.ok && (
-            <div className="space-y-1 rounded-md border bg-muted/20 px-3 py-2 text-micro text-muted-foreground">
+            <div className="space-y-1 rounded-md border bg-fill-subtle px-3 py-2 text-micro text-muted-foreground">
               <div className="flex min-w-0 gap-1">
                 <span>{t(($) => $.profiles.form.command_preview_executable)}</span>
                 <span className="truncate font-mono text-foreground">
@@ -1006,7 +1006,7 @@ function ProfileDetailsForm({
         )}
       </form>
 
-      <div className="flex shrink-0 justify-between gap-2 border-t bg-muted/30 px-6 py-3">
+      <div className="flex shrink-0 justify-between gap-2 border-t bg-fill-subtle px-6 py-3">
         {mode === "create" ? (
           <Button type="button" variant="ghost" size="sm" onClick={onBack}>
             <ChevronLeft aria-hidden="true" className="h-3.5 w-3.5" />

@@ -79,14 +79,14 @@ import { PageHeader } from "../../layout/page-header";
 type RunStatus = "issue_created" | "running" | "skipped" | "completed" | "failed";
 
 const RUN_VISUAL: Record<RunStatus, { color: string; icon: typeof CheckCircle2; spin?: boolean }> = {
-  issue_created: { color: "text-blue-500", icon: Clock },
-  running: { color: "text-blue-500", icon: Loader2, spin: true },
+  issue_created: { color: "text-info-subtle-foreground", icon: Clock },
+  running: { color: "text-info-subtle-foreground", icon: Loader2, spin: true },
   // `skipped` (admission check found the assignee runtime offline,
   // MUL-1899) is muted so it doesn't read as a failure-ratio inflator.
   // The row still shows failure_reason which carries the skip context.
   skipped: { color: "text-muted-foreground", icon: Ban },
-  completed: { color: "text-emerald-500", icon: CheckCircle2 },
-  failed: { color: "text-destructive", icon: XCircle },
+  completed: { color: "text-success-subtle-foreground", icon: CheckCircle2 },
+  failed: { color: "text-destructive-subtle-foreground", icon: XCircle },
 };
 
 // WebhookPayloadSlot lazy-fetches the full run (incl. trigger_payload) once
@@ -224,7 +224,7 @@ function SkippedRunsGroup({
   const ToggleIcon = open ? ChevronDown : ChevronRight;
 
   return (
-    <div className="border-t bg-muted/20">
+    <div className="border-t bg-fill-subtle">
       <button
         type="button"
         className="flex w-full items-center gap-3 px-4 py-2.5 text-left text-body hover:bg-accent/30 transition-colors"
@@ -609,7 +609,7 @@ function AddTriggerDialog({
               disabled={submitting}
             />
           ) : (
-            <p className="rounded-md bg-muted/50 px-3 py-2 text-caption text-muted-foreground">
+            <p className="rounded-md bg-fill-subtle px-3 py-2 text-caption text-muted-foreground">
               {t(($) => $.add_trigger_dialog.webhook_help)}
             </p>
           )}
@@ -829,8 +829,8 @@ export function AutopilotDetailPage({ autopilotId }: { autopilotId: string }) {
               />
               <span className={cn(
                 "text-caption font-medium hidden sm:inline",
-                autopilot.status === "active" ? "text-emerald-500" :
-                autopilot.status === "paused" ? "text-amber-500" :
+                autopilot.status === "active" ? "text-success-subtle-foreground" :
+                autopilot.status === "paused" ? "text-warning-subtle-foreground" :
                 "text-muted-foreground",
               )}>
                 {t(($) => $.status[autopilot.status])}
@@ -869,7 +869,7 @@ export function AutopilotDetailPage({ autopilotId }: { autopilotId: string }) {
       />
 
       {autopilot.pause_reason === "agent_runtime_required" && (
-        <div className="flex shrink-0 items-center gap-2 border-b border-amber-500/30 bg-amber-500/10 px-6 py-2 text-caption text-amber-900 dark:text-amber-100">
+        <div className="flex shrink-0 items-center gap-2 border-b border-warning/30 bg-warning-subtle px-6 py-2 text-caption text-warning-subtle-foreground">
           <Server className="size-3.5 shrink-0" />
           <span className="flex-1">
             {t(($) => $.detail.paused_runtime_required)}

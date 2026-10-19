@@ -251,7 +251,7 @@ function PendingRuntimeBadge({ runtime }: { runtime: AgentRuntime }) {
     );
   }
   return (
-    <span className="inline-flex shrink-0 items-center rounded-xs bg-warning/10 px-1 text-micro font-medium text-warning">
+    <span className="inline-flex shrink-0 items-center rounded-xs bg-warning-subtle px-1 text-micro font-medium text-warning-subtle-foreground">
       {t(($) => $.list.badge_registering)}
     </span>
   );
@@ -414,9 +414,9 @@ export function CostCell({
     delta == null
       ? "text-muted-foreground"
       : delta > 0
-        ? "text-warning"
+        ? "text-warning-subtle-foreground"
         : delta < 0
-          ? "text-success"
+          ? "text-success-subtle-foreground"
           : "text-muted-foreground";
   const deltaLabel =
     delta == null

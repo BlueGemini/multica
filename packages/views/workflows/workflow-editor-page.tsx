@@ -845,7 +845,7 @@ function StepDetail({
               </DropdownMenuContent>
             </DropdownMenu>
           ) : (
-            <div className="flex h-8 w-full max-w-sm items-center rounded-md border border-input bg-muted/40 px-2.5 text-body">
+            <div className="flex h-8 w-full max-w-sm items-center rounded-md border border-input bg-fill-subtle px-2.5 text-body">
               {statusField}
             </div>
           )}

@@ -215,7 +215,7 @@ function WakeupRow({
                 {t(($) => $.wakeups.stopped_running)}
               </span>
             )}
-            {paused && <span className="block text-warning">{paused}</span>}
+            {paused && <span className="block text-warning-subtle-foreground">{paused}</span>}
             {wakeup.last_error && (
               <span className="block text-destructive">
                 {t(($) => $.wakeups.needs_attention)}
@@ -249,7 +249,7 @@ function WakeupRow({
           )}
           {fires && <p className="text-caption text-muted-foreground">{fires}</p>}
           {paused && (
-            <p className="break-words text-caption text-warning">
+            <p className="break-words text-caption text-warning-subtle-foreground">
               {paused} · {t(($) => $.wakeups.paused.hint)}
             </p>
           )}

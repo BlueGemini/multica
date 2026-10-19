@@ -13,7 +13,7 @@ export function CharCounter({ length, max }: { length: number; max: number }) {
   const tone = over
     ? "text-destructive"
     : near
-      ? "text-warning"
+      ? "text-warning-subtle-foreground"
       : "text-muted-foreground";
   return (
     <div className={`text-right text-caption tabular-nums ${tone}`}>

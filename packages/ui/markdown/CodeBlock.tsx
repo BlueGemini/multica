@@ -177,12 +177,12 @@ export function CodeBlock({
   return (
     <div
       className={cn(
-        'relative group rounded-lg overflow-hidden border bg-muted/30 mb-4 last:mb-0',
+        'relative group rounded-lg overflow-hidden border bg-fill-subtle mb-4 last:mb-0',
         className
       )}
     >
       {/* Language label + copy button */}
-      <div className="flex items-center justify-between px-3 py-1.5 bg-muted/50 border-b text-caption">
+      <div className="flex items-center justify-between px-3 py-1.5 bg-fill-hover border-b text-caption">
         <span className="text-muted-foreground font-medium uppercase tracking-wide">
           {resolvedLang !== 'text' ? resolvedLang : t(($) => $.plain_text)}
         </span>

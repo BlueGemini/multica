@@ -170,7 +170,7 @@ export function WorkflowHandoffForm({
         onPreview={() => setPreviewOpen(true)}
       />
       {askScope && project && (
-        <div className="rounded-lg border border-surface-border bg-muted/40 p-2">
+        <div className="rounded-lg border border-surface-border bg-fill-subtle p-2">
           <p className="px-1.5 pb-1.5 pt-0.5 text-caption font-medium text-muted-foreground">
             {t(($) => $.workflows.handoff.scope_question)}
           </p>
@@ -631,7 +631,7 @@ export function BriefPreviewDialog({
 /** A handoff brief, shown as the agent reads it. */
 export function BriefBlock({ brief, loading }: { brief: string | undefined; loading?: boolean }) {
   return (
-    <div className="max-h-[50dvh] overflow-auto rounded-lg border border-surface-border bg-muted/40 p-4">
+    <div className="max-h-[50dvh] overflow-auto rounded-lg border border-surface-border bg-fill-subtle p-4">
       {loading ? (
         <Spinner className="size-4" />
       ) : (

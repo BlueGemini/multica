@@ -700,7 +700,7 @@ export function ChatInput({
               />
             </div>
             {projectContextUnsupported && (
-              <span className="inline-flex min-w-0 items-center gap-1 text-caption text-warning">
+              <span className="inline-flex min-w-0 items-center gap-1 text-caption text-warning-subtle-foreground">
                 <TriangleAlert className="size-3 shrink-0" />
                 {t(($) => $.input.project_context_unsupported)}
               </span>

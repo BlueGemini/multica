@@ -199,7 +199,7 @@ export const BoardColumn = memo(function BoardColumn({
   return (
     <div
       style={{ width: BOARD_COL_WIDTH }}
-      className={`group/column relative flex shrink-0 flex-col rounded-xl bg-muted/40 p-2 ${
+      className={`group/column relative flex shrink-0 flex-col rounded-xl bg-fill-subtle p-2 ${
         hint ? "ring-2 ring-brand/30" : ""
       }`}
     >

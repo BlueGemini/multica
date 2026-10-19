@@ -84,7 +84,7 @@ export function WebhookUrlField({ url, size = "sm", actions }: WebhookUrlFieldPr
         <button
           type="button"
           onClick={() => setRevealedUrl(url)}
-          className={cn(valueClassName, "text-left cursor-pointer transition-colors hover:bg-muted/70")}
+          className={cn(valueClassName, "text-left cursor-pointer transition-colors hover:bg-fill-selected")}
           title={t(($) => $.trigger_row.show_url)}
           aria-label={t(($) => $.trigger_row.hidden_url_aria)}
         >
@@ -114,7 +114,7 @@ export function WebhookUrlField({ url, size = "sm", actions }: WebhookUrlFieldPr
         aria-label={t(($) => $.trigger_row.copy_url)}
       >
         {copied ? (
-          <Check className={cn(s.icon, "text-emerald-500")} />
+          <Check className={cn(s.icon, "text-success")} />
         ) : (
           <Copy className={cn(s.icon, "text-muted-foreground")} />
         )}

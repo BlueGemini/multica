@@ -1,6 +1,7 @@
 "use client";
 
 import type { SourceContextCommentSnapshot } from "@multica/core/types";
+import { Badge } from "@multica/ui/components/ui/badge";
 import { cn } from "@multica/ui/lib/utils";
 import { ReadonlyContent } from "../../editor";
 import { useT } from "../../i18n";
@@ -62,9 +63,9 @@ export function SourceContextCommentList({
             <div
               className={cn(
                 changeKind && "-my-1 -mr-2 rounded-md px-2 py-1.5",
-                changeKind === "added" && "bg-success/5",
-                changeKind === "changed" && "bg-amber-500/5",
-                changeKind === "deleted" && "bg-destructive/5",
+                changeKind === "added" && "bg-success-subtle",
+                changeKind === "changed" && "bg-warning-subtle",
+                changeKind === "deleted" && "bg-destructive-subtle",
               )}
               data-source-context-change-kind={changeKind ?? undefined}
             >
@@ -75,9 +76,9 @@ export function SourceContextCommentList({
                     : getAuthorLabel?.(comment) ?? comment.author.name}
                 </span>
                 {comment.id === anchorCommentId && (
-                  <span className="shrink-0 rounded-xs bg-info/10 px-1.5 py-0.5 text-info">
+                  <Badge variant="info" className="shrink-0">
                     {t(($) => $.source_context.source_comment)}
-                  </span>
+                  </Badge>
                 )}
                 {changeLabel && <span className="sr-only">{changeLabel}</span>}
               </div>

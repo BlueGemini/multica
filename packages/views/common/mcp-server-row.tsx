@@ -61,7 +61,7 @@ export function McpTransportIcon({ transport }: { transport: string }) {
             tabIndex={0}
             role="img"
             aria-label={transportLabel}
-            className="flex size-9 shrink-0 items-center justify-center rounded-lg border border-surface-border bg-muted/40 text-muted-foreground outline-none transition-colors hover:bg-muted focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
+            className="flex size-9 shrink-0 items-center justify-center rounded-lg border border-surface-border bg-fill-subtle text-muted-foreground outline-none transition-colors hover:bg-muted focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
           >
             <TransportIcon className="size-4" aria-hidden="true" />
           </span>
@@ -145,7 +145,7 @@ export function McpServerRow({
   const errorId = `${useId()}-rename-error`;
 
   return (
-    <li className="group flex min-h-16 items-center gap-3 px-4 py-3 transition-colors hover:bg-muted/30">
+    <li className="group flex min-h-16 items-center gap-3 px-4 py-3 transition-colors hover:bg-fill-hover">
       <McpTransportIcon transport={transport} />
 
       <div className="min-w-0 flex-1 has-[form]:space-y-2">

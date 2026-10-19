@@ -264,7 +264,7 @@ function BackgroundLayer({
             className="absolute top-0 bottom-0"
             style={{ left: i * dayPx, width: dayPx }}
           >
-            {weekend && <div className="absolute inset-0 bg-muted/40" />}
+            {weekend && <div className="absolute inset-0 bg-fill-subtle" />}
             {(isMonth || isWeek) && (
               <div
                 className={cn(

@@ -136,7 +136,7 @@ export function ModelDropdown({
         <div className="flex h-6 items-center">
           <Label className="text-caption text-muted-foreground">{t(($) => $.model_dropdown.label)}</Label>
         </div>
-        <div className="mt-1.5 flex items-start gap-2 rounded-lg border border-dashed border-border bg-muted/30 px-3 py-2.5 text-body text-muted-foreground">
+        <div className="mt-1.5 flex items-start gap-2 rounded-lg border border-dashed border-border bg-fill-subtle px-3 py-2.5 text-body text-muted-foreground">
           <Info className="mt-0.5 h-4 w-4 shrink-0" />
           <div className="min-w-0">
             <div>{t(($) => $.model_dropdown.managed_by_runtime_title)}</div>

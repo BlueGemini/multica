@@ -115,7 +115,7 @@ export function SourceContextPreviewCard({
     <div
       data-slot="source-context-preview"
       className={cn(
-        "mx-4 mb-2 shrink-0 overflow-hidden rounded-md border bg-muted/25",
+        "mx-4 mb-2 shrink-0 overflow-hidden rounded-md border bg-fill-subtle",
         constrainToParent && (expanded
           ? "flex h-[53%] min-h-0 shrink-0 flex-col"
           : "shrink-0"),
@@ -123,7 +123,7 @@ export function SourceContextPreviewCard({
     >
       <button
         type="button"
-        className="flex w-full min-w-0 shrink-0 items-center gap-2 px-3 py-2 text-left text-caption hover:bg-muted/50 focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset"
+        className="flex w-full min-w-0 shrink-0 items-center gap-2 px-3 py-2 text-left text-caption hover:bg-fill-hover focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset"
         aria-expanded={expanded}
         onClick={toggleExpanded}
       >

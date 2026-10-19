@@ -788,7 +788,7 @@ export default function SkillsPage() {
       {supportingQueryDown && (
         <div
           role="status"
-          className="flex shrink-0 items-start gap-2 border-b bg-warning/10 px-6 py-2 text-caption text-muted-foreground"
+          className="flex shrink-0 items-start gap-2 border-b bg-warning-subtle px-6 py-2 text-caption text-muted-foreground"
         >
           <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-warning" />
           <span>{t(($) => $.page.supporting_data_warning)}</span>

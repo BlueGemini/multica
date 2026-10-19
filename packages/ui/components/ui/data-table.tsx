@@ -414,9 +414,9 @@ export function DataTable<TData>({
             * the blur layer has to recompute its backdrop every frame while
             * virtualisation adds and removes the rows underneath it, and the
             * strip flickers black. The mix resolves to the same colour
-            * bg-muted/30 composited to, and a header that scrolled content
+            * bg-fill-subtle composited to, and a header that scrolled content
             * passes behind has no reason to show it through anyway. */}
-          <TableHeader className="sticky top-0 z-10 bg-[color-mix(in_oklab,var(--muted)_30%,var(--background))]">
+          <TableHeader className="sticky top-0 z-10 bg-[color-mix(in_oklab,var(--muted)_40%,var(--background))]">
             {table.getHeaderGroups().map((headerGroup) => (
               <TableRow key={headerGroup.id} className="hover:bg-transparent">
                 {headerGroup.headers.map((header) => {
@@ -474,7 +474,7 @@ export function DataTable<TData>({
                       className={cn(
                         "relative h-8 overflow-hidden border-r px-4 py-2 text-caption uppercase tracking-wider text-muted-foreground last:border-r-0",
                         isPinned &&
-                          "bg-[color-mix(in_oklab,var(--muted)_30%,var(--background))]",
+                          "bg-[color-mix(in_oklab,var(--muted)_40%,var(--background))]",
                       )}
                       style={getCellStyle(header.column, {
                         hasExplicitSize: columnHasExplicitSize,
@@ -686,7 +686,7 @@ function DataTableBody<TData>({
               className={cn(
                 "overflow-hidden border-r px-4 py-2 last:border-r-0",
                 isPinned &&
-                  "bg-background group-hover:bg-[color-mix(in_oklab,var(--muted)_50%,var(--background))]",
+                  "bg-background group-hover:bg-[color-mix(in_oklab,var(--muted)_60%,var(--background))]",
               )}
               style={getCellStyle(cell.column, {
                 hasExplicitSize: columnHasExplicitSize,

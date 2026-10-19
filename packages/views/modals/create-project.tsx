@@ -773,7 +773,7 @@ export function CreateProjectModal({ onClose }: { onClose: () => void }) {
                   resource has to be pinned to a daemon_id, which doesn't
                   exist on the web. */}
               {desktop && (
-                <div className="grid grid-cols-2 gap-1 rounded-md bg-muted/60 p-0.5">
+                <div className="grid grid-cols-2 gap-1 rounded-md bg-fill-hover p-0.5">
                   <button
                     type="button"
                     onClick={() => handleSourceModeChange("repos")}
@@ -968,7 +968,7 @@ export function CreateProjectModal({ onClose }: { onClose: () => void }) {
                       })}
                     </p>
                   ) : (
-                    <p className="text-micro text-amber-600 dark:text-amber-400">
+                    <p className="text-micro text-warning-subtle-foreground">
                       {t(($) => $.create_project.local_daemon_offline)}
                     </p>
                   )}

@@ -368,7 +368,7 @@ export function AgentDetailPage({ agentId }: AgentDetailPageProps) {
       )}
 
       {isArchived && (
-        <div className="shrink-0 border-b bg-muted/50 py-2 text-caption text-muted-foreground">
+        <div className="shrink-0 border-b bg-fill-subtle py-2 text-caption text-muted-foreground">
           <div className={cn(PAGE_RAIL, PAGE_GUTTER, "flex items-center gap-2")}>
             <AlertCircle className="h-3.5 w-3.5 shrink-0" />
             <span className="flex-1">
@@ -389,7 +389,7 @@ export function AgentDetailPage({ agentId }: AgentDetailPageProps) {
       )}
 
       {!isArchived && !runtimeBound && (
-        <div className="shrink-0 border-b border-amber-500/30 bg-amber-500/10 py-2 text-caption text-amber-900 dark:text-amber-100">
+        <div className="shrink-0 border-b border-warning/30 bg-warning-subtle py-2 text-caption text-warning-subtle-foreground">
           <div className={cn(PAGE_RAIL, PAGE_GUTTER, "flex items-center gap-2")}>
             <Server className="h-3.5 w-3.5 shrink-0" />
             <span className="flex-1">
@@ -399,7 +399,7 @@ export function AgentDetailPage({ agentId }: AgentDetailPageProps) {
               <Button
                 variant="outline"
                 size="sm"
-                className="h-6 border-amber-500/40 bg-background/70 text-caption"
+                className="h-6 border-warning/40 bg-background/70 text-caption"
                 onClick={() => setTabNavIntent("general")}
               >
                 {t(($) => $.detail.bind_runtime)}
@@ -433,7 +433,7 @@ export function AgentDetailPage({ agentId }: AgentDetailPageProps) {
         >
           <DialogContent className="max-w-sm" showCloseButton={false}>
             <div className="flex items-center gap-3">
-              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-destructive/10">
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-destructive-subtle">
                 <AlertCircle className="h-5 w-5 text-destructive" />
               </div>
               <DialogHeader className="flex-1 gap-1">

@@ -669,7 +669,7 @@ export function FilterChipsBar({
   if (!hasAny) return null;
 
   return (
-    <div className="mx-4 mb-2 flex shrink-0 flex-wrap items-center gap-1.5 rounded-lg bg-muted/50 px-2 py-1.5">
+    <div className="mx-4 mb-2 flex shrink-0 flex-wrap items-center gap-1.5 rounded-lg bg-fill-subtle px-2 py-1.5">
       {chips.map((chip) => (
         <ChipSpan key={chip.key} chip={chip} />
       ))}

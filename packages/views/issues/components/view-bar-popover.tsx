@@ -139,7 +139,7 @@ function SortablePanelRow({
       style={{ transform: CSS.Translate.toString(transform), transition }}
       className={cn(
         "group/view-row flex items-center gap-1.5 rounded-md px-1.5 py-1",
-        isDragging ? "z-10 bg-accent opacity-80" : "hover:bg-muted/60",
+        isDragging ? "z-10 bg-accent opacity-80" : "hover:bg-fill-hover",
       )}
     >
       <button

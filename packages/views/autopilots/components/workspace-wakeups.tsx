@@ -264,7 +264,7 @@ function WakeupListRow({
       </TableCell>
       <TableCell className="max-w-48">
         <span
-          className={cn("flex min-w-0 items-center gap-1.5", row.paused_reason && "text-warning")}
+          className={cn("flex min-w-0 items-center gap-1.5", row.paused_reason && "text-warning-subtle-foreground")}
           title={
             row.next_fire_at && row.enabled
               ? `${new Date(row.next_fire_at).toLocaleString(locale, { timeZone: viewTZ })} · ${viewTZ}`
@@ -573,7 +573,7 @@ export function WorkspaceWakeups() {
       {pausedCount > 0 && latestPaused && filters.scope !== "paused" && (
         <div
           role="status"
-          className="mx-4 mt-3 flex items-center gap-2 rounded-lg border border-destructive/30 bg-destructive/5 px-3 py-2 text-caption"
+          className="mx-4 mt-3 flex items-center gap-2 rounded-lg border border-destructive/30 bg-destructive-subtle px-3 py-2 text-caption"
         >
           <TriangleAlert className="size-4 shrink-0 text-destructive" aria-hidden="true" />
           <span className="min-w-0 flex-1">

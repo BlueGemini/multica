@@ -354,7 +354,7 @@ function HeroCard({
             {t(($) => $.detail.technical_details)}
           </button>
           {showDetails && (
-            <dl className="grid grid-cols-1 gap-y-2 border-t bg-muted/30 px-4 py-3 sm:grid-cols-2">
+            <dl className="grid grid-cols-1 gap-y-2 border-t bg-fill-subtle px-4 py-3 sm:grid-cols-2">
               {cliVersion && (
                 <Fact label={t(($) => $.detail.fact_daemon_cli)} mono compact>
                   {cliVersion}
@@ -547,7 +547,7 @@ function VisibilityReadout({ runtime }: { runtime: AgentRuntime }) {
     <Tooltip>
       <TooltipTrigger
         render={
-          <span className="inline-flex items-center gap-1.5 rounded-md border bg-muted/30 px-2 py-1.5 text-caption">
+          <span className="inline-flex items-center gap-1.5 rounded-md border bg-fill-subtle px-2 py-1.5 text-caption">
             <Icon className="h-3 w-3 text-muted-foreground" />
             <span className="font-medium">
               {t(($) => $.detail.visibility_label[visibility])}

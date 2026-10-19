@@ -154,7 +154,7 @@ export function WorkflowMappingDialog({
             </div>
           )}
           {(staying > 0 || required.length === 0) && (
-            <div className="flex items-start gap-2 rounded-lg bg-muted/60 px-3 py-2.5 text-body">
+            <div className="flex items-start gap-2 rounded-lg bg-fill-subtle px-3 py-2.5 text-body">
               <Check aria-hidden className="mt-0.5 size-3.5 shrink-0" />
               <span>
                 {staying > 0

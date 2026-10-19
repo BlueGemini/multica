@@ -50,15 +50,15 @@ type StatusVisual = {
 };
 
 const STATUS_VISUAL: Record<WebhookDeliveryStatus, StatusVisual> = {
-  queued: { color: "text-blue-500", icon: Loader2, spin: true },
-  dispatched: { color: "text-emerald-500", icon: CheckCircle2 },
+  queued: { color: "text-info-subtle-foreground", icon: Loader2, spin: true },
+  dispatched: { color: "text-success-subtle-foreground", icon: CheckCircle2 },
   // Signature failures and pre-flight bouncebacks land here. Read as a
   // failure visually, the dialog footer explains the reason.
-  rejected: { color: "text-destructive", icon: ShieldOff },
+  rejected: { color: "text-destructive-subtle-foreground", icon: ShieldOff },
   // Ignored covers paused/disabled/archived autopilots — same payload was
   // received but no run was created. Muted so it doesn't look like a bug.
   ignored: { color: "text-muted-foreground", icon: Ban },
-  failed: { color: "text-destructive", icon: XCircle },
+  failed: { color: "text-destructive-subtle-foreground", icon: XCircle },
 };
 
 const UNKNOWN_VISUAL: StatusVisual = {
@@ -335,7 +335,7 @@ function DeliveryDetailDialog({
           </dl>
 
           {full.error && (
-            <div className="rounded-md border border-destructive/30 bg-destructive/5 px-3 py-2 text-caption text-destructive">
+            <div className="rounded-md border border-destructive/30 bg-destructive-subtle px-3 py-2 text-caption text-destructive-subtle-foreground">
               <div className="font-medium">
                 {t(($) => $.deliveries.detail.error_label)}
               </div>
@@ -474,7 +474,7 @@ function CodeBlock({ label, value }: { label: string; value: string }) {
           className="flex items-center gap-1 rounded-xs px-2 py-0.5 hover:bg-accent transition-colors"
         >
           {copied ? (
-            <Check className="h-3 w-3 text-emerald-500" />
+            <Check className="h-3 w-3 text-success" />
           ) : (
             <Copy className="h-3 w-3" />
           )}
@@ -486,7 +486,7 @@ function CodeBlock({ label, value }: { label: string; value: string }) {
       {/* whitespace-pre-wrap keeps pretty-printed indentation but lets
           long lines wrap; break-all is the only thing that breaks mid-token
           (necessary for minified JSON, which has no whitespace to break at). */}
-      <pre className="max-h-48 overflow-auto bg-muted/40 px-3 py-2 text-caption font-mono leading-relaxed whitespace-pre-wrap break-all">
+      <pre className="max-h-48 overflow-auto bg-fill-subtle px-3 py-2 text-caption font-mono leading-relaxed whitespace-pre-wrap break-all">
         {display}
         {isTruncated && (
           <span className="block pt-2 text-muted-foreground">

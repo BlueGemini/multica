@@ -160,7 +160,7 @@ export function InlineCommentRun({ run, className, viewState, showIdentity = fal
     return <span className="inline-flex shrink-0" data-comment-actions data-run-id={task.id}>
       <Tooltip>
         <TooltipTrigger render={<Button type="button" size="icon-sm" variant="ghost"
-          className="text-muted-foreground aria-expanded:bg-transparent aria-expanded:hover:bg-muted dark:aria-expanded:hover:bg-muted/50"
+          className="text-muted-foreground aria-expanded:bg-transparent aria-expanded:hover:bg-muted dark:aria-expanded:hover:bg-fill-hover"
           aria-label={t(($) => $.inline_run.full_log)} aria-haspopup="dialog" aria-expanded={fullLogOpen}
           onClick={openFullLog}>
           <ScrollText aria-hidden className="size-3.5" />
@@ -225,7 +225,7 @@ export function InlineCommentRun({ run, className, viewState, showIdentity = fal
         {replyTo}
         {output && <div className="mt-2 text-body"><ReadonlyContent content={redactSecrets(output)} /></div>}
         {needsAction && rawError && <p title={rawError}
-          className="mt-1.5 line-clamp-4 whitespace-pre-wrap break-words rounded-md border bg-muted/50 px-2.5 py-1.5 font-mono text-caption text-muted-foreground">
+          className="mt-1.5 line-clamp-4 whitespace-pre-wrap break-words rounded-md border bg-fill-subtle px-2.5 py-1.5 font-mono text-caption text-muted-foreground">
           {rawError}
         </p>}
         {expanded && <div id={regionId} className="mt-2 min-w-0 space-y-1">

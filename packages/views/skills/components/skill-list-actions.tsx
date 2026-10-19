@@ -467,7 +467,7 @@ export function DeleteSkillsDialog({
               : t(($) => $.actions.delete_dialog_desc, { count })}
           </DialogDescription>
         </DialogHeader>
-        <div className="rounded-md bg-destructive/10 px-3 py-2 text-caption text-destructive">
+        <div className="rounded-md bg-destructive-subtle px-3 py-2 text-caption text-destructive-subtle-foreground">
           {t(($) => $.detail.delete_dialog.warning)}
         </div>
         <DialogFooter>
@@ -598,7 +598,7 @@ export function UpdateSkillsDialog({
             </li>
           )}
         </ul>
-        <div className="rounded-md bg-warning/10 px-3 py-2 text-caption text-muted-foreground">
+        <div className="rounded-md bg-warning-subtle px-3 py-2 text-caption text-muted-foreground">
           {t(($) => $.detail.refresh.dialog.warning)}
         </div>
         <DialogFooter>

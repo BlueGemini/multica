@@ -279,7 +279,7 @@ describe("McpTab", () => {
       expect(dialog).toHaveClass("flex", "max-h-[88vh]", "flex-col");
       expect(scrollArea).toHaveClass("overflow-y-auto");
       expect(scrollArea).not.toContainElement(footer);
-      expect(footer).toHaveClass("shrink-0", "border-t", "bg-muted/30");
+      expect(footer).toHaveClass("shrink-0", "border-t", "bg-fill-subtle");
       expect(submit).toHaveAttribute("form", scrollArea?.id);
     };
 

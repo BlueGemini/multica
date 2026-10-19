@@ -141,7 +141,7 @@ export function CloudRuntimeDialog({ onClose }: { onClose: () => void }) {
               </div>
             </form>
 
-            <section className="min-h-0 rounded-md border bg-muted/20">
+            <section className="min-h-0 rounded-md border bg-fill-subtle">
               <div className="flex items-center justify-between border-b bg-background px-3 py-2.5">
                 <h3 className="text-body font-medium">
                   {t(($) => $.cloud_runtime.nodes_title)}
@@ -199,7 +199,7 @@ export function CloudRuntimeDialog({ onClose }: { onClose: () => void }) {
           </div>
         </div>
 
-        <DialogFooter className="m-0 border-t bg-muted/30 px-6 py-3">
+        <DialogFooter className="m-0 border-t bg-fill-subtle px-6 py-3">
           <Button type="button" variant="outline" size="sm" onClick={onClose}>
             {t(($) => $.cloud_runtime.cancel)}
           </Button>
@@ -374,7 +374,7 @@ function CloudRuntimeStatusBadge({ status }: { status: string }) {
       className={cn(
         "h-5 rounded-md px-1.5 font-mono text-micro",
         active.has(normalized) && "bg-success/10 text-success",
-        pending.has(normalized) && "bg-warning/10 text-warning",
+        pending.has(normalized) && "bg-warning-subtle text-warning-subtle-foreground",
         failed.has(normalized) && "bg-destructive/10 text-destructive",
       )}
     >

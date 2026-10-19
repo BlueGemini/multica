@@ -658,7 +658,7 @@ function TaskRow({
 
   const rowClass =
     timeMode === "completed"
-      ? "group flex items-center gap-3 px-3 py-3 transition-colors hover:bg-muted/30"
+      ? "group flex items-center gap-3 px-3 py-3 transition-colors hover:bg-fill-hover"
       : `group flex items-center gap-3 rounded-md border px-3 py-3 ${
           isRunning ? "border-brand/40 bg-brand/5" : ""
         }`;

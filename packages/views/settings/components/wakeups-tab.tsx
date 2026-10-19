@@ -126,7 +126,7 @@ function ChildDoneDefault({ rule, canManage }: { rule: WorkspaceSystemWakeup; ca
             </p>
           )}
           {rule.builtin_instruction && (
-            <div className="rounded-md bg-muted/60 px-3 py-2 text-caption leading-5 text-muted-foreground">
+            <div className="rounded-md bg-fill-subtle px-3 py-2 text-caption leading-5 text-muted-foreground">
               <p className="font-medium">{t(($) => $.wakeups.builtin)}</p>
               <p className="mt-0.5 whitespace-pre-wrap break-words">{rule.builtin_instruction}</p>
             </div>

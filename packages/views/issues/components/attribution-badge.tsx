@@ -126,7 +126,7 @@ export function AttributionBadge({
             <span
               className={cn(
                 "inline-flex min-w-0 items-center gap-1.5 text-caption",
-                uncertain ? "text-warning" : "text-foreground",
+                uncertain ? "text-warning-subtle-foreground" : "text-foreground",
                 className
               )}
             >
@@ -183,7 +183,7 @@ export function AttributionBadge({
             <span
               className={cn(
                 "text-micro",
-                uncertain ? "text-warning" : "text-muted-foreground"
+                uncertain ? "text-warning-subtle-foreground" : "text-muted-foreground"
               )}
             >
               {sourceLabel}
@@ -206,7 +206,7 @@ export function AttributionBadge({
       variant="outline"
       className={cn(
         "max-w-40 min-w-0 gap-1 font-normal",
-        uncertain ? "text-warning" : "text-muted-foreground",
+        uncertain ? "text-warning-subtle-foreground" : "text-muted-foreground",
         className
       )}
       title={sourceLabel}

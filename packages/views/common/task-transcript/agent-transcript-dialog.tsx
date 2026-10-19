@@ -1103,7 +1103,7 @@ export function AgentTranscriptDialog({
 
         {/* ── Optional header slot (e.g. webhook payload preview) ── */}
         {headerSlot && (
-          <div className="border-b px-4 py-3 shrink-0 bg-muted/20">
+          <div className="border-b px-4 py-3 shrink-0 bg-fill-subtle">
             {headerSlot}
           </div>
         )}
@@ -1360,7 +1360,7 @@ function RunOutcomeRow({
 
   const chip = "inline-flex shrink-0 items-center gap-1.5 rounded-md border bg-surface px-2 py-1 text-caption";
   return (
-    <div className="flex shrink-0 items-center gap-2 overflow-hidden border-b bg-muted/40 px-4 py-1.5">
+    <div className="flex shrink-0 items-center gap-2 overflow-hidden border-b bg-fill-subtle px-4 py-1.5">
       <span className="shrink-0 text-micro text-faint-foreground">
         {t(($) => $.transcript.outcome_label)}
       </span>
@@ -1739,7 +1739,7 @@ function StepInspector({
           : t(($) => $.transcript.kind_error);
 
   return (
-    <aside className="flex w-[26rem] shrink-0 flex-col border-l bg-muted/25">
+    <aside className="flex w-[26rem] shrink-0 flex-col border-l bg-fill-subtle">
       <div className="flex items-center gap-2 border-b px-3 py-2">
         <StepIcon step={step} className="h-4 w-4 shrink-0 text-muted-foreground" />
         <span className="shrink-0 text-label font-semibold">{title}</span>

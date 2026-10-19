@@ -690,7 +690,7 @@ export function ScheduleEditor({
           result of the fields above, not more fields alongside them. The cron
           line inside it doubles as the advanced editing entry — clicking it
           swaps the text for an input, and the form dims while raw mode holds. */}
-      <div className="rounded-md bg-muted/40 p-2.5 text-caption text-muted-foreground">
+      <div className="rounded-md bg-fill-subtle p-2.5 text-caption text-muted-foreground">
         <div className="space-y-2">
           {/* The plain-language sentence leads: it is the line a person reads,
               so it takes the panel's entry and the foreground color, and the

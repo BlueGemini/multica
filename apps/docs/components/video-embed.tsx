@@ -63,7 +63,7 @@ export function VideoEmbed({
   // Bad / missing id → a calm inline notice, never a broken or blank iframe.
   if (!config || !id || !config.isValidId(id)) {
     return (
-      <div className="not-prose my-7 rounded-lg border border-border bg-muted/30 p-4 text-sm text-muted-foreground">
+      <div className="not-prose my-7 rounded-lg border border-border bg-fill-subtle p-4 text-sm text-muted-foreground">
         视频暂时无法加载{title ? `：${title}` : ""}。
       </div>
     );
@@ -74,7 +74,7 @@ export function VideoEmbed({
 
   return (
     <figure className="not-prose my-7">
-      <div className="relative aspect-video w-full overflow-hidden rounded-lg border border-border bg-muted/40">
+      <div className="relative aspect-video w-full overflow-hidden rounded-lg border border-border bg-fill-subtle">
         {active ? (
           <iframe
             src={config.embedUrl(id, true)}

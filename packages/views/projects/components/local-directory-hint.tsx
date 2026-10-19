@@ -56,7 +56,7 @@ export function LocalDirectoryHint({
   if (matches.length === 0) return null;
 
   return (
-    <div className="mt-3 space-y-1 rounded-md border border-dashed bg-muted/40 px-3 py-2 text-caption text-muted-foreground">
+    <div className="mt-3 space-y-1 rounded-md border border-dashed bg-fill-subtle px-3 py-2 text-caption text-muted-foreground">
       {matches.map((resource) => {
         const ref = resource.resource_ref;
         const label = localDirectoryLabel(resource);

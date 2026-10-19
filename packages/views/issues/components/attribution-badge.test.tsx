@@ -46,7 +46,7 @@ describe("AttributionBadge", () => {
     );
 
     expect(screen.getByText("On behalf of Grace")).toBeInTheDocument();
-    expect(container.querySelector(".text-warning")).not.toBeNull();
+    expect(container.querySelector(".text-warning-subtle-foreground")).not.toBeNull();
     expect(screen.getByTitle("No precise owner — attributed to the agent owner"))
       .toBeInTheDocument();
   });
@@ -66,7 +66,7 @@ describe("AttributionBadge", () => {
 
     expect(screen.getByText("On behalf of Bohan")).toBeInTheDocument();
     // No warning tone — the confusing yellow that flagged backfilled runs is gone.
-    expect(container.querySelector(".text-warning")).toBeNull();
+    expect(container.querySelector(".text-warning-subtle-foreground")).toBeNull();
     expect(container.querySelector(".text-muted-foreground")).not.toBeNull();
     // The "backfilled" nuance still lives in the tooltip for anyone who looks.
     expect(screen.getByTitle("Backfilled attribution")).toBeInTheDocument();

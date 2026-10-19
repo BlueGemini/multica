@@ -596,7 +596,7 @@ function McpWorkspaceServerRow({
   const { t } = useT("agents");
   const enabled = server.enabled !== false;
   return (
-    <li className="group flex min-h-16 items-center gap-3 px-4 py-3 transition-colors hover:bg-muted/30">
+    <li className="group flex min-h-16 items-center gap-3 px-4 py-3 transition-colors hover:bg-fill-hover">
       <McpTransportIcon transport={server.transport} />
       <div className="min-w-0 flex-1">
         <div className="flex min-w-0 items-center gap-2">
@@ -700,7 +700,7 @@ function McpServerList({
       {servers.map((server) => (
         <li
           key={server.name}
-          className="group flex min-h-16 items-center gap-3 px-4 py-3 transition-colors hover:bg-muted/30"
+          className="group flex min-h-16 items-center gap-3 px-4 py-3 transition-colors hover:bg-fill-hover"
         >
           <McpTransportIcon transport={server.transport} />
           <div className="min-w-0 flex-1">

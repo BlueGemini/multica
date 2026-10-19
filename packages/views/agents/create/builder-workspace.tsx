@@ -362,7 +362,7 @@ export function BuilderWorkspace({
           minSize={340}
           groupResizeBehavior="preserve-pixel-size"
         >
-          <div className="flex h-full min-h-0 flex-col border-l bg-muted/10">
+          <div className="flex h-full min-h-0 flex-col border-l bg-fill-subtle">
             <div className="min-h-0 flex-1 overflow-y-auto">
               <div className="mx-auto max-w-2xl px-5 py-6">
                 <div className="mb-6">

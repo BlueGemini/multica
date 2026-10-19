@@ -64,10 +64,10 @@ const STATE_ICON: Record<
   GitHubPullRequestState,
   { icon: React.ComponentType<{ className?: string }>; className: string }
 > = {
-  open: { icon: GitPullRequestArrow, className: "text-emerald-600 dark:text-emerald-400" },
+  open: { icon: GitPullRequestArrow, className: "text-success" },
   draft: { icon: GitPullRequestDraft, className: "text-muted-foreground" },
   merged: { icon: GitMerge, className: "text-violet-600 dark:text-violet-400" },
-  closed: { icon: GitPullRequestClosed, className: "text-rose-600 dark:text-rose-400" },
+  closed: { icon: GitPullRequestClosed, className: "text-destructive" },
 };
 
 export function PullRequestList({
@@ -307,7 +307,7 @@ function AutoCompleteLine({
     case "not_merged": {
       if (named.length === 0) return null;
       const only = named.length === 1 ? named[0] : undefined;
-      icon = <TriangleAlert className="text-amber-600 dark:text-amber-400" />;
+      icon = <TriangleAlert className="text-warning" />;
       body = (
         <>
           {t(($) => $.pr_automation.not_merged, { prs: list })}
@@ -353,12 +353,12 @@ const PROBLEM_LIMIT = 3;
 
 type VerdictTone = "red" | "amber" | "green" | "violet" | "muted";
 
-// Pills reuse the state icons' palette. Their text sits one shade darker so
-// 11px copy on a 10% tint keeps AA contrast.
+// Pills use the status tint pairs. Violet is GitHub's merged color, which has
+// no product role, so it stays on the raw palette with AA-checked shades.
 const TONE_CLASS: Record<VerdictTone, string> = {
-  red: "bg-rose-600/10 text-rose-700 dark:bg-rose-400/15 dark:text-rose-400",
-  amber: "bg-amber-600/10 text-amber-700 dark:bg-amber-400/15 dark:text-amber-400",
-  green: "bg-emerald-600/10 text-emerald-700 dark:bg-emerald-400/15 dark:text-emerald-400",
+  red: "bg-destructive-subtle text-destructive-subtle-foreground",
+  amber: "bg-warning-subtle text-warning-subtle-foreground",
+  green: "bg-success-subtle text-success-subtle-foreground",
   violet: "bg-violet-600/10 text-violet-700 dark:bg-violet-400/15 dark:text-violet-400",
   muted: "bg-muted text-muted-foreground",
 };
@@ -422,8 +422,8 @@ function PullRequestRow({
   } else if (showStats) {
     meta = (
       <span>
-        <span className="text-emerald-600 dark:text-emerald-400">+{formatPullRequestDiffCount(pr.additions ?? 0)}</span>{" "}
-        <span className="text-rose-600 dark:text-rose-400">−{formatPullRequestDiffCount(pr.deletions ?? 0)}</span>
+        <span className="text-success-subtle-foreground">+{formatPullRequestDiffCount(pr.additions ?? 0)}</span>{" "}
+        <span className="text-destructive-subtle-foreground">−{formatPullRequestDiffCount(pr.deletions ?? 0)}</span>
       </span>
     );
   }
@@ -552,15 +552,15 @@ function PullRequestProblems({
   const { t } = useT("issues");
   const items = [
     ...(verdict.conflicting
-      ? [{ key: "conflict", icon: TriangleAlert, className: "text-amber-600 dark:text-amber-400", label: t(($) => $.detail.pull_request_merge_conflicting) }]
+      ? [{ key: "conflict", icon: TriangleAlert, className: "text-warning", label: t(($) => $.detail.pull_request_merge_conflicting) }]
       : []),
-    ...verdict.names.map((name) => ({ key: `check:${name}`, icon: XCircle, className: "text-rose-600 dark:text-rose-400", label: name })),
+    ...verdict.names.map((name) => ({ key: `check:${name}`, icon: XCircle, className: "text-destructive", label: name })),
   ];
   if (items.length === 0) return null;
   const shown = items.slice(0, PROBLEM_LIMIT);
   const remaining = items.length - shown.length;
   return (
-    <ul className={cn("mt-1.5 rounded-md bg-muted/70 px-2 py-1 text-micro", stale ? "opacity-60" : null)}>
+    <ul className={cn("mt-1.5 rounded-md bg-fill-subtle px-2 py-1 text-micro", stale ? "opacity-60" : null)}>
       {shown.map(({ key, icon: Icon, className, label }) => (
         <li key={key} className="flex items-center gap-1.5 py-px">
           <Icon className={cn("size-3 shrink-0", className)} />

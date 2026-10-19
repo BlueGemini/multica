@@ -816,7 +816,7 @@ export function InboxPage() {
         </div>
       ) : null}
       {isQuickCreateOutcome(detailItem.type) && detailItem.details?.original_prompt && (
-        <div className="mt-4 rounded-md border bg-muted/40 p-3">
+        <div className="mt-4 rounded-md border bg-fill-subtle p-3">
           <p className="text-caption font-medium text-muted-foreground">
             {t(($) => $.detail.original_input)}
           </p>

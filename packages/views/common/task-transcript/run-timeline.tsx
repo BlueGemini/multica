@@ -88,7 +88,7 @@ function LaneTrack({
   onSeek: (ms: number) => void;
 }) {
   return (
-    <div className="relative h-[15px] rounded-sm bg-muted/55">
+    <div className="relative h-[15px] rounded-sm bg-fill-hover">
       {segments.map((segment) => (
         <button
           key={`${segment.kind}:${segment.startMs}`}

@@ -49,7 +49,7 @@ export function UnfinishedDraftsBanner({
         type="button"
         onClick={openOrPick}
         className={cn(
-          "mb-5 flex w-full items-center gap-3 rounded-lg border bg-muted/40 px-4 py-3 text-left transition-colors",
+          "mb-5 flex w-full items-center gap-3 rounded-lg border bg-fill-subtle px-4 py-3 text-left transition-colors",
           "hover:border-primary/40 hover:bg-accent/30",
           "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
         )}

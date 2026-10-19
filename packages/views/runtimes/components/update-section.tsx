@@ -85,10 +85,10 @@ const statusConfig: Record<
   { icon: typeof Loader2; color: string }
 > = {
   pending: { icon: Loader2, color: "text-muted-foreground" },
-  running: { icon: Loader2, color: "text-info" },
-  completed: { icon: CheckCircle2, color: "text-success" },
-  failed: { icon: XCircle, color: "text-destructive" },
-  timeout: { icon: XCircle, color: "text-warning" },
+  running: { icon: Loader2, color: "text-info-subtle-foreground" },
+  completed: { icon: CheckCircle2, color: "text-success-subtle-foreground" },
+  failed: { icon: XCircle, color: "text-destructive-subtle-foreground" },
+  timeout: { icon: XCircle, color: "text-warning-subtle-foreground" },
 };
 
 interface UpdateSectionProps {

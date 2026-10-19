@@ -42,7 +42,7 @@ function AttachmentCardChrome({
   const { t } = useT("editor");
   return (
     <div
-      className="flex items-center gap-2 rounded-md border border-border bg-muted/50 px-2.5 py-1 transition-colors hover:bg-muted"
+      className="flex items-center gap-2 rounded-md border border-border bg-fill-hover px-2.5 py-1 transition-colors hover:bg-muted"
       onMouseDown={(e) => e.stopPropagation()}
     >
       {uploading ? (
@@ -200,7 +200,7 @@ export function AttachmentFileCard({
   const open = canPreview ? onPreview : canDownload ? onDownload : undefined;
 
   return (
-    <div className="group/file-card relative flex min-w-0 items-center gap-3 rounded-lg border border-border bg-card px-3 py-2.5 transition-colors hover:bg-muted/50">
+    <div className="group/file-card relative flex min-w-0 items-center gap-3 rounded-lg border border-border bg-card px-3 py-2.5 transition-colors hover:bg-fill-hover">
       {/* The card's click target, under the content so text stays
           selectable-looking but every click lands here; the action buttons
           sit above it. */}

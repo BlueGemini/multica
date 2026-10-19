@@ -668,7 +668,7 @@ export function AgentCreatePanel({
         </div>
 
         {selectedAgent && versionBlocked && (
-          <div className="mx-5 mb-2 shrink-0 rounded-md border border-amber-500/30 bg-amber-500/5 px-3 py-2 text-caption text-amber-700 dark:text-amber-300">
+          <div className="mx-5 mb-2 shrink-0 rounded-md border border-warning/30 bg-warning-subtle px-3 py-2 text-caption text-warning-subtle-foreground">
             {versionCheck.state === "missing"
               ? t(($) => $.create_issue.agent.version_missing, { min: versionCheck.min })
               : t(($) => $.create_issue.agent.version_below, {
@@ -866,7 +866,7 @@ export function AgentCreatePanel({
               onSelect={(file) => editorRef.current?.uploadFile(file)}
             />
             {keepOpen && sentCount > 0 && (
-              <span className="text-caption text-emerald-600 dark:text-emerald-400">
+              <span className="text-caption text-success-subtle-foreground">
                 {t(($) => $.create_issue.agent.sent_count, { count: sentCount })}
               </span>
             )}
@@ -905,7 +905,7 @@ export function AgentCreatePanel({
             }
             className={cn(
               "justify-self-end min-w-28",
-              justSent && "!bg-emerald-600 !text-white",
+              justSent && "!bg-success !text-white",
             )}
           >
             {submitting ? t(($) => $.create_issue.agent.sending) : gate.uploading ? t(($) => $.create_issue.agent.uploading) : justSent ? (

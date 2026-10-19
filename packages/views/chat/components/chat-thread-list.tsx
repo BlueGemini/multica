@@ -238,7 +238,7 @@ export function ChatThreadList({
       );
     } else if (isRunning) {
       previewNode = (
-        <span className="flex min-w-0 items-center gap-1.5 text-emerald-500">
+        <span className="flex min-w-0 items-center gap-1.5 text-success-subtle-foreground">
           <Loader2 className="size-3 shrink-0 animate-spin" />
           <span className="truncate">{t(($) => $.list.typing)}</span>
         </span>

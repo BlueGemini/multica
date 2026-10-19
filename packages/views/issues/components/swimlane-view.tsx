@@ -1456,7 +1456,7 @@ function SwimLaneViewImpl({
               return (
                 <div
                   key={status}
-                  className={`flex items-center justify-between rounded-xl ${cfg?.columnBg ?? "bg-muted/40"} px-3 py-2`}
+                  className={`flex items-center justify-between rounded-xl ${cfg?.columnBg ?? "bg-fill-subtle"} px-3 py-2`}
                 >
                   <StatusHeading status={status} count={total} />
                   {/* Lazy-mounted like the board's column menu — see
@@ -1812,7 +1812,7 @@ function SwimLaneCell({
   }, [status, lane, projectId, onCreateIssue]);
 
   return (
-    <div className={`flex min-h-[120px] flex-col rounded-xl ${cfg?.columnBg ?? "bg-muted/40"} p-2`}>
+    <div className={`flex min-h-[120px] flex-col rounded-xl ${cfg?.columnBg ?? "bg-fill-subtle"} p-2`}>
       <div
         ref={setNodeRef}
         className={`flex-1 space-y-2 rounded-sm p-1 transition-colors ${

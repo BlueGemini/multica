@@ -377,7 +377,7 @@ function CategorySection({
       {/* Label plus the one action the header owns. The category glyph is the
           same glyph the built-in row renders directly below it, so it said
           nothing the eye had not already read. */}
-      <div className="flex items-center justify-between gap-2 bg-muted/20 px-4 py-1.5">
+      <div className="flex items-center justify-between gap-2 bg-fill-subtle px-4 py-1.5">
         <h3
           id={`issue-status-category-${category}`}
           className="text-caption font-medium text-muted-foreground"
@@ -538,7 +538,7 @@ function StatusRow({
             <Tooltip>
               <TooltipTrigger
                 render={
-                  <span className="shrink-0 rounded-full bg-muted/60 px-1.5 py-0.5 text-micro text-muted-foreground">
+                  <span className="shrink-0 rounded-full bg-fill-hover px-1.5 py-0.5 text-micro text-muted-foreground">
                     {t(($) => $.issue_statuses.archived_badge)}
                   </span>
                 }

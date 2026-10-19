@@ -245,9 +245,9 @@ export function UsageSection({ runtime }: { runtime: AgentRuntime }) {
               <span
                 className={
                   costDelta > 0
-                    ? "text-warning"
+                    ? "text-warning-subtle-foreground"
                     : costDelta < 0
-                      ? "text-success"
+                      ? "text-success-subtle-foreground"
                       : ""
                 }
               >
@@ -514,7 +514,7 @@ function EmptyChartState({ usage }: { usage: RuntimeUsage[] }) {
   const unmapped = collectUnmappedModels(usage);
 
   return (
-    <div className="flex aspect-[3/1] flex-col items-center justify-center gap-2 rounded-md border border-dashed bg-muted/20 p-6 text-center">
+    <div className="flex aspect-[3/1] flex-col items-center justify-center gap-2 rounded-md border border-dashed bg-fill-subtle p-6 text-center">
       <BarChart3 className="h-5 w-5 text-faint-foreground" />
       {!hasTokens ? (
         <p className="text-caption text-muted-foreground">
@@ -573,7 +573,7 @@ function CustomPricingBar({ usage }: { usage: RuntimeUsage[] }) {
       role={hasGap ? "alert" : undefined}
       className={cn(
         "flex flex-wrap items-center gap-3 rounded-lg border px-3 py-2 text-caption",
-        hasGap ? "border-warning/30 bg-warning/10" : "bg-muted/20",
+        hasGap ? "border-warning/30 bg-warning/10" : "bg-fill-subtle",
       )}
     >
       {hasGap ? (

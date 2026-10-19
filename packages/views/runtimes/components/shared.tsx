@@ -16,7 +16,7 @@ export function RuntimeModeIcon({ mode }: { mode: string }) {
 // list rows to identify which CLI / model provider a runtime is wired to.
 export function ProviderChip({ provider }: { provider: string }) {
   return (
-    <span className="inline-flex items-center gap-1 rounded-md border bg-muted/40 px-1.5 py-0.5 text-caption font-medium text-muted-foreground">
+    <span className="inline-flex items-center gap-1 rounded-md border bg-fill-subtle px-1.5 py-0.5 text-caption font-medium text-muted-foreground">
       <ProviderLogo provider={provider} className="h-3 w-3" />
       <span className="capitalize">{provider}</span>
     </span>
@@ -28,11 +28,14 @@ export function ProviderChip({ provider }: { provider: string }) {
 // muted-foreground/destructive) instead of introducing runtime-specific
 // colours — keeps the palette small and consistent with Skills.
 // Labels flow through useT — see useHealthLabel below.
-const HEALTH_VISUAL: Record<RuntimeHealth, { dot: string; tone: string }> = {
-  online: { dot: "bg-success", tone: "bg-success/10 text-success" },
-  recently_lost: { dot: "bg-warning", tone: "bg-warning/10 text-warning" },
-  offline: { dot: "bg-muted-foreground/40", tone: "bg-muted text-muted-foreground" },
-  long_offline: { dot: "bg-destructive", tone: "bg-destructive/10 text-destructive" },
+const HEALTH_VISUAL: Record<
+  RuntimeHealth,
+  { dot: string; badge: "success" | "warning" | "secondary" | "destructive"; tone?: string }
+> = {
+  online: { dot: "bg-success", badge: "success" },
+  recently_lost: { dot: "bg-warning", badge: "warning" },
+  offline: { dot: "bg-muted-foreground/40", badge: "secondary", tone: "bg-muted text-muted-foreground" },
+  long_offline: { dot: "bg-destructive", badge: "destructive" },
 };
 
 export function HealthDot({
@@ -129,7 +132,7 @@ export function HealthBadge({
   }
   const v = HEALTH_VISUAL[health];
   return (
-    <Badge variant="secondary" className={v.tone}>
+    <Badge variant={v.badge} className={v.tone}>
       <span className={`h-1.5 w-1.5 rounded-full ${v.dot}`} />
       {labelOf(health)}
     </Badge>

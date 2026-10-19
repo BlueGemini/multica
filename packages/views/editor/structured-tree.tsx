@@ -202,7 +202,7 @@ function ContainerNode({
       <button
         type="button"
         aria-expanded={open}
-        className="flex w-full min-w-0 items-center gap-1 rounded-sm text-left hover:bg-muted/60 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+        className="flex w-full min-w-0 items-center gap-1 rounded-sm text-left hover:bg-fill-hover focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
         onClick={() => setOpen((next) => !next)}
       >
         <ChevronRight

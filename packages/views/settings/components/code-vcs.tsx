@@ -360,7 +360,7 @@ export function VCSConnectionRows() {
                 copyLabel={t(($) => $.vcs.copy)}
                 mono
               />
-              <p className="text-caption text-warning">{t(($) => $.vcs.webhook_secret_warning)}</p>
+              <p className="text-caption text-warning-subtle-foreground">{t(($) => $.vcs.webhook_secret_warning)}</p>
             </div>
           ) : null}
           <DialogFooter>

@@ -175,7 +175,7 @@ function RuntimeMachineFilterItem({
       className={`flex w-full items-center gap-2 px-3 py-1.5 text-left text-caption transition-colors ${
         active
           ? "bg-accent text-accent-foreground"
-          : "text-foreground hover:bg-muted/60 data-highlighted:bg-muted/60"
+          : "text-foreground hover:bg-fill-hover data-highlighted:bg-fill-hover"
       }`}
     >
       <span className="min-w-0 flex-1 truncate">

@@ -361,7 +361,7 @@ function FoundView({
         {t(($) => $.step_runtime.found_headline)}
       </h2>
 
-      <div className="mt-8 flex flex-wrap items-center gap-x-2 gap-y-1 rounded-lg bg-muted/60 px-4 py-2.5 text-caption">
+      <div className="mt-8 flex flex-wrap items-center gap-x-2 gap-y-1 rounded-lg bg-fill-subtle px-4 py-2.5 text-caption">
         <span className="font-semibold text-foreground">
           {t(($) => $.step_runtime.runtime_count, { count: total })}
         </span>
@@ -470,7 +470,7 @@ function ComingSoonCard({
   return (
     <div
       aria-disabled
-      className="flex items-center justify-between gap-4 rounded-lg border border-dashed bg-muted/20 px-5 py-4 opacity-70"
+      className="flex items-center justify-between gap-4 rounded-lg border border-dashed bg-fill-subtle px-5 py-4 opacity-70"
     >
       <div className="min-w-0">
         <div className="text-body font-medium text-foreground">{title}</div>
@@ -542,7 +542,7 @@ function EmptyCard({
       onClick={onAction}
       disabled={busy}
       aria-busy={busy}
-      className="group flex items-center justify-between gap-4 rounded-lg border bg-card px-5 py-4 text-left transition-colors hover:border-foreground/30 hover:bg-muted/30 disabled:pointer-events-none"
+      className="group flex items-center justify-between gap-4 rounded-lg border bg-card px-5 py-4 text-left transition-colors hover:border-foreground/30 hover:bg-fill-hover disabled:pointer-events-none"
     >
       <div className="min-w-0">
         <div className="text-body font-medium text-foreground">{title}</div>
@@ -576,7 +576,7 @@ function SkeletonRuntimeCard() {
       <div className="h-7 w-7 shrink-0 rounded-md bg-muted" />
       <div className="flex-1 space-y-2">
         <div className="h-3 w-28 rounded-xs bg-muted" />
-        <div className="h-2.5 w-16 rounded-xs bg-muted/70" />
+        <div className="h-2.5 w-16 rounded-xs bg-fill-selected" />
       </div>
       <div className="h-4 w-4 shrink-0 rounded-full border-[1.5px] border-muted" />
     </div>

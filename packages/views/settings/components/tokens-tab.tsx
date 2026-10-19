@@ -278,7 +278,7 @@ export function TokensTab() {
             </AlertDescription>
           </Alert>
           <div className="flex min-w-0 items-center gap-2">
-            <code className="min-w-0 flex-1 truncate rounded-md border bg-muted/50 px-3 py-2 text-body select-all">
+            <code className="min-w-0 flex-1 truncate rounded-md border bg-fill-subtle px-3 py-2 text-body select-all">
               {newToken}
             </code>
             <Tooltip>
@@ -300,7 +300,7 @@ export function TokensTab() {
           <div className="min-w-0 space-y-1.5">
             <p className="text-caption text-muted-foreground">{t(($) => $.tokens.created_dialog.cli_hint)}</p>
             <div className="flex min-w-0 items-center gap-2">
-              <code className="min-w-0 flex-1 truncate rounded-md border bg-muted/50 px-3 py-2 text-body select-all">
+              <code className="min-w-0 flex-1 truncate rounded-md border bg-fill-subtle px-3 py-2 text-body select-all">
                 {`multica login --token ${newToken}`}
               </code>
               <Tooltip>

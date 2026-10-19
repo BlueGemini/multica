@@ -48,7 +48,7 @@ export function IssueDuplicateBanner({
   if (issue.status !== "cancelled" || !original) return null;
 
   return (
-    <div className="mb-4 flex items-center gap-1 rounded-md border bg-muted/40 py-1 pl-3 pr-1 text-body">
+    <div className="mb-4 flex items-center gap-1 rounded-md border bg-fill-subtle py-1 pl-3 pr-1 text-body">
       <AppLink
         href={paths.issueDetail(original.id)}
         newTabTitle={original.identifier}

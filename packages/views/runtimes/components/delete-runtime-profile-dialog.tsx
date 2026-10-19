@@ -109,7 +109,7 @@ export function DeleteRuntimeProfileDialog({
             </div>
           )}
         </div>
-        <div className="border-t bg-muted/25 px-5 py-3">
+        <div className="border-t bg-fill-subtle px-5 py-3">
           <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
             <Button
               type="button"

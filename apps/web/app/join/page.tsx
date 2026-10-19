@@ -102,7 +102,7 @@ function JoinInner() {
   };
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-muted/30 p-4">
+    <div className="flex min-h-screen items-center justify-center bg-fill-subtle p-4">
       <Card className="w-full max-w-md">
         <CardContent className="space-y-4 pt-6">
           {joined ? (

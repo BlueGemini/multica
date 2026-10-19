@@ -132,7 +132,7 @@ export function AutopilotAccessManager({
           {collaborators.map((c) => (
             <li
               key={c.user_id}
-              className="flex items-center justify-between rounded-md px-2 py-1.5 hover:bg-muted/50"
+              className="flex items-center justify-between rounded-md px-2 py-1.5 hover:bg-fill-hover"
             >
               <span className="flex min-w-0 items-center gap-2">
                 <ActorAvatar actorType="member" actorId={c.user_id} size="sm" />

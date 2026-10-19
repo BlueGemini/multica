@@ -117,7 +117,7 @@ export function WebhookPayloadPreview({
               )}
             >
               {copied ? (
-                <Check className="h-3 w-3 text-emerald-500" />
+                <Check className="h-3 w-3 text-success" />
               ) : (
                 <Copy className="h-3 w-3" />
               )}
@@ -126,7 +126,7 @@ export function WebhookPayloadPreview({
                 : t(($) => $.webhook_payload.copy)}
             </button>
           </div>
-          <pre className="max-h-64 overflow-auto bg-muted/40 px-3 py-2 text-caption font-mono leading-relaxed">
+          <pre className="max-h-64 overflow-auto bg-fill-subtle px-3 py-2 text-caption font-mono leading-relaxed">
             {displayJSON}
             {isTruncated && (
               <span className="block pt-2 text-muted-foreground">

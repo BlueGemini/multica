@@ -267,7 +267,7 @@ function NameCell({ autopilot }: { autopilot: Autopilot }) {
               ? t(($) => $.status.paused_runtime_required)
               : t(($) => $.status.paused)
           }
-          className="flex shrink-0 items-center text-amber-500"
+          className="flex shrink-0 items-center text-warning"
         >
           <Pause className="size-3" />
         </span>
@@ -339,13 +339,13 @@ function runStatusDotClass(status: string | null | undefined): string {
   switch (status) {
     case "completed":
     case "issue_created":
-      return "bg-emerald-500";
+      return "bg-success";
     case "failed":
-      return "bg-red-500";
+      return "bg-destructive";
     case "skipped":
-      return "bg-amber-500";
+      return "bg-warning";
     case "running":
-      return "bg-blue-500";
+      return "bg-info";
     default:
       return "bg-muted-foreground/40";
   }

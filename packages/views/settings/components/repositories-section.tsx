@@ -748,7 +748,7 @@ export function RepositoriesSection() {
             ) : null}
           </div>
 
-          <DialogFooter className="m-0 border-t bg-muted/30 px-6 py-4">
+          <DialogFooter className="m-0 border-t bg-fill-subtle px-6 py-4">
             <p className="mr-auto text-caption text-muted-foreground">
               {t(($) => $.repositories.github_selected_count, {
                 count: selectedRepositories.size,

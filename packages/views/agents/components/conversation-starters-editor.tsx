@@ -61,7 +61,7 @@ export function ConversationStartersEditor({
       </div>
 
       {value.map((item, index) => (
-        <div key={index} className="rounded-lg border bg-muted/20 p-3">
+        <div key={index} className="rounded-lg border bg-fill-subtle p-3">
           <div className="flex items-center gap-2">
             <Input
               value={item.label}
@@ -122,7 +122,7 @@ export function ConversationStartersEditor({
         </p>
       ) : null}
 
-      <div className="rounded-lg border border-dashed bg-muted/20 px-3 py-3">
+      <div className="rounded-lg border border-dashed bg-fill-subtle px-3 py-3">
         <p className="text-caption font-medium text-muted-foreground">
           {t(($) => $.conversation_starters.preview_label)}
         </p>

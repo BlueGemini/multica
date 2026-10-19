@@ -196,7 +196,7 @@ export function InstructionsTab({
       </p>
 
       {hasSystemLayer && (
-        <div className="rounded-lg border bg-muted/30">
+        <div className="rounded-lg border bg-fill-subtle">
           <div className="flex flex-wrap items-center gap-x-3 gap-y-1 px-3 py-2.5">
             <span className="text-body font-medium">
               {t(($) => $.tab_body.instructions.system_layer_label)}

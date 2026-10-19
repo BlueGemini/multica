@@ -291,7 +291,7 @@ function LightBody({
         </p>
         <DeletePersistenceNotice runtime={runtime} />
       </div>
-      <div className="border-t bg-muted/25 px-5 py-3">
+      <div className="border-t bg-fill-subtle px-5 py-3">
         <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
           <Button
             type="button"
@@ -378,7 +378,7 @@ function CascadeBody({
         {planChangedNotice && (
           <div
             role="status"
-            className="mt-2 rounded-md border bg-muted/40 px-3 py-2 text-caption text-foreground"
+            className="mt-2 rounded-md border bg-fill-subtle px-3 py-2 text-caption text-foreground"
           >
             {planChangedNotice}
           </div>
@@ -392,7 +392,7 @@ function CascadeBody({
         />
       </div>
 
-      <div className="border-t bg-muted/25 px-5 py-4">
+      <div className="border-t bg-fill-subtle px-5 py-4">
         <label className="flex cursor-pointer items-start gap-2 text-body text-foreground">
           <Checkbox
             className="mt-0.5"
@@ -455,7 +455,7 @@ function AgentPlanTable({
 
   return (
     <div className="mt-3 overflow-hidden rounded-md border">
-      <div className="grid grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)_minmax(0,1.2fr)_minmax(0,0.8fr)_minmax(0,1fr)] gap-3 border-b bg-muted/40 px-3 py-2 text-micro uppercase tracking-wide text-muted-foreground">
+      <div className="grid grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)_minmax(0,1.2fr)_minmax(0,0.8fr)_minmax(0,1fr)] gap-3 border-b bg-fill-subtle px-3 py-2 text-micro uppercase tracking-wide text-muted-foreground">
         <span>{t(($) => $.detail.delete_dialog.cascade.table.header_agent)}</span>
         <span>{t(($) => $.detail.delete_dialog.cascade.table.header_owner)}</span>
         <span>{t(($) => $.detail.delete_dialog.cascade.table.header_status)}</span>

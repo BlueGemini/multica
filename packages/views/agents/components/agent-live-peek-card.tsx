@@ -2,6 +2,7 @@
 
 import { useQuery } from "@tanstack/react-query";
 import { ActorAvatar as ActorAvatarBase } from "@multica/ui/components/common/actor-avatar";
+import { Badge } from "@multica/ui/components/ui/badge";
 import { Skeleton } from "@multica/ui/components/ui/skeleton";
 import { useWorkspaceId } from "@multica/core/hooks";
 import { useWorkspacePaths } from "@multica/core/paths";
@@ -229,13 +230,13 @@ function LastActivityRow({
             // clean "what's on the plate now" reading (working/queued/idle),
             // matching the project's deliberate split between current and
             // historical state.
-            <span
-              className="inline-flex items-center gap-0.5 rounded-xs bg-warning/10 px-1 py-0.5 text-micro font-medium text-warning"
+            <Badge
+              variant="warning"
               title={failedLabel}
             >
-              <AlertTriangle className="h-2.5 w-2.5" />
+              <AlertTriangle data-icon="inline-start" />
               {failedLabel}
-            </span>
+            </Badge>
           )}
         </span>
       ) : (

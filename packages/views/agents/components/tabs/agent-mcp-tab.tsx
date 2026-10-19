@@ -137,7 +137,7 @@ export function AgentMcpTab({ agent }: { agent: Agent }) {
       {showSharedWarning && (
         <div
           role="alert"
-          className="flex items-start gap-2 rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-caption text-amber-700 dark:text-amber-400"
+          className="flex items-start gap-2 rounded-md border border-warning/30 bg-warning-subtle px-3 py-2 text-caption text-warning-subtle-foreground"
         >
           <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
           <span>
@@ -180,7 +180,7 @@ export function AgentMcpTab({ agent }: { agent: Agent }) {
                 <ComposioToolkitLogo slug={slug} name={name} fallbackLogo={tk?.logo} />
                 <div className="min-w-0 flex-1">
                   <p className="truncate text-body font-medium">{name}</p>
-                  <p className="truncate text-micro uppercase tracking-wide text-emerald-600">
+                  <p className="truncate text-micro uppercase tracking-wide text-success-subtle-foreground">
                     {t(($) => $.tab_body.composio_mcp.connected)}
                   </p>
                 </div>

@@ -1236,7 +1236,7 @@ export function SkillDetailPage({ skillId }: { skillId: string }) {
       {supportingQueryDown && (
         <div
           role="status"
-          className="shrink-0 border-b bg-warning/10 py-2 text-caption text-muted-foreground"
+          className="shrink-0 border-b bg-warning-subtle py-2 text-caption text-muted-foreground"
         >
           <div className={cn(PAGE_RAIL, PAGE_GUTTER, "flex items-start gap-2")}>
             <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-warning" />
@@ -1283,7 +1283,7 @@ export function SkillDetailPage({ skillId }: { skillId: string }) {
         <div
           role="status"
           aria-live="polite"
-          className="shrink-0 border-b border-warning/30 bg-warning/10 py-2 text-caption"
+          className="shrink-0 border-b border-warning/30 bg-warning-subtle py-2 text-caption"
         >
           <div className={cn(PAGE_RAIL, PAGE_GUTTER, "flex items-start gap-2")}>
             <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-warning" />
@@ -1407,7 +1407,7 @@ export function SkillDetailPage({ skillId }: { skillId: string }) {
                   })}
             </DialogDescription>
           </DialogHeader>
-          <div className="rounded-md bg-destructive/10 px-3 py-2 text-caption text-destructive">
+          <div className="rounded-md bg-destructive-subtle px-3 py-2 text-caption text-destructive-subtle-foreground">
             {t(($) => $.detail.delete_dialog.warning)}
           </div>
           <DialogFooter>

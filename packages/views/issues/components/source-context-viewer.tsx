@@ -122,8 +122,8 @@ export function SourceContextBadge({
         ? t(($) => $.source_context.summary_changed)
         : null;
   const sourceStateTone = current.source_issue_state === "deleted"
-    ? "text-destructive"
-    : "text-warning";
+    ? "text-destructive-subtle-foreground"
+    : "text-warning-subtle-foreground";
   const sourceStateMessage = current.source_issue_state === "deleted"
     ? t(($) => $.source_context.issue_deleted_after_capture)
     : current.display_state === "unavailable"
@@ -142,7 +142,7 @@ export function SourceContextBadge({
     <>
       <div
         data-slot="source-context-summary"
-        className="mt-2 flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 rounded-lg border border-border/60 bg-muted/30 px-2.5 py-1.5 text-caption"
+        className="mt-2 flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 rounded-lg border border-border/60 bg-fill-subtle px-2.5 py-1.5 text-caption"
       >
         <div className="flex min-w-0 flex-1 items-center gap-1.5">
           {/* Structurally this is the same parent relation a plain sub-issue
@@ -274,7 +274,7 @@ export function SourceContextBadge({
             {current.display_state !== "unchanged" && (
               <div
                 data-slot="source-context-change-summary"
-                className="flex gap-2 rounded-md border border-amber-500/40 bg-amber-500/10 p-3 text-caption"
+                className="flex gap-2 rounded-md border border-warning/30 bg-warning-subtle p-3 text-caption"
               >
                 <AlertTriangle className="size-4 shrink-0" aria-hidden />
                 <div className="min-w-0 flex-1 space-y-1.5">

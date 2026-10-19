@@ -211,7 +211,7 @@ export function CustomArgsTab({
                   {editor?.kind === "edit" && editor.entryId === entry.id ? (
                     renderEditor(index + 1)
                   ) : (
-                    <div className="group flex min-w-0 items-center gap-3 rounded-lg bg-muted/45 px-3 py-2.5 transition-colors hover:bg-muted/70">
+                    <div className="group flex min-w-0 items-center gap-3 rounded-lg bg-fill-subtle px-3 py-2.5 transition-colors hover:bg-fill-selected">
                       <span className="w-5 shrink-0 text-center text-micro font-medium tabular-nums text-muted-foreground">
                         {index + 1}
                       </span>

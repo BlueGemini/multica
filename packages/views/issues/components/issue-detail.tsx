@@ -962,7 +962,7 @@ function SubIssueRow({
                 {customPropsWithValue.slice(0, 3).map((property) => (
                   <span
                     key={property.id}
-                    className="inline-flex max-w-[120px] items-center gap-1 rounded-full bg-muted/60 px-1.5 py-0.5 text-micro text-muted-foreground"
+                    className="inline-flex max-w-[120px] items-center gap-1 rounded-full bg-fill-hover px-1.5 py-0.5 text-micro text-muted-foreground"
                   >
                     <PropertyIcon property={property} className="size-3 text-micro" />
                     <CustomPropertyValueDisplay
@@ -974,7 +974,7 @@ function SubIssueRow({
               </span>
             )}
             {rowProps.childProgress && childProgress && childProgress.total > 0 && (
-              <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-muted/60 px-1.5 py-0.5">
+              <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-fill-hover px-1.5 py-0.5">
                 <ProgressRing
                   done={childProgress.done}
                   total={childProgress.total}
@@ -3396,7 +3396,7 @@ export function IssueDetail({ issueId, onDelete, onDone, defaultSidebarOpen = tr
               {parentChildIssues.length > 0 && (() => {
                 const done = parentChildIssues.filter((c) => issueBehavesAs(c, "done")).length;
                 return (
-                  <span className="ml-1 inline-flex items-center gap-1 rounded-full bg-muted/60 px-1.5 py-0.5 shrink-0">
+                  <span className="ml-1 inline-flex items-center gap-1 rounded-full bg-fill-hover px-1.5 py-0.5 shrink-0">
                     <ProgressRing done={done} total={parentChildIssues.length} size={11} />
                     <span className="tabular-nums text-micro font-medium">
                       {done}/{parentChildIssues.length}
@@ -3548,7 +3548,7 @@ export function IssueDetail({ issueId, onDelete, onDone, defaultSidebarOpen = tr
                     />
                     <span>{t(($) => $.detail.sub_issues_label)}</span>
                   </button>
-                  <div className="inline-flex items-center gap-1.5 rounded-full bg-muted/60 px-2 py-0.5">
+                  <div className="inline-flex items-center gap-1.5 rounded-full bg-fill-hover px-2 py-0.5">
                     <ProgressRing done={doneCount} total={childIssues.length} size={11} />
                     <span className="text-micro text-muted-foreground tabular-nums font-medium">
                       {doneCount}/{childIssues.length}
@@ -3605,7 +3605,7 @@ export function IssueDetail({ issueId, onDelete, onDone, defaultSidebarOpen = tr
                       {groups.map(({ stage: groupStage, items }) => (
                         <Fragment key={groupStage ?? "unstaged"}>
                           {staged && (
-                            <div className="bg-muted/40 px-3 py-1 text-micro font-medium uppercase tracking-wider text-muted-foreground">
+                            <div className="bg-fill-subtle px-3 py-1 text-micro font-medium uppercase tracking-wider text-muted-foreground">
                               {groupStage == null
                                 ? t(($) => $.stage.none)
                                 : t(($) => $.stage.value, { n: groupStage })}

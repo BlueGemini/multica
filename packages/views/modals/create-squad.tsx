@@ -287,7 +287,7 @@ function LeaderPicker({
       </p>
 
       {noAgents ? (
-        <div className="flex items-center gap-2 rounded-lg border border-dashed bg-muted/30 px-3 py-2.5 text-body text-muted-foreground">
+        <div className="flex items-center gap-2 rounded-lg border border-dashed bg-fill-subtle px-3 py-2.5 text-body text-muted-foreground">
           {t(($) => $.create_squad.no_agents)}
         </div>
       ) : (

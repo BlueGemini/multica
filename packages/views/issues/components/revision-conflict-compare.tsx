@@ -85,9 +85,9 @@ function DiffCell({
       }
       className={cn(
         "grid min-w-0 grid-cols-[1.25rem_minmax(0,1fr)] px-2 py-1 font-mono text-micro leading-relaxed",
-        !line && "bg-muted/20",
-        changed && side === "server" && "bg-destructive/10 text-destructive",
-        changed && side === "local" && "bg-success/10 text-success",
+        !line && "bg-fill-subtle",
+        changed && side === "server" && "bg-destructive-subtle text-destructive-subtle-foreground",
+        changed && side === "local" && "bg-success-subtle text-success-subtle-foreground",
       )}
     >
       <span className="select-none text-center opacity-70">
@@ -116,13 +116,13 @@ export function RevisionConflictCompare({
     <div
       role="alert"
       className={cn(
-        "rounded-md border border-warning/40 bg-warning/5 p-3 text-caption",
+        "rounded-md border border-warning/30 bg-warning-subtle p-3 text-caption",
         className,
       )}
     >
       <div className="font-medium">{title}</div>
       <div className="mt-2 overflow-hidden rounded-md border bg-background/70">
-        <div className="grid grid-cols-2 border-b bg-muted/40 font-medium text-muted-foreground">
+        <div className="grid grid-cols-2 border-b bg-fill-subtle font-medium text-muted-foreground">
           <div className="min-w-0 px-3 py-1.5">{serverLabel}</div>
           <div className="min-w-0 border-l px-3 py-1.5">{localLabel}</div>
         </div>
@@ -145,7 +145,7 @@ export function RevisionConflictCompare({
         {serverAction || localAction ? (
           <div
             data-revision-conflict-actions
-            className="grid grid-cols-2 border-t bg-muted/40"
+            className="grid grid-cols-2 border-t bg-fill-subtle"
           >
             {/* px-3 matches the label cells above, so each button's left
                 edge lands on the same vertical line as its column header. */}

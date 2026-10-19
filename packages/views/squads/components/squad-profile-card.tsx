@@ -10,6 +10,7 @@ import {
 } from "@multica/core/workspace/queries";
 import { useWorkspacePaths } from "@multica/core/paths";
 import { ActorAvatar as ActorAvatarBase } from "@multica/ui/components/common/actor-avatar";
+import { Badge } from "@multica/ui/components/ui/badge";
 import { Skeleton } from "@multica/ui/components/ui/skeleton";
 import { ActorAvatar } from "../../common/actor-avatar";
 import { AppLink } from "../../navigation";
@@ -169,9 +170,9 @@ function MembersList({
               />
               <span className="min-w-0 flex-1 truncate font-medium">{name}</span>
               {isLeader && (
-                <span className="max-w-[4rem] shrink-0 truncate rounded-md bg-amber-100 px-1 py-0.5 text-micro font-medium text-amber-700 dark:bg-amber-900/30 dark:text-amber-400">
-                  {t(($) => $.members_tab.leader_chip)}
-                </span>
+                <Badge variant="warning" className="max-w-16">
+                  <span className="truncate">{t(($) => $.members_tab.leader_chip)}</span>
+                </Badge>
               )}
               {m.member_type === "member" && memberRole && (
                 <span className="max-w-[3.5rem] shrink-0 truncate text-muted-foreground">

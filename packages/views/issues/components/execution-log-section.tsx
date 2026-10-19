@@ -497,15 +497,15 @@ export function IssueRunsTotal({
 // ─── Row visual config ─────────────────────────────────────────────────────
 
 const STATUS_TONE: Record<AgentTask["status"], string> = {
-  queued: "text-warning",
-  deferred: "text-warning",
-  dispatched: "text-warning",
+  queued: "text-warning-subtle-foreground",
+  deferred: "text-warning-subtle-foreground",
+  dispatched: "text-warning-subtle-foreground",
   // Same tone as queued/dispatched — visually "stopped" so users see the
   // task is parked, but distinguished by the status label.
-  waiting_local_directory: "text-warning",
-  running: "text-info",
-  completed: "text-success",
-  failed: "text-destructive",
+  waiting_local_directory: "text-warning-subtle-foreground",
+  running: "text-info-subtle-foreground",
+  completed: "text-success-subtle-foreground",
+  failed: "text-destructive-subtle-foreground",
   cancelled: "text-muted-foreground",
 };
 

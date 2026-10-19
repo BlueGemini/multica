@@ -72,7 +72,7 @@ export const IssueWakeupHeaderChip = memo(function IssueWakeupHeaderChip({
       aria-label={`${label}${primary.count > 1 ? ` +${primary.count - 1}` : ""} · ${t(($) => $.wakeups.wait.open)}`}
       className={cn(
         "inline-flex h-7 max-w-72 min-w-0 items-center gap-1.5 rounded-full border border-border px-2.5 text-caption hover:bg-accent focus-visible:outline-2 focus-visible:outline-ring",
-        primary.kind === "paused" ? "text-warning" : "text-foreground",
+        primary.kind === "paused" ? "text-warning-subtle-foreground" : "text-foreground",
       )}
     >
       <Icon className="size-3.5 shrink-0" aria-hidden="true" />

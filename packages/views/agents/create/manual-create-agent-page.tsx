@@ -125,12 +125,12 @@ export function ManualCreateAgentPage() {
       <div className="min-h-0 flex-1 overflow-y-auto">
         <div className="mx-auto w-full max-w-4xl px-5 py-8 sm:px-8">
           {duplicateAgent && (
-            <div className="mb-5 rounded-lg border border-warning/30 bg-warning/5 px-4 py-3 text-body">
+            <div className="mb-5 rounded-lg border border-warning/30 bg-warning-subtle px-4 py-3 text-body">
               {t(($) => $.creation_studio.duplicate_env_notice)}
             </div>
           )}
           {duplicateRuntimeReset && (
-            <div className="mb-5 rounded-lg border border-warning/30 bg-warning/5 px-4 py-3 text-body">
+            <div className="mb-5 rounded-lg border border-warning/30 bg-warning-subtle px-4 py-3 text-body">
               {t(($) => $.creation_studio.duplicate_runtime_reset_notice)}
             </div>
           )}

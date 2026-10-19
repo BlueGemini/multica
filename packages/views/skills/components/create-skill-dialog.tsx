@@ -194,7 +194,7 @@ function ManualForm({
         {error && (
           <div
             role="alert"
-            className="flex items-start gap-2 rounded-md bg-destructive/10 px-3 py-2 text-caption text-destructive"
+            className="flex items-start gap-2 rounded-md bg-destructive-subtle px-3 py-2 text-caption text-destructive-subtle-foreground"
           >
             <AlertCircle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
             <span>
@@ -207,7 +207,7 @@ function ManualForm({
         )}
       </div>
 
-      <div className="flex shrink-0 items-center justify-end gap-2 border-t bg-muted/30 px-5 py-3">
+      <div className="flex shrink-0 items-center justify-end gap-2 border-t bg-fill-subtle px-5 py-3">
         <Button
           type="button"
           variant="ghost"
@@ -375,7 +375,7 @@ function UrlForm({
         {error && (
           <div
             role="alert"
-            className="flex items-start gap-2 rounded-md bg-destructive/10 px-3 py-2 text-caption text-destructive"
+            className="flex items-start gap-2 rounded-md bg-destructive-subtle px-3 py-2 text-caption text-destructive-subtle-foreground"
           >
             <AlertCircle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
             <span>
@@ -388,7 +388,7 @@ function UrlForm({
         )}
       </div>
 
-      <div className="flex shrink-0 items-center justify-end gap-2 border-t bg-muted/30 px-5 py-3">
+      <div className="flex shrink-0 items-center justify-end gap-2 border-t bg-fill-subtle px-5 py-3">
         <Button
           type="button"
           variant="ghost"
@@ -550,7 +550,7 @@ function LocalForm({
         {displayError && (
           <div
             role="alert"
-            className="flex items-start gap-2 rounded-md bg-destructive/10 px-3 py-2 text-caption text-destructive"
+            className="flex items-start gap-2 rounded-md bg-destructive-subtle px-3 py-2 text-caption text-destructive-subtle-foreground"
           >
             <AlertCircle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
             <span>
@@ -563,7 +563,7 @@ function LocalForm({
         )}
       </div>
 
-      <div className="flex shrink-0 items-center justify-end gap-2 border-t bg-muted/30 px-5 py-3">
+      <div className="flex shrink-0 items-center justify-end gap-2 border-t bg-fill-subtle px-5 py-3">
         <Button
           type="button"
           variant="ghost"

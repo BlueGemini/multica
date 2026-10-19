@@ -276,7 +276,7 @@ export function RunCumulativeChart({
           <div className={cn(plotHeight > 0 && "mt-[9px]")}>
             {timeline.lanes.map((lane) => (
               <div key={lane.agentId} data-lane={lane.agentId} className="py-[3px]">
-                <div className="relative h-3.5 rounded-xs bg-muted/60">
+                <div className="relative h-3.5 rounded-xs bg-fill-hover">
                   {lane.runs.map((run) => (
                     <span
                       key={run.task.id}

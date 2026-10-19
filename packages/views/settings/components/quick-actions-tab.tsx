@@ -151,7 +151,7 @@ function TargetLine({ action, t }: { action: QuickAction; t: QuickActionsT }) {
   }
   const mismatched = action.visibility === "public" && action.target_public !== true;
   return (
-    <span className={cn("inline-flex items-center gap-1", mismatched && "text-warning")}>
+    <span className={cn("inline-flex items-center gap-1", mismatched && "text-warning-subtle-foreground")}>
       {mismatched ? <TriangleAlert className="size-3" /> : null}
       {action.target_name}
       {action.target_public !== true ? ` · ${t(($) => $.quick_actions.target_private)}` : ""}
@@ -271,7 +271,7 @@ export function QuickActionsTab() {
         </div>
 
         <div className="overflow-hidden rounded-lg border border-surface-border bg-card">
-          <div className="hidden grid-cols-[minmax(10rem,1fr)_minmax(9rem,1fr)_6rem_5rem_7rem_2rem] gap-4 border-b border-surface-border bg-muted/20 px-4 py-2.5 text-caption font-medium text-muted-foreground md:grid">
+          <div className="hidden grid-cols-[minmax(10rem,1fr)_minmax(9rem,1fr)_6rem_5rem_7rem_2rem] gap-4 border-b border-surface-border bg-fill-subtle px-4 py-2.5 text-caption font-medium text-muted-foreground md:grid">
             <span>{t(($) => $.quick_actions.columns.name)}</span>
             <span>{t(($) => $.quick_actions.columns.target)}</span>
             <span>{t(($) => $.quick_actions.columns.visibility)}</span>
@@ -328,7 +328,7 @@ export function QuickActionsTab() {
                     <span
                       className={cn(
                         "text-caption tabular-nums text-muted-foreground md:text-body",
-                        stale && "text-warning",
+                        stale && "text-warning-subtle-foreground",
                       )}
                     >
                       {action.use_count === 0
