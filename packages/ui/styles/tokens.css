@@ -36,6 +36,21 @@
     --color-info: var(--info);
     --color-brand: var(--brand);
     --color-brand-foreground: var(--brand-foreground);
+    --color-success-subtle: var(--success-subtle);
+    --color-success-subtle-foreground: var(--success-subtle-foreground);
+    --color-warning-subtle: var(--warning-subtle);
+    --color-warning-subtle-foreground: var(--warning-subtle-foreground);
+    --color-info-subtle: var(--info-subtle);
+    --color-info-subtle-foreground: var(--info-subtle-foreground);
+    --color-destructive-subtle: var(--destructive-subtle);
+    --color-destructive-subtle-foreground: var(--destructive-subtle-foreground);
+    --color-brand-subtle: var(--brand-subtle);
+    --color-brand-subtle-foreground: var(--brand-subtle-foreground);
+    --color-fill-subtle: var(--fill-subtle);
+    --color-fill-hover: var(--fill-hover);
+    --color-fill-selected: var(--fill-selected);
+    --color-find-match: var(--find-match);
+    --color-find-match-foreground: var(--find-match-foreground);
     --color-accent-foreground: var(--accent-foreground);
     --color-accent: var(--accent);
     --color-faint-foreground: var(--faint-foreground);
@@ -235,6 +250,51 @@
     --success: oklch(0.55 0.16 145);
     --warning: oklch(0.75 0.16 85);
     --info: oklch(0.55 0.18 250);
+    /* Status tints: each role pairs a quiet background (-subtle) with the
+       text tone that reads on it (-subtle-foreground). Without them, chips
+       and callouts were mixed by hand from the raw Tailwind palette
+       (emerald-500, amber-100 + dark:amber-900/30, ...) and per-site alpha
+       (brand /5 to /18, destructive /5 to /20), so one state rendered in
+       several colors across pages.
+
+       The bare role color (--success, --warning, ...) is for icons, dots,
+       borders and solid fills. Whenever the role colors text, use
+       -subtle-foreground, on its tint or on any surface: its lightness is
+       pinned by WCAG AA against the tint and every light surface, and the
+       binding constraint is --sidebar-accent. Worst cases: success 4.65:1,
+       warning 4.66:1, info 4.65:1, destructive 4.66:1, brand 4.63:1; on
+       their own tint 4.98 / 5.10 / 4.95 / 4.91 / 4.92. This matters most for
+       warning: --warning (L 0.75) is 2.25:1 on --surface and is never text.
+
+       Warning text sits at hue 70, not 85. Yellow darkened to a readable
+       lightness at its own hue turns olive, so the text step leans toward
+       amber, as the amber-700 it replaces did. All five tints share one
+       lightness so no state reads louder than another. */
+    --success-subtle: oklch(0.955 0.03 145);
+    --success-subtle-foreground: oklch(0.5 0.15 145);
+    --warning-subtle: oklch(0.965 0.035 85);
+    --warning-subtle-foreground: oklch(0.52 0.108 70);
+    --info-subtle: oklch(0.955 0.022 250);
+    --info-subtle-foreground: oklch(0.515 0.139 250);
+    --destructive-subtle: oklch(0.955 0.022 27);
+    --destructive-subtle-foreground: oklch(0.54 0.21 27);
+    --brand-subtle: oklch(0.955 0.02 256);
+    --brand-subtle-foreground: oklch(0.52 0.17 256);
+    /* Neutral fills, three steps of --muted. Callers used to pick an alpha
+       per site — bg-muted/10 through /80, eleven values, 187 call sites —
+       the same drift --faint-foreground ended for text. They stay
+       translucent on purpose: a fill has to read the same on canvas,
+       surface, and inside a dialog, which a solid color cannot.
+         subtle   resting fill of a grouped or inset region: board columns,
+                  dialog footers, code and preview wells, table headers.
+         hover    one step up: hover feedback, or a resting element that must
+                  separate from a subtle region it sits in.
+         selected two steps up: selected and pressed, or the strongest
+                  resting fill (keycaps).
+       Redeclared under .dark so they resolve against the dark --muted. */
+    --fill-subtle: color-mix(in oklab, var(--muted) 40%, transparent);
+    --fill-hover: color-mix(in oklab, var(--muted) 60%, transparent);
+    --fill-selected: color-mix(in oklab, var(--muted) 80%, transparent);
     --scrollbar-thumb: oklch(0 0 0 / 10%);
     --scrollbar-thumb-hover: oklch(0 0 0 / 18%);
     --scrollbar-track: transparent;
@@ -306,6 +366,23 @@
     --success: oklch(0.65 0.15 145);
     --warning: oklch(0.70 0.16 85);
     --info: oklch(0.65 0.18 250);
+    /* Same roles, mirrored: tints are dark and share L 0.29; text is the
+       darkest step clearing AA on its tint and every dark surface, binding
+       constraint --surface-selected. Worst cases: success 4.65:1, warning
+       4.61:1, info 4.65:1, destructive 4.60:1, brand 4.62:1. */
+    --success-subtle: oklch(0.29 0.035 145);
+    --success-subtle-foreground: oklch(0.66 0.15 145);
+    --warning-subtle: oklch(0.29 0.045 85);
+    --warning-subtle-foreground: oklch(0.68 0.14 70);
+    --info-subtle: oklch(0.29 0.045 250);
+    --info-subtle-foreground: oklch(0.675 0.17 250);
+    --destructive-subtle: oklch(0.29 0.045 22);
+    --destructive-subtle-foreground: oklch(0.695 0.186 22);
+    --brand-subtle: oklch(0.29 0.045 255);
+    --brand-subtle-foreground: oklch(0.675 0.16 255);
+    --fill-subtle: color-mix(in oklab, var(--muted) 40%, transparent);
+    --fill-hover: color-mix(in oklab, var(--muted) 60%, transparent);
+    --fill-selected: color-mix(in oklab, var(--muted) 80%, transparent);
     --scrollbar-thumb: oklch(1 0 0 / 8%);
     --scrollbar-thumb-hover: oklch(1 0 0 / 18%);
     --scrollbar-track: transparent;

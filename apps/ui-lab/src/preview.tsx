@@ -182,6 +182,12 @@ function ComponentsScene() {
               {t(($) => $.gallery.form.attention)}
             </Badge>
           </div>
+          <div className="mt-2 flex flex-wrap gap-2">
+            <Badge variant="success">Passing</Badge>
+            <Badge variant="warning">Paused</Badge>
+            <Badge variant="info">Running</Badge>
+            <Badge variant="brand">Beta</Badge>
+          </div>
         </Specimen>
         <Specimen
           title={t(($) => $.gallery.sections.typography)}
