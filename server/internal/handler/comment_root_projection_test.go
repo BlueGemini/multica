@@ -136,6 +136,39 @@ func TestConversationRootOwnersReadOnlyRoutingData(t *testing.T) {
 	if got, owned := h.routeConversationOwnersForRoot(ctx, issue, empty, testUserID, commentTriggerComputeOptions{}); owned || len(got) != 0 {
 		t.Fatal("invented empty root owner")
 	}
+	// A completed assignment run can own a root it received only as a supplement.
+	supplementTask := dbfx.Task(t, agentA, testutil.Cols{
+		"issue_id": issueID, "runtime_id": handlerTestRuntimeID(t),
+		"status": "completed", "squad_id": newSquad,
+	})
+	unrelatedRootTask := dbfx.Task(t, otherAgent, testutil.Cols{
+		"issue_id": issueID, "runtime_id": handlerTestRuntimeID(t), "status": "completed",
+	})
+	unrelatedIssueTask := dbfx.Task(t, otherAgent, testutil.Cols{
+		"issue_id": otherIssueID, "runtime_id": handlerTestRuntimeID(t), "status": "completed",
+	})
+	for _, receipt := range []struct{ taskID, issueID, commentID, status string }{
+		{supplementTask, issueID, emptyID, "pending"},
+		{unrelatedRootTask, issueID, otherRootID, "delivered"},
+		{unrelatedIssueTask, otherIssueID, emptyID, "delivered"},
+	} {
+		dbfx.InsertNoID(t, "task_supplement", testutil.Cols{
+			"task_id": receipt.taskID, "workspace_id": testWorkspaceID, "issue_id": receipt.issueID,
+			"comment_id": receipt.commentID, "author_id": testUserID,
+			"client_request_id": testutil.Raw("gen_random_uuid()"), "status": receipt.status,
+		}, "task_id=$1 AND comment_id=$2", receipt.taskID, receipt.commentID)
+	}
+	for _, status := range []string{"pending", "delivering", "failed", "delivered"} {
+		dbfx.Exec(t, `UPDATE task_supplement SET status=$1 WHERE task_id=$2`, status, supplementTask)
+		got, owned := h.routeConversationOwnersForRoot(ctx, issue, empty, testUserID, commentTriggerComputeOptions{})
+		if status == "delivered" {
+			if !owned || len(got) != 1 || uuidToString(got[0].Agent.ID) != agentA || got[0].Squad == nil || uuidToString(got[0].Squad.ID) != newSquad {
+				t.Fatalf("delivered supplement lost its completed assignment owner: owned=%t triggers=%d", owned, len(got))
+			}
+		} else if owned || len(got) != 0 {
+			t.Fatalf("%s supplement invented a root owner", status)
+		}
+	}
 	observer.fail = true
 	if got, owned := h.routeConversationOwnersForRoot(ctx, issue, root, testUserID, commentTriggerComputeOptions{}); owned || len(got) != 0 {
 		t.Fatal("read failure routed an owner")

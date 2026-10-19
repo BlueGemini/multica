@@ -90,6 +90,58 @@ func TestCreateCommentSteersTheThreadAgentsRunningTurn(t *testing.T) {
 	}
 }
 
+func TestCreateCommentContinuesSteeredAssignmentThreadAfterCompletion(t *testing.T) {
+	for _, provider := range []string{"claude", "codex", "cursor"} {
+		t.Run(provider, func(t *testing.T) {
+			f := newSupplementFixture(t, provider, "running", true)
+			dbfx.Cleanup(t, `DELETE FROM agent_task_queue WHERE issue_id = $1`, f.issueID)
+			dbfx.Exec(t, `UPDATE issue SET assignee_type = 'agent', assignee_id = $2 WHERE id = $1`, f.issueID, f.agentID)
+			// Assignment runs have no triggering comment or existing thread.
+			dbfx.Exec(t, `UPDATE agent_task_queue
+				SET trigger_comment_id = NULL, comment_thread_id = NULL, delivered_comment_ids = '{}'
+				WHERE id = $1`, f.taskID)
+
+			var root CommentResponse
+			postSteeredComment(t, f.issueID, "", "Also check the empty state.", f.taskID).
+				Want(http.StatusCreated).JSON(&root)
+			if root.ParentID != nil || len(root.Supplements) != 1 || root.Supplements[0].TaskID != f.taskID {
+				t.Fatalf("top-level steering receipt = %+v", root)
+			}
+			claimed, err := testHandler.Queries.ClaimNextTaskSupplement(t.Context(), parseUUID(f.taskID))
+			if err != nil || uuidToString(claimed.CommentID) != root.ID {
+				t.Fatalf("claim supplement = %+v, err = %v", claimed, err)
+			}
+			ack := withURLParams(newDaemonTokenRequest(http.MethodPost, "/ack", map[string]any{"delivered": true},
+				testWorkspaceID, "legit-daemon"), "taskId", f.taskID, "commentId", root.ID)
+			testutil.Call(t, testHandler.AckTaskSupplement, ack).Want(http.StatusOK)
+			completeTaskViaDaemon(t, f.taskID)
+			if n := dbfx.Count(t, `SELECT count(*) FROM agent_task_queue WHERE issue_id = $1`, f.issueID); n != 1 {
+				t.Fatalf("steering/completion created %d tasks, want only the assignment run", n)
+			}
+
+			var reply CommentResponse
+			postSteeredComment(t, f.issueID, root.ID, "Now check the loading state.").
+				Want(http.StatusCreated).JSON(&reply)
+			if n := dbfx.Count(t, `SELECT count(*) FROM agent_task_queue
+				WHERE issue_id = $1 AND trigger_comment_id = $2 AND agent_id = $3`, f.issueID, reply.ID, f.agentID); n != 1 {
+				t.Fatalf("plain reply to delivered supplement created %d continuation tasks, want 1", n)
+			}
+
+			otherAgent := createHandlerTestAgent(t, "Explicit steering follow-up recipient", nil)
+			var explicit CommentResponse
+			postSteeredComment(t, f.issueID, root.ID, agentMention("Other", otherAgent)+" check desktop instead.").
+				Want(http.StatusCreated).JSON(&explicit)
+			var total, targeted int
+			dbfx.QueryRow(t, `SELECT count(*), count(*) FILTER (WHERE agent_id = $3)
+				FROM agent_task_queue WHERE issue_id = $1 AND trigger_comment_id = $2`,
+				f.issueID, explicit.ID, otherAgent).Scan(&total, &targeted)
+			if total != 1 || targeted != 1 {
+				t.Fatalf("explicit follow-up created %d tasks (%d for the mentioned agent), want 1 each", total, targeted)
+			}
+		})
+	}
+}
+
 func TestCreateCommentSteerKeepsTheNormalTriggerWhenTheTurnCannotTakeInput(t *testing.T) {
 	for _, tc := range []struct {
 		name       string
