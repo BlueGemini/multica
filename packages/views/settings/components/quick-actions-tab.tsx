@@ -548,23 +548,27 @@ function QuickActionDialog({
           </div>
 
           <div className="space-y-1.5">
-            <FieldLabel>{t(($) => $.quick_actions.field_target)}</FieldLabel>
-            <div className="flex flex-wrap items-center gap-2">
-              <Button
-                type="button"
-                variant={form.assigneeId ? "outline" : "secondary"}
-                aria-pressed={!form.assigneeId}
-                onClick={() => setForm((f) => ({ ...f, assigneeId: "" }))}
-              >
-                {t(($) => $.quick_actions.no_target)}
-              </Button>
-              <AgentPicker
-                assignee={form.assigneeId ? { type: form.assigneeType, id: form.assigneeId } : null}
-                onChange={(next) =>
-                  setForm((f) => ({ ...f, assigneeType: next.type, assigneeId: next.id }))
-                }
-              />
-            </div>
+            <FieldLabel id="qa-target-label" htmlFor="qa-target">
+              {t(($) => $.quick_actions.field_target)}
+            </FieldLabel>
+            <AgentPicker
+              assignee={form.assigneeId ? { type: form.assigneeType, id: form.assigneeId } : null}
+              onChange={(next) =>
+                setForm((f) => ({ ...f, assigneeType: next.type, assigneeId: next.id }))
+              }
+              emptyOption={{
+                label: t(($) => $.quick_actions.no_target),
+                onSelect: () => setForm((f) => ({ ...f, assigneeId: "" })),
+              }}
+              triggerRender={
+                <Button
+                  id="qa-target"
+                  type="button"
+                  variant="outline"
+                  aria-labelledby="qa-target-label qa-target"
+                />
+              }
+            />
             {/* Public promises "everyone can run this", so the server refuses a
                 target the team cannot invoke. Saying so here turns a 400 into
                 an expectation set before the user hits Save. */}
