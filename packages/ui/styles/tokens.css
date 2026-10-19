@@ -30,6 +30,13 @@
     --color-ring: var(--ring);
     --color-input: var(--input);
     --color-border: var(--border);
+    --color-border-strong: var(--border-strong);
+    /* Elevation ladder as utilities (shadow-surface / shadow-menu /
+       shadow-floating). Tailwind's own shadow-sm..2xl are not part of the
+       product scale: they predate these tokens and carry no role. */
+    --shadow-surface: var(--surface-shadow);
+    --shadow-menu: var(--menu-shadow);
+    --shadow-floating: var(--floating-shadow);
     --color-destructive: var(--destructive);
     --color-success: var(--success);
     --color-warning: var(--warning);
@@ -68,7 +75,12 @@
     --color-background: var(--background);
     /* Compact product radius ladder. Keep the roles stable even when the base
        value changes: xs=micro controls, sm=nested surfaces, md=rows/menus,
-       lg=controls/compact surfaces, xl=cards/dialogs. */
+       lg=controls/compact surfaces, xl=cards/dialogs.
+       Small controls — Badge, chips, Kbd, and the xs/sm Button — share one
+       height ladder, 20 / 24 / 28px (h-5 / h-6 / h-7), and one radius,
+       rounded-md, so a badge sitting next to a chip or a button reads as the
+       same family. Counters that must stay circular (a number bubble) are the
+       only exception. */
     --radius-xs: calc(var(--radius) * 0.375);
     --radius-sm: calc(var(--radius) * 0.5);
     --radius-md: calc(var(--radius) * 0.75);
@@ -222,8 +234,25 @@
     --accent: oklch(0.967 0.001 286.375);
     --accent-foreground: oklch(0.21 0.006 285.885);
     --destructive: oklch(0.577 0.245 27.325);
+    /* Border roles. Pick by what the line does, never by tuning alpha:
+       - floating card or overlay (popover, menu, toolbar, toast, a card that
+         carries a shadow): border-surface-border, paired with its shadow —
+         shadow-surface for in-page cards, shadow-menu for menus and hover
+         toolbars, shadow-floating for dialogs, sheets and drag previews;
+       - divider inside a page or a surface (row rules, section breaks, table
+         cells): border, which is also the default border color, so a bare
+         border-t / border-b is already correct;
+       - form control outline (input, textarea, select trigger, control
+         group): border-input;
+       - hover or selected emphasis on an element that already has a border:
+         border-border-strong.
+       Before these were written down, border-foreground/5..30 and
+       border-border/40..70 (34 call sites) stood in for all four. The steps
+       get darker in that order — 0.945 / 0.92 / 0.92 / 0.85 — so emphasis
+       always reads above the resting outline it replaces. */
     --border: oklch(0.945 0.003 286.32);
     --input: oklch(0.92 0.004 286.32);
+    --border-strong: oklch(0.85 0.006 286.32);
     --ring: oklch(0.705 0.015 286.067);
     /* Brand-derived blue gradient (h=255 = brand hue). chart-1 equals brand
        so the most important series visually anchors to the product colour;
@@ -342,6 +371,9 @@
     --destructive: oklch(0.704 0.191 22.216);
     --border: oklch(1 0 0 / 6%);
     --input: oklch(1 0 0 / 15%);
+    /* Same order as light: border 6% < surface-border 10% < input 15% <
+       border-strong 22% white. */
+    --border-strong: oklch(1 0 0 / 22%);
     --ring: oklch(0.552 0.016 285.938);
     /* Dark mode mirrors light mode's "primary → secondary" gradient on the
        brand hue, but flips the lightness curve: the most important series
