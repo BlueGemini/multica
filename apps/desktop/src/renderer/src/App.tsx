@@ -342,7 +342,7 @@ function AppContent() {
 function BlockingRuntimeConfigError({ message }: { message: string }) {
   return (
     <div className="flex h-screen items-center justify-center bg-background p-8 text-foreground">
-      <div className="max-w-xl rounded-lg border bg-card p-6 shadow-sm">
+      <div className="max-w-xl rounded-lg border border-surface-border bg-card p-6 shadow-surface">
         <h1 className="text-title font-semibold">Desktop configuration error</h1>
         <p className="mt-3 text-body text-muted-foreground">
           Multica Desktop could not load <code>~/.multica/desktop.json</code>. Fix or remove the file and restart the app.

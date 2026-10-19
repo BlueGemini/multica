@@ -604,7 +604,7 @@ export function WorkspaceWakeups() {
                 onClick={() => change({ scope })}
                 className={cn(
                   "inline-flex h-7 items-center gap-1 rounded-md px-2.5 text-caption text-muted-foreground outline-none hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring/50 disabled:opacity-50",
-                  active && "bg-surface font-medium text-foreground shadow-[var(--surface-shadow)]",
+                  active && "bg-surface font-medium text-foreground shadow-surface",
                 )}
               >
                 {t(($) => $.wakeups.scopes[scope])}

@@ -99,7 +99,7 @@ describe("SourceContextBadge", () => {
     });
 
     const summary = screen.getByText("Sub-issue of").closest('[data-slot="source-context-summary"]');
-    expect(summary).toHaveClass("border-border/60", "bg-fill-subtle");
+    expect(summary).toHaveClass("border", "bg-fill-subtle");
     expect(screen.getByRole("link", { name: /MUL-7 Current source title/ })).toHaveAttribute(
       "href",
       "/acme/issues/source-issue",
@@ -145,7 +145,7 @@ describe("SourceContextBadge", () => {
     expect(dialog).toHaveClass("h-[min(82dvh,56rem)]", "sm:max-w-4xl");
     expect(dialog).not.toHaveClass("h-[calc(100dvh-2rem)]", "sm:max-w-[calc(100%-2rem)]");
     expect(screen.getByText("Source comment")).toHaveClass(
-      "rounded-full",
+      "rounded-md",
       "bg-info-subtle",
       "text-info-subtle-foreground",
     );

@@ -210,7 +210,7 @@ export const BoardColumn = memo(function BoardColumn({
           aria-hidden
           className="pointer-events-none absolute inset-0 z-20 flex items-center justify-center rounded-xl bg-background/60 bg-[repeating-linear-gradient(135deg,transparent_0_8px,var(--color-border)_8px_9px)]"
         >
-          <span className="flex items-center gap-1.5 rounded-md border border-surface-border bg-card px-2.5 py-1 text-caption text-muted-foreground shadow-sm">
+          <span className="flex items-center gap-1.5 rounded-md border border-surface-border bg-card px-2.5 py-1 text-caption text-muted-foreground shadow-surface">
             <Ban className="size-3" />
             {blockedReason}
           </span>
@@ -283,7 +283,7 @@ export const BoardColumn = memo(function BoardColumn({
       </div>
       <div className="relative min-h-[200px] flex-1 rounded-lg">
         {hint && (
-          <div className="pointer-events-none absolute inset-x-1 bottom-1 z-10 flex items-center justify-center gap-1.5 rounded-lg border border-dashed border-brand/50 bg-card px-3 py-3 text-caption text-muted-foreground shadow-sm">
+          <div className="pointer-events-none absolute inset-x-1 bottom-1 z-10 flex items-center justify-center gap-1.5 rounded-lg border border-dashed border-brand/50 bg-card px-3 py-3 text-caption text-muted-foreground shadow-surface">
             {hint.actor && <ActorAvatar actorType={hint.actor.type} actorId={hint.actor.id} size="xs" profileLink={false} />}
             <span className="truncate">
               {hint.run
@@ -294,7 +294,7 @@ export const BoardColumn = memo(function BoardColumn({
         )}
         {isOver && sortLabel && (
           <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center rounded-lg bg-background/40">
-            <span className="rounded-md bg-popover px-2.5 py-1 text-caption font-medium text-popover-foreground shadow-sm border border-border">
+            <span className="rounded-md bg-popover px-2.5 py-1 text-caption font-medium text-popover-foreground shadow-surface border border-surface-border">
               {sortLabel}
             </span>
           </div>

@@ -750,7 +750,7 @@ function QuickActions({
   const regenerateLabel = t(($) => $.message_list.quick_actions_regenerate);
 
   return (
-    <div className="mt-2 border-t border-border/40 pt-2 animate-in fade-in slide-in-from-bottom-1 duration-300">
+    <div className="mt-2 border-t pt-2 animate-in fade-in slide-in-from-bottom-1 duration-300">
       <div
         className="flex flex-wrap items-center gap-2"
         aria-label={t(($) => $.message_list.quick_actions_aria)}
@@ -835,7 +835,7 @@ function QuickActionsSkeleton() {
   // chat:quick_actions ever resolves it — so this unmounts on its own instead
   // of only hiding itself while the cache stays stuck (MUL-5149 review).
   return (
-    <div className="mt-2 border-t border-border/40 pt-2 animate-in fade-in duration-300">
+    <div className="mt-2 border-t pt-2 animate-in fade-in duration-300">
       <div className="flex flex-wrap items-center gap-2" aria-hidden="true">
         <QuickActionsHeading />
         <Skeleton className="h-8 w-24 rounded-full" />

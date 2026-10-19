@@ -32,7 +32,7 @@ export function AgentOverviewSummary({
   const runtimeOnline = runtime?.status === "online";
 
   return (
-    <aside className="self-start rounded-xl border border-surface-border bg-surface p-5 shadow-[var(--surface-shadow)] xl:sticky xl:top-6">
+    <aside className="self-start rounded-xl border border-surface-border bg-surface p-5 shadow-surface xl:sticky xl:top-6">
       <section>
         <h2 className="text-body font-medium">
           {t(($) => $.overview.agent_context)}

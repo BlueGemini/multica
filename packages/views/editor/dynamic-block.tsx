@@ -133,7 +133,7 @@ export function DynamicBlock({
       data-dynamic-block={kind}
       // No outer margin: the lazy shell around the block owns that spacing.
       className={cn(
-        "group/dynamic-block gap-0 overflow-hidden rounded-lg border bg-surface shadow-[var(--surface-shadow)]",
+        "group/dynamic-block gap-0 overflow-hidden rounded-lg border bg-surface shadow-surface",
         error && view === "preview" && "border-destructive/35",
         className,
       )}
@@ -279,7 +279,7 @@ function CollapsibleBody({ children }: { children: ReactNode }) {
             type="button"
             variant="outline"
             size="sm"
-            className="absolute bottom-3 left-1/2 -translate-x-1/2 rounded-full bg-surface shadow-[var(--surface-shadow)]"
+            className="absolute bottom-3 left-1/2 -translate-x-1/2 rounded-full bg-surface shadow-surface"
             onClick={() => setExpanded(true)}
           >
             <ChevronDown />

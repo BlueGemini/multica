@@ -542,7 +542,7 @@ function EmptyCard({
       onClick={onAction}
       disabled={busy}
       aria-busy={busy}
-      className="group flex items-center justify-between gap-4 rounded-lg border bg-card px-5 py-4 text-left transition-colors hover:border-foreground/30 hover:bg-fill-hover disabled:pointer-events-none"
+      className="group flex items-center justify-between gap-4 rounded-lg border bg-card px-5 py-4 text-left transition-colors hover:border-border-strong hover:bg-fill-hover disabled:pointer-events-none"
     >
       <div className="min-w-0">
         <div className="text-body font-medium text-foreground">{title}</div>

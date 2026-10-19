@@ -919,7 +919,7 @@ function BoardViewImpl({
 
       <DragOverlay dropAnimation={null}>
         {activeIssue ? (
-          <div style={{ width: BOARD_CARD_WIDTH }} className="rotate-1 cursor-grabbing opacity-90 shadow-lg shadow-black/10">
+          <div style={{ width: BOARD_CARD_WIDTH }} className="rotate-1 cursor-grabbing opacity-90 shadow-floating">
             <BoardCardContent
               issue={activeIssue}
               childProgress={childProgressMap.get(activeIssue.id)}

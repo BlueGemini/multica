@@ -111,7 +111,7 @@ export function ShortcutKeycaps({
           title={label}
           data-shortcut-key={id}
           className={cn(
-            "border border-border/70 bg-fill-selected shadow-[0_1px_0_0_color-mix(in_oklab,var(--border)_70%,transparent)]",
+            "border bg-fill-selected shadow-[0_1px_0_0_color-mix(in_oklab,var(--border)_70%,transparent)]",
             size === "md"
               ? "h-7 min-w-7 rounded-md px-1.5 text-caption [&_svg]:size-3.5"
               : "h-5 min-w-5 px-1 text-micro [&_svg]:size-3",

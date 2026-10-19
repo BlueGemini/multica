@@ -601,7 +601,7 @@ function ConfirmRow({
             onCancel();
           }}
           disabled={pending}
-          className="inline-flex h-6 items-center rounded-xs px-2 text-micro font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-foreground disabled:opacity-50"
+          className="inline-flex h-6 items-center rounded-md px-2 text-micro font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-foreground disabled:opacity-50"
         >
           {cancelText}
         </button>
@@ -617,7 +617,7 @@ function ConfirmRow({
             onConfirm();
           }}
           disabled={pending}
-          className="inline-flex h-6 items-center rounded-xs px-2 text-micro font-medium text-destructive transition-colors hover:bg-destructive/10 disabled:opacity-50"
+          className="inline-flex h-6 items-center rounded-md px-2 text-micro font-medium text-destructive transition-colors hover:bg-destructive/10 disabled:opacity-50"
         >
           {confirmText}
         </button>

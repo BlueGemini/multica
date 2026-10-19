@@ -33,7 +33,7 @@ export function SegmentedToggle<T extends string>({
             "rounded-sm font-medium transition-colors",
             buttonClassName ?? "px-2 py-1 text-caption",
             value === key
-              ? "bg-background text-foreground shadow-sm"
+              ? "bg-background text-foreground shadow-surface"
               : "text-muted-foreground hover:text-foreground",
           )}
         >

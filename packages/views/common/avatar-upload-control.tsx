@@ -359,7 +359,7 @@ export function AvatarUploadControl({
             setPreviewError(false);
             onClear();
           }}
-          className="absolute -right-1.5 -top-1.5 flex h-5 w-5 items-center justify-center rounded-full border bg-background text-muted-foreground shadow-sm transition-colors hover:bg-muted hover:text-foreground"
+          className="absolute -right-1.5 -top-1.5 flex h-5 w-5 items-center justify-center rounded-full border bg-background text-muted-foreground shadow-surface transition-colors hover:bg-muted hover:text-foreground"
           aria-label={t(($) => $.avatar_upload.remove)}
         >
           <X className="h-3 w-3" />

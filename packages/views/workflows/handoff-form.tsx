@@ -257,7 +257,7 @@ function ScopeOption({
       onClick={onSelect}
       className={cn(
         "flex w-full items-start gap-2.5 rounded-md px-2 py-1.5 text-left transition-colors",
-        selected ? "bg-background shadow-xs ring-1 ring-surface-border" : "hover:bg-accent/60",
+        selected ? "bg-background shadow-surface ring-1 ring-surface-border" : "hover:bg-accent/60",
       )}
     >
       <RadioDot selected={selected} />

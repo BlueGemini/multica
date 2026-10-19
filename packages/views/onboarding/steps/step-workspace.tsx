@@ -499,7 +499,7 @@ function ExistingWorkspaceCard({
         "flex w-full items-center gap-4 rounded-lg border bg-card px-5 py-4 text-left transition-all",
         selected
           ? "border-foreground shadow-[inset_0_0_0_1px_var(--color-foreground)]"
-          : "hover:border-foreground/20 hover:bg-accent/30",
+          : "hover:border-border-strong hover:bg-accent/30",
       )}
     >
       <WorkspaceAvatar name={workspace.name} avatarUrl={workspace.avatar_url} size="lg" />
@@ -539,7 +539,7 @@ function CreateNewWorkspaceCard({
         "overflow-hidden rounded-lg border bg-card transition-all",
         selected
           ? "border-foreground shadow-[inset_0_0_0_1px_var(--color-foreground)]"
-          : "hover:border-foreground/20",
+          : "hover:border-border-strong",
       )}
     >
       <button

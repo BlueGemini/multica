@@ -127,7 +127,7 @@ export function RuntimePicker({
               onClick={() => handleFilterChange("mine")}
               className={`rounded-xs px-2 py-0.5 text-caption font-medium transition-colors disabled:pointer-events-none disabled:opacity-50 ${
                 filter === "mine"
-                  ? "bg-background text-foreground shadow-sm"
+                  ? "bg-background text-foreground shadow-surface"
                   : "text-muted-foreground hover:text-foreground"
               }`}
             >
@@ -139,7 +139,7 @@ export function RuntimePicker({
               onClick={() => handleFilterChange("all")}
               className={`rounded-xs px-2 py-0.5 text-caption font-medium transition-colors disabled:pointer-events-none disabled:opacity-50 ${
                 filter === "all"
-                  ? "bg-background text-foreground shadow-sm"
+                  ? "bg-background text-foreground shadow-surface"
                   : "text-muted-foreground hover:text-foreground"
               }`}
             >

@@ -128,7 +128,7 @@ export function CustomArgsTab({
 
   const renderEditor = (index?: number) => (
     <form
-      className="rounded-lg border border-input bg-background p-2.5 shadow-xs"
+      className="rounded-lg border border-input bg-background p-2.5"
       onSubmit={(event) => {
         event.preventDefault();
         commitEditor();

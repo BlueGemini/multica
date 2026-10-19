@@ -47,7 +47,7 @@ const LEVELS: readonly LogLevel[] = ["DEBUG", "INFO", "WARN", "ERROR"];
 
 const LEVEL_BADGE_CLASS: Record<LogLevel, string> = {
   DEBUG: "border-muted-foreground/25 text-muted-foreground",
-  INFO: "border-foreground/15 text-foreground",
+  INFO: "border-border-strong text-foreground",
   WARN: "border-warning/40 text-warning-subtle-foreground",
   ERROR: "border-destructive/40 text-destructive",
 };
@@ -477,7 +477,7 @@ function LevelBadge({ level }: { level: LogLevel }) {
   return (
     <span
       className={cn(
-        "inline-flex h-4 shrink-0 items-center rounded-xs border px-1 text-micro font-medium uppercase tracking-wide",
+        "inline-flex h-5 shrink-0 items-center rounded-md border px-1.5 text-micro font-medium uppercase tracking-wide",
         LEVEL_BADGE_CLASS[level],
       )}
     >

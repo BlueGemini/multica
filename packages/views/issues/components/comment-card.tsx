@@ -972,7 +972,7 @@ export function AgentRunComment({ run, standalone = false, commentProps, enterin
     <div ref={motionRef} data-run-slot-id={run.task.id}
       data-run-comment-id={!reply ? run.task.id : undefined}
       id={!standalone && slotEntry ? `comment-${slotEntry.id}` : undefined}
-      className={cn(standalone ? !reply && "rounded-xl border bg-card" : "border-t border-border/50", !reply && "py-1.5", slotEntry && commentProps?.highlightedCommentId === slotEntry.id && highlightedCommentBackgroundClass)}>
+      className={cn(standalone ? !reply && "rounded-xl border bg-card" : "border-t", !reply && "py-1.5", slotEntry && commentProps?.highlightedCommentId === slotEntry.id && highlightedCommentBackgroundClass)}>
       {commentProps && reply ? standalone ? (
         <CommentCard {...commentProps} runs={commentProps.runs ?? [run]} runViewState={viewState} />
       ) : (
@@ -1092,7 +1092,7 @@ function CommentCardImpl({
         <div
           id={`comment-${reply.id}`}
           className={cn(
-            "border-t border-border/50 transition-colors duration-700",
+            "border-t transition-colors duration-700",
             highlightedCommentId === reply.id && highlightedCommentBackgroundClass,
           )}
         >
@@ -1171,7 +1171,7 @@ function CommentCardImpl({
           type="button"
           onClick={onCollapseResolved}
           data-thread-sticky-bar
-          className="sticky top-0 z-20 flex w-full items-center gap-2.5 border-b border-border/50 bg-muted px-4 max-md:px-3 py-2.5 text-left text-body text-muted-foreground transition-colors cursor-pointer hover:bg-accent hover:text-accent-foreground"
+          className="sticky top-0 z-20 flex w-full items-center gap-2.5 border-b bg-muted px-4 max-md:px-3 py-2.5 text-left text-body text-muted-foreground transition-colors cursor-pointer hover:bg-accent hover:text-accent-foreground"
           aria-label={t(($) => $.comment.resolve.collapse)}
         >
           <ListChevronsDownUp className="h-3.5 w-3.5" />
@@ -1469,7 +1469,7 @@ function CommentCardImpl({
             <>
               {/* reply-mode folded: other replies behind a bar, resolution pinned below */}
               {foldedReplies.length > 0 && (
-                <div className="border-t border-border/50 px-4 max-md:px-3 py-2.5">
+                <div className="border-t px-4 max-md:px-3 py-2.5">
                   <CommentsFoldBar
                     replies={foldedReplies}
                     onExpand={() => onResolvedExpandChange?.(entry.id, true)}
@@ -1486,7 +1486,7 @@ function CommentCardImpl({
                   type="button"
                   onClick={() => onResolvedExpandChange(entry.id, false)}
                   data-thread-sticky-bar
-                  className="sticky top-0 z-20 flex w-full items-center gap-2.5 border-t border-border/50 bg-muted px-4 max-md:px-3 py-2.5 text-left text-body text-muted-foreground transition-colors cursor-pointer hover:bg-accent hover:text-accent-foreground"
+                  className="sticky top-0 z-20 flex w-full items-center gap-2.5 border-t bg-muted px-4 max-md:px-3 py-2.5 text-left text-body text-muted-foreground transition-colors cursor-pointer hover:bg-accent hover:text-accent-foreground"
                   aria-label={t(($) => $.comment.resolve.collapse)}
                 >
                   <ListChevronsDownUp className="h-3.5 w-3.5" />
@@ -1497,7 +1497,7 @@ function CommentCardImpl({
               {threadRows.map(renderThreadRow)}
 
               {/* Reply input */}
-              <div className="border-t border-border/50 px-4 max-md:px-3 py-2.5">
+              <div className="border-t px-4 max-md:px-3 py-2.5">
                 <ReplyInput
                   issueId={issueId}
                   parentId={replyTargetId}

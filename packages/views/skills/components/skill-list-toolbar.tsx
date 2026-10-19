@@ -425,7 +425,7 @@ export function SkillListToolbar({
                 )}
               </DropdownMenuSubTrigger>
               <DropdownMenuSubContent className="w-auto min-w-52 p-0">
-                <div className="border-b border-foreground/5 px-2 py-1.5">
+                <div className="border-b px-2 py-1.5">
                   <input
                     type="text"
                     value={labelSearch}

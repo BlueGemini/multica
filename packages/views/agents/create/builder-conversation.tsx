@@ -72,7 +72,7 @@ export function BuilderSetup({
     <main className="flex min-h-0 flex-1 items-center justify-center overflow-y-auto px-5 py-10">
       <div className="w-full max-w-xl">
         {banner}
-        <div className="rounded-xl border bg-card p-6 shadow-sm">
+        <div className="rounded-xl border border-surface-border bg-card p-6 shadow-surface">
         <span className="flex size-11 items-center justify-center rounded-lg bg-primary/10 text-primary">
           <MessageSquare className="size-5" />
         </span>

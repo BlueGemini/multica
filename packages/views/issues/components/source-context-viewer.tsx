@@ -142,7 +142,7 @@ export function SourceContextBadge({
     <>
       <div
         data-slot="source-context-summary"
-        className="mt-2 flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 rounded-lg border border-border/60 bg-fill-subtle px-2.5 py-1.5 text-caption"
+        className="mt-2 flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 rounded-lg border bg-fill-subtle px-2.5 py-1.5 text-caption"
       >
         <div className="flex min-w-0 flex-1 items-center gap-1.5">
           {/* Structurally this is the same parent relation a plain sub-issue

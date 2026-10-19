@@ -537,7 +537,7 @@ function RunActivityChart({
             <div
               aria-hidden
               data-hover-card
-              className="pointer-events-none absolute top-0 z-20 w-max max-w-72 rounded-lg border bg-popover px-2.5 py-1.5 text-caption text-popover-foreground shadow-[var(--menu-shadow)]"
+              className="pointer-events-none absolute top-0 z-20 w-max max-w-72 rounded-lg border bg-popover px-2.5 py-1.5 text-caption text-popover-foreground shadow-menu"
               style={{
                 left: `${((cardOnLeft ? hover.index : hover.index + 1) / n) * 100}%`,
                 transform: cardOnLeft ? "translateX(calc(-100% - 8px))" : "translateX(8px)",

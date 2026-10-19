@@ -59,7 +59,7 @@ export function FindBar({
       data-find-ignore
       role="search"
       className={cn(
-        "flex items-center gap-1 rounded-lg border bg-popover/95 p-1 pl-2 shadow-md backdrop-blur supports-[backdrop-filter]:bg-popover/80",
+        "flex items-center gap-1 rounded-lg border border-surface-border bg-popover/95 p-1 pl-2 shadow-menu backdrop-blur supports-[backdrop-filter]:bg-popover/80",
         className,
       )}
     >

@@ -510,7 +510,7 @@ function FilterButton({
       onClick={onClick}
       className={`flex-1 rounded-xs px-2 py-0.5 text-caption font-medium transition-colors ${
         active
-          ? "bg-background text-foreground shadow-sm"
+          ? "bg-background text-foreground shadow-surface"
           : "text-muted-foreground hover:text-foreground"
       }`}
     >

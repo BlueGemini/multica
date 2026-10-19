@@ -304,12 +304,12 @@ function MockActivityCard({
   return (
     <div
       className={cn(
-        "rounded-lg border bg-card px-4 py-3.5 shadow-sm",
+        "rounded-lg border border-surface-border bg-card px-4 py-3.5 shadow-surface",
         // Decorative hover: lift, straighten, deeper shadow. Cards aren't
         // clickable — this is ambient polish so the illustration feels like
         // real app UI rather than a flat screenshot.
         "transition-all duration-200 ease-out will-change-transform",
-        "hover:-translate-y-0.5 hover:rotate-0 hover:shadow-md",
+        "hover:-translate-y-0.5 hover:rotate-0 hover:shadow-menu",
         className,
       )}
     >

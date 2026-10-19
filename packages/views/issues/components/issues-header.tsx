@@ -357,7 +357,7 @@ function ActorSubContent({
 
   return (
     <>
-      <div className="px-2 py-1.5 border-b border-foreground/5">
+      <div className="px-2 py-1.5 border-b">
         <input
           type="text"
           value={search}
@@ -526,7 +526,7 @@ function ProjectSubContent({
 
   return (
     <>
-      <div className="px-2 py-1.5 border-b border-foreground/5">
+      <div className="px-2 py-1.5 border-b">
         <input
           type="text"
           value={search}
@@ -655,7 +655,7 @@ function LabelSubContent({
 
   return (
     <>
-      <div className="px-2 py-1.5 border-b border-foreground/5">
+      <div className="px-2 py-1.5 border-b">
         <input
           type="text"
           value={search}

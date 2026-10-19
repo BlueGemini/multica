@@ -185,10 +185,10 @@ function GanttAxis({
               className={cn(
                 "absolute top-0 bottom-0 flex items-center justify-center text-micro text-muted-foreground border-l",
                 isMonth
-                  ? "border-foreground/15"
+                  ? "border-border-strong"
                   : isWeek
-                  ? "border-foreground/10"
-                  : "border-foreground/5",
+                  ? "border-input"
+                  : "border-border",
               )}
               style={{ left: i * dayPx, width: dayPx }}
             >
@@ -362,7 +362,7 @@ function ScheduledRow({
     <IssueActionsContextMenu issue={issue}>
       <div
         {...{ [PEEK_TARGET_ATTR]: issue.id }}
-        className="flex border-b border-foreground/5 hover:bg-accent/30 transition-colors"
+        className="flex border-b hover:bg-accent/30 transition-colors"
         style={{ height: ROW_HEIGHT }}
       >
         {/* Sticky label cell — it also carries the peeked mark, since its
@@ -517,7 +517,7 @@ export function GanttView({ issues }: { issues: Issue[] }) {
     <div className="flex flex-col flex-1 min-h-0">
       {/* Toolbar */}
       <div className="flex h-9 shrink-0 items-center gap-2 border-b px-3">
-        <div className="inline-flex items-center rounded-md border border-foreground/10 p-0.5">
+        <div className="inline-flex items-center rounded-md border border-input p-0.5">
           {([
             { value: "day", label: t(($) => $.gantt.zoom_day) },
             { value: "week", label: t(($) => $.gantt.zoom_week) },

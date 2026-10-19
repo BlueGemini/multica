@@ -217,7 +217,7 @@ export function DraftDefinitionFields() {
                 trigger={
                   <button
                     type="button"
-                    className="flex h-6 items-center gap-1 rounded-md border border-dashed border-border px-2 text-caption text-muted-foreground hover:border-foreground/30 hover:bg-fill-hover hover:text-foreground"
+                    className="flex h-6 items-center gap-1 rounded-md border border-dashed border-border px-2 text-caption text-muted-foreground hover:border-border-strong hover:bg-fill-hover hover:text-foreground"
                   >
                     <Plus className="size-3" />
                     {t(($) => $.save_view.add_filter)}

@@ -529,7 +529,7 @@ function VerdictPill({
       title={title ?? pill.title}
       className={cn(
         inline ? null : "ml-auto",
-        "inline-flex h-4.5 shrink-0 items-center gap-1 whitespace-nowrap rounded-full px-1.5 text-micro font-medium tabular-nums",
+        "inline-flex h-5 shrink-0 items-center gap-1 whitespace-nowrap rounded-md px-1.5 text-micro font-medium tabular-nums",
         TONE_CLASS[pill.tone],
         stale ? "opacity-60" : null,
       )}

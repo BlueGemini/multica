@@ -667,9 +667,9 @@ function StepCard({
       style={sortable?.style}
       className={cn(
         "flex items-start gap-1 rounded-lg border px-2 py-2.5 transition-colors",
-        selected ? "border-foreground/20 bg-accent" : "border-surface-border bg-card hover:bg-accent/50",
+        selected ? "border-border-strong bg-accent" : "border-surface-border bg-card hover:bg-accent/50",
         off && !selected && "border-dashed bg-transparent",
-        sortable?.dragging && "z-10 shadow-[var(--surface-shadow)]",
+        sortable?.dragging && "z-10 shadow-surface",
       )}
     >
       {sortable?.handle ? (

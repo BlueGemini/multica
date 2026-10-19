@@ -541,7 +541,7 @@ function ProviderIconStack({ providers }: { providers: string[] }) {
         </span>
       ))}
       {extra > 0 && (
-        <span className="inline-flex h-5 min-w-5 items-center justify-center rounded-xs bg-muted px-1 text-micro font-medium text-muted-foreground ring-1 ring-border">
+        <span className="inline-flex h-5 min-w-5 items-center justify-center rounded-md bg-muted px-1 text-micro font-medium text-muted-foreground ring-1 ring-border">
           +{extra}
         </span>
       )}

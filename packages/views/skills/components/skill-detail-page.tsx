@@ -696,7 +696,7 @@ function FilesTab({
                     className={cn(
                       "h-6 rounded-xs px-2 text-caption font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
                       mode === value
-                        ? "bg-surface text-foreground shadow-sm"
+                        ? "bg-surface text-foreground shadow-surface"
                         : "text-muted-foreground hover:text-foreground",
                     )}
                   >
@@ -1347,7 +1347,7 @@ export function SkillDetailPage({ skillId }: { skillId: string }) {
         <div
           role="status"
           aria-live="polite"
-          className="absolute bottom-6 left-1/2 z-50 flex -translate-x-1/2 animate-in items-center gap-1 rounded-lg border bg-background px-2 py-1.5 fade-in slide-in-from-bottom-2 shadow-lg max-md:above-chat-launcher"
+          className="absolute bottom-6 left-1/2 z-50 flex -translate-x-1/2 animate-in items-center gap-1 rounded-lg border border-surface-border bg-background px-2 py-1.5 fade-in slide-in-from-bottom-2 shadow-menu max-md:above-chat-launcher"
         >
           <div className="mr-1 flex items-center border-r pl-1 pr-2">
             <span className="whitespace-nowrap text-caption text-muted-foreground">

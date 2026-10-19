@@ -41,7 +41,7 @@ export function CompactRuntimeRow({
         "disabled:pointer-events-none disabled:opacity-60",
         selected
           ? "border-primary ring-1 ring-primary"
-          : "hover:border-foreground/20",
+          : "hover:border-border-strong",
       )}
     >
       <ProviderLogo provider={runtime.provider} className="h-5 w-5" />

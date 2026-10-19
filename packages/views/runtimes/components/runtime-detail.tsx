@@ -641,7 +641,7 @@ function VisibilityChoice({
             disabled={disabled}
             className={`inline-flex items-center gap-1.5 rounded-xs px-2 py-1 text-caption font-medium transition-colors ${
               active
-                ? "bg-background text-foreground shadow-sm"
+                ? "bg-background text-foreground shadow-surface"
                 : "text-muted-foreground hover:text-foreground"
             } ${disabled ? "cursor-not-allowed opacity-60" : ""}`}
           >

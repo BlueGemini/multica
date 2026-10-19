@@ -819,7 +819,7 @@ export function ScheduleEditor({
         <div
           aria-busy={previewShowsList ? previewIsPending : undefined}
           className={cn(
-            "mt-2.5 min-h-14 border-t border-border/60 pt-2.5 transition-opacity",
+            "mt-2.5 min-h-14 border-t pt-2.5 transition-opacity",
             previewShowsList && previewIsPending && "opacity-50",
           )}
         >

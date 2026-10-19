@@ -202,7 +202,7 @@ function ChartTooltipContent({
   return (
     <div
       className={cn(
-        "grid min-w-32 items-start gap-1.5 rounded-lg border border-border/50 bg-background px-2.5 py-1.5 text-caption shadow-xl",
+        "grid min-w-32 items-start gap-1.5 rounded-lg border border-surface-border bg-background px-2.5 py-1.5 text-caption shadow-menu",
         className
       )}
     >
@@ -278,7 +278,7 @@ function ChartTooltipContent({
           })}
       </div>
       {footer != null && (
-        <div className="mt-0.5 border-t border-border/50 pt-1.5">
+        <div className="mt-0.5 border-t pt-1.5">
           {typeof footer === "function" ? footer(payload) : footer}
         </div>
       )}

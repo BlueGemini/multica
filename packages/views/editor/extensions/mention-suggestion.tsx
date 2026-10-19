@@ -447,7 +447,7 @@ export const MentionList = forwardRef<MentionListRef, MentionListProps>(
         (isSearching || searchedQuery !== normalizedQuery);
 
       return (
-        <div className="rounded-md border bg-popover p-2 text-caption text-muted-foreground shadow-md">
+        <div className="rounded-md border border-surface-border bg-popover p-2 text-caption text-muted-foreground shadow-menu">
           {isWaitingForServer
             ? t(($) => $.mention.searching)
             : t(($) => $.mention.no_results)}
@@ -500,7 +500,7 @@ export const MentionList = forwardRef<MentionListRef, MentionListProps>(
     return (
       <div
         className={cn(
-          "flex flex-col overflow-y-auto overscroll-contain border bg-popover py-1",
+          "flex flex-col overflow-y-auto overscroll-contain border border-surface-border bg-popover py-1",
           // Height budget: clamp to whichever is smaller — the design max or the
           // viewport-aware `--suggestion-available-height` published by the
           // floating-ui `size` middleware (suggestion-popup.tsx). The var falls
@@ -508,8 +508,8 @@ export const MentionList = forwardRef<MentionListRef, MentionListProps>(
           // controller. This is the single height authority; do not add a second
           // fixed max-height above it or the list can overflow the viewport.
           contextLayout
-            ? "max-h-[min(420px,var(--suggestion-available-height,420px))] w-96 rounded-lg shadow-xl"
-            : "max-h-[min(300px,var(--suggestion-available-height,300px))] w-72 rounded-md shadow-md",
+            ? "max-h-[min(420px,var(--suggestion-available-height,420px))] w-96 rounded-lg shadow-menu"
+            : "max-h-[min(300px,var(--suggestion-available-height,300px))] w-72 rounded-md shadow-menu",
         )}
       >
         {groups.map((group) => (
@@ -642,12 +642,12 @@ function MentionRow({
         {item.type === "all" ? t(($) => $.mention.all_members) : item.label}
       </span>
       {item.type === "agent" && (
-        <Badge variant="outline" className="ml-auto text-micro h-4 px-1.5">
+        <Badge variant="outline" className="ml-auto text-micro px-1.5">
           {t(($) => $.mention.agent_badge)}
         </Badge>
       )}
       {item.type === "squad" && (
-        <Badge variant="outline" className="ml-auto text-micro h-4 px-1.5">
+        <Badge variant="outline" className="ml-auto text-micro px-1.5">
           {t(($) => $.mention.squad_badge)}
         </Badge>
       )}

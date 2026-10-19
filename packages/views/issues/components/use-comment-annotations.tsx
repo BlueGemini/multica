@@ -297,7 +297,7 @@ export function useCommentAnnotations({ draftKey, sources, enabled, onAdded, edi
               <MessageSquarePlus />{t(($) => editable ? $.reply.annotations.add_comment : $.reply.annotations.add)}
             </Button>}
         </div>
-        {error && <p role="alert" className="mt-1 max-w-72 rounded-lg bg-popover p-2 text-caption text-destructive shadow-[var(--menu-shadow)]">
+        {error && <p role="alert" className="mt-1 max-w-72 rounded-lg bg-popover p-2 text-caption text-destructive shadow-menu">
           {selection.quote.length > MAX_ANNOTATION_QUOTE_LENGTH
             ? t(($) => $.reply.annotations.quote_limit, { count: MAX_ANNOTATION_QUOTE_LENGTH })
             : t(($) => $.reply.annotations.count_limit, { count: MAX_REPLY_ANNOTATIONS })}

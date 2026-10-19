@@ -208,7 +208,7 @@ function ComponentsScene() {
           title={t(($) => $.gallery.sections.elevation)}
           caption="ELEVATION"
         >
-          <div className="rounded-xl border border-surface-border bg-surface p-4 shadow-[var(--surface-shadow)]">
+          <div className="rounded-xl border border-surface-border bg-surface p-4 shadow-surface">
             <div className="mb-4 flex items-center gap-3">
               <Person />
               <div>

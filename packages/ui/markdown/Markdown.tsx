@@ -278,7 +278,7 @@ function createComponents(
       th: ({ children }) => (
         <th className="text-left py-2 px-3 font-semibold text-muted-foreground">{children}</th>
       ),
-      td: ({ children }) => <td className="py-2 px-3 border-b border-border/50">{children}</td>,
+      td: ({ children }) => <td className="py-2 px-3 border-b">{children}</td>,
       // Headings - H1/H2 same size, differentiated by weight
       h1: ({ children }) => <h1 className="font-sans text-title-sm font-bold mt-5 mb-3">{children}</h1>,
       h2: ({ children }) => (
@@ -348,7 +348,7 @@ function createComponents(
     h4: ({ children }) => <h4 className="text-body font-semibold mt-3 mb-1">{children}</h4>,
     // Styled blockquotes
     blockquote: ({ children }) => (
-      <blockquote className="border-l-4 border-foreground/30 bg-fill-subtle pl-4 pr-3 py-2 my-3 rounded-r-md">
+      <blockquote className="border-l-4 border-border-strong bg-fill-subtle pl-4 pr-3 py-2 my-3 rounded-r-md">
         {children}
       </blockquote>
     ),

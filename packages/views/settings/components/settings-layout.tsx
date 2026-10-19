@@ -36,7 +36,7 @@ export type SettingsScope =
 export const SETTINGS_ANCHOR_ATTR = "data-settings-anchor";
 
 const SCOPE_BADGE_CLASS =
-  "inline-flex h-5 min-w-0 shrink-0 items-center gap-1 rounded-full bg-muted px-2 text-caption font-medium text-muted-foreground";
+  "inline-flex h-5 min-w-0 shrink-0 items-center gap-1 rounded-md bg-muted px-2 text-caption font-medium text-muted-foreground";
 
 export function SettingsScopeBadge({ scope }: { scope: SettingsScope }) {
   const { t } = useT("settings");
@@ -307,7 +307,7 @@ export function SettingsViewTabs<T extends string>({
           className={cn(
             "inline-flex h-7 items-center gap-1.5 rounded-md px-2.5 text-label font-medium transition-colors focus-visible:outline-2 focus-visible:outline-ring",
             value === item.value
-              ? "bg-background text-foreground shadow-sm"
+              ? "bg-background text-foreground shadow-surface"
               : "text-muted-foreground hover:text-foreground",
           )}
         >

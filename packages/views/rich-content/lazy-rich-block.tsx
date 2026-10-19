@@ -172,7 +172,7 @@ export function LazyRichBlock({
 function RichBlockPlaceholder() {
   return (
     <div
-      className="h-full w-full rounded-md border border-border/50 bg-fill-subtle"
+      className="h-full w-full rounded-md border bg-fill-subtle"
       aria-hidden="true"
     />
   );

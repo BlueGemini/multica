@@ -607,7 +607,7 @@ function Segmented<T extends string>({
           onClick={() => onChange(option.value)}
           className={cn(
             "h-6 rounded-md px-2.5 text-caption text-muted-foreground outline-none focus-visible:ring-3 focus-visible:ring-ring/50",
-            value === option.value && "bg-surface font-medium text-foreground shadow-[var(--surface-shadow)]",
+            value === option.value && "bg-surface font-medium text-foreground shadow-surface",
           )}
         >
           {option.label}

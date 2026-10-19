@@ -202,7 +202,7 @@ export function ExecutionLogSection({ issueId, identifier, issueTitle }: Executi
             <ActiveTaskRow key={task.id} task={task} issueId={issueId} />
           ))}
           {activeTasks.length > 0 && pastRuns.length > 0 && (
-            <div className="my-1.5 border-t border-border/60" />
+            <div className="my-1.5 border-t" />
           )}
 
           {(timeline.pricedCount > 0 || timeline.agentMs > 0) && <RunTotals timeline={timeline} />}

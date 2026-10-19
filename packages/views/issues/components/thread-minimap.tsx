@@ -604,7 +604,7 @@ export function ThreadMinimap({
           onPointerLeave={scheduleClose}
           onFocusCapture={cancelClose}
           onBlurCapture={scheduleClose}
-          className="pointer-events-auto absolute right-8 top-1/2 max-h-[calc(100%-3rem)] w-80 max-w-[calc(100vw-4rem)] -translate-y-1/2 overflow-y-auto overscroll-contain rounded-xl bg-popover p-2 text-body text-popover-foreground shadow-lg ring-1 ring-foreground/10"
+          className="pointer-events-auto absolute right-8 top-1/2 max-h-[calc(100%-3rem)] w-80 max-w-[calc(100vw-4rem)] -translate-y-1/2 overflow-y-auto overscroll-contain rounded-xl bg-popover p-2 text-body text-popover-foreground shadow-menu ring-1 ring-surface-border"
         >
           {/* One <li> per item, replies included, so row index === item index. */}
           <ul>
