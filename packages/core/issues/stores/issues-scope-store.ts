@@ -31,6 +31,12 @@ export const useIssuesScopeStore = create<IssuesScopeState>()(
       name: "multica_issues_scope",
       version: 1,
       storage: createJSONStorage(() => createWorkspaceAwareStorage(defaultStorage)),
+      // An empty namespace must clear the previous workspace's in-memory tabs.
+      merge: (persisted, current) => ({
+        ...current,
+        scopes:
+          (persisted as Partial<IssuesScopeState> | undefined)?.scopes ?? {},
+      }),
       migrate: (persisted, version) => {
         // v0 stored one tab shared by every page; carry it over as the
         // Issues page's tab and let project pages start fresh on "all".
