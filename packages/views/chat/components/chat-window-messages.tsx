@@ -15,7 +15,6 @@ const CHAT_VIRTUOSO_INITIAL_FIRST_ITEM_INDEX = 1_000_000;
 /** Message-only observers leave with the fading list; the composer stays alive. */
 export function ChatWindowMessages({
   sessionId,
-  visible,
   pendingTask,
   pendingTaskLoading,
   availability,
@@ -25,7 +24,6 @@ export function ChatWindowMessages({
   children,
 }: {
   sessionId: string | null;
-  visible: boolean;
   pendingTask: ChatPendingTask | null | undefined;
   pendingTaskLoading: boolean;
   availability: AgentAvailability | undefined;
@@ -67,7 +65,7 @@ export function ChatWindowMessages({
       ) : messages.length > 0 || pendingTask?.task_id ? (
         <ChatMessageList
           key={sessionId}
-          active={visible && isPresent}
+          active={isPresent}
           messages={messages}
           pendingTask={pendingTask}
           availability={availability}

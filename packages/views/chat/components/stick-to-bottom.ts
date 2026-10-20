@@ -133,8 +133,8 @@ export function useStickToBottom(
     followRef.current = createLiveEndFollow();
   }
   const follow = followRef.current;
-  // Read by followOutput during render and by callbacks retained through an
-  // exit animation. Closing must stop corrections before the list unmounts.
+  // followOutput reads this latch in the same render, so an effect would update
+  // it too late. Retained exit callbacks must also stop before the list unmounts.
   follow.setActive(active);
   const activeRef = useRef(active);
   activeRef.current = active;

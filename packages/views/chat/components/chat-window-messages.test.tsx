@@ -41,7 +41,6 @@ function renderWindow(open: boolean) {
         {isOpen && (
           <ChatWindowMessages
             sessionId="session-1"
-            visible
             pendingTask={undefined}
             pendingTaskLoading={false}
             availability={undefined}
@@ -74,7 +73,7 @@ describe("floating chat message lifetime", () => {
     expect(fetchMessages).not.toHaveBeenCalled();
   });
 
-  it("stops following during exit, then releases observers and reads new data on reopen", async () => {
+  it("follows immediately on open, stops during exit, then reads new data on reopen", async () => {
     const { qc, key, setOpen, observers } = renderWindow(true);
     expect(screen.getByTestId("messages")).toHaveAttribute("data-active", "true");
     expect(observers()).toBe(1);

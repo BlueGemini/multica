@@ -884,7 +884,6 @@ export function ChatWindow() {
         {isOpen && (
           <ChatWindowMessages
             sessionId={activeSessionId}
-            visible={isVisible}
             pendingTask={pendingTask}
             pendingTaskLoading={pendingTaskLoading}
             availability={availability}
