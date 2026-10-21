@@ -19,6 +19,7 @@ const mocks = vi.hoisted(() => ({
   stopQoderConnection: vi.fn(),
   listRuntimes: vi.fn(),
   listAgents: vi.fn(),
+  saveQoderConnection: vi.fn(),
 }));
 const mockPush = vi.hoisted(() => vi.fn());
 vi.mock("@multica/core/api", () => ({ api: mocks }));
@@ -71,14 +72,14 @@ afterEach(() => {
   cleanup();
   vi.clearAllMocks();
 });
-function mount() {
+function mount(onConnected?: () => void) {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
   });
   render(
     <I18nProvider locale="en" resources={{ en: { runtimes: enRuntimes } }}>
       <QueryClientProvider client={client}>
-        <QoderConfiguration />
+        <QoderConfiguration onConnected={onConnected} />
       </QueryClientProvider>
     </I18nProvider>,
   );
@@ -164,6 +165,33 @@ it("connects a first-time workspace with the short form", async () => {
   const client = mount();
   expect(await screen.findByRole("button", { name: "Connect" })).toBeDisabled();
   expect(screen.queryByRole("button", { name: "Test connection" })).not.toBeInTheDocument();
+  client.clear();
+});
+it("reports a first-time connection so the caller can close", async () => {
+  mocks.getQoderConnection.mockResolvedValue({
+    ...(await mocks.getQoderConnection()),
+    configured: false,
+    hasToken: false,
+    enabled: false,
+    status: "offline",
+  });
+  mocks.listQoderEnvironments.mockResolvedValue([
+    { id: "env_one", name: "Web environment" },
+  ]);
+  mocks.saveQoderConnection.mockResolvedValue(undefined);
+  const onConnected = vi.fn();
+  const client = mount(onConnected);
+  fireEvent.change(await screen.findByPlaceholderText("pt-…"), {
+    target: { value: "pt-test" },
+  });
+  const connect = screen.getByRole("button", { name: "Connect" });
+  await waitFor(() => expect(connect).toBeEnabled(), { timeout: 3000 });
+  fireEvent.click(connect);
+  await waitFor(() => expect(onConnected).toHaveBeenCalledTimes(1));
+  expect(mocks.saveQoderConnection).toHaveBeenCalledWith(
+    "ws-test",
+    expect.objectContaining({ environmentId: "env_one", qoderToken: "pt-test" }),
+  );
   client.clear();
 });
 it("asks before stopping and names the agents it strands", async () => {

@@ -61,7 +61,12 @@ import { QoderConnectForm } from "./qoder-connect-form";
 import { QoderStatusBadge } from "./qoder-status-badge";
 import { useT } from "../../i18n";
 
-export function QoderConfiguration() {
+export function QoderConfiguration({
+  onConnected,
+}: {
+  /** Called after a first-time connection succeeds. */
+  onConnected?: () => void;
+} = {}) {
   const wsId = useWorkspaceId();
   const query = useQuery(qoderOptions(wsId));
   const { t } = useT("runtimes");
@@ -81,7 +86,10 @@ export function QoderConfiguration() {
         wsId={wsId}
         connection={query.data}
         submitLabel={t(($) => $.qoder.connect.submit)}
-        onConnected={() => toast.success(t(($) => $.qoder.connect.connected))}
+        onConnected={() => {
+          toast.success(t(($) => $.qoder.connect.connected));
+          onConnected?.();
+        }}
       />
     );
   }

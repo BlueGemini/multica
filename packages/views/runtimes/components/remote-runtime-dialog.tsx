@@ -40,7 +40,7 @@ export function RemoteRuntimeDialog({
               : t(($) => $.qoder.connect_description)}
           </DialogDescription>
         </DialogHeader>
-        <QoderConfiguration />
+        <QoderConfiguration onConnected={onClose} />
       </DialogContent>
     </Dialog>
   );
