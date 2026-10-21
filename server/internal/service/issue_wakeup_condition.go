@@ -310,7 +310,7 @@ func (s *IssueWakeupService) evaluateCondition(ctx context.Context, tx pgx.Tx, q
 				}
 				// PR numbers and heads can repeat across repositories (forks).
 				key := fmt.Sprintf("%s@%s:conflicting", id, head)
-				if mergeable == "CONFLICTING" || ((mergeable == "UNKNOWN" || mergeable == "") && previous[key]) {
+				if mergeable == "CONFLICTING" || ((mergeable == "UNKNOWN" || mergeable == "") && previous[key] > 0) {
 					keys = append(keys, key)
 					prs = append(prs, map[string]any{"number": number, "head_sha": head, "mergeable": "conflicting"})
 				}
@@ -501,28 +501,30 @@ func (s *IssueWakeupService) pollCondition(ctx context.Context, tx pgx.Tx, q *db
 	return next, q.SetWakeupConditionState(ctx, db.SetWakeupConditionStateParams{ID: w.ID, ConditionState: state, NextFireAt: next})
 }
 
-// prConditionKeys splits a linked-PR fingerprint into its per-PR keys.
-func prConditionKeys(fingerprint string) map[string]bool {
-	keys := map[string]bool{}
+// prConditionKeys counts the per-PR keys of a linked-PR fingerprint. Checks
+// and merged keys carry only the PR number, so two satisfying PRs from
+// different repositories can share a key; the count keeps both.
+func prConditionKeys(fingerprint string) map[string]int {
+	keys := map[string]int{}
 	if rest, ok := strings.CutPrefix(fingerprint, "pr:"); ok && rest != "" {
 		for _, key := range strings.Split(rest, ",") {
-			keys[key] = true
+			keys[key]++
 		}
 	}
 	return keys
 }
 
 // conditionNewlyMet reports whether a satisfied predicate is news to the rule.
-// A linked-PR fingerprint holds one key per satisfying PR, and only a key the
-// rule has not seen is news: one PR leaving the set (resolved, closed,
-// unlinked) must not wake the agent again for the others.
+// A linked-PR fingerprint holds one key per satisfying PR, and only a key that
+// occurs more often than the rule has seen is news: one PR leaving the set
+// (resolved, closed, unlinked) must not wake the agent again for the others.
 func conditionNewlyMet(previous, current string) bool {
 	if !strings.HasPrefix(current, "pr:") {
 		return current != previous
 	}
 	seen := prConditionKeys(previous)
-	for key := range prConditionKeys(current) {
-		if !seen[key] {
+	for key, n := range prConditionKeys(current) {
+		if n > seen[key] {
 			return true
 		}
 	}

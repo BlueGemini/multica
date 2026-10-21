@@ -120,6 +120,10 @@ func TestConditionNewlyMet(t *testing.T) {
 		{"pr:b@1:conflicting", "pr:a@1:conflicting,b@1:conflicting", true},
 		{"pr:a@1:conflicting", "pr:a@2:conflicting", true},
 		{"pr:1@h:SUCCESS,2@h:FAILURE", "pr:2@h:FAILURE", false},
+		// Number-only keys repeat across repositories; a second one is news.
+		{"pr:7", "pr:7,7", true},
+		{"pr:7,7", "pr:7", false},
+		{"pr:7,7", "pr:7,7", false},
 		{"status:todo", "status:in_review", true},
 		{"status:in_review", "status:in_review", false},
 		{`property:{"a":1,"b":2}`, `property:{"a":1,"b":2}`, false},

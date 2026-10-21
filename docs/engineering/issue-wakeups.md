@@ -600,10 +600,11 @@ across forks). GitHub reports
 `UNKNOWN` while it recomputes mergeability; on the same head that keeps the
 previous verdict, so a continuous rule is not woken twice for one conflict.
 Self-hosted VCS rows store no mergeability; a rule linked only to them records
-a diagnostic. For every linked-PR condition, a run starts only when a PR key
-appears that the rule has not seen; a PR leaving the set (resolved, closed,
-unlinked) only updates `condition_state`, so it does not wake the agent again
-for the PRs that stayed. A base-branch move sends no event for the PR, so the snapshot
+a diagnostic. For every linked-PR condition, a run starts only when some PR
+key occurs more often than in `condition_state` (checks and merged keys carry
+only the PR number, so same-numbered PRs from two repositories share one); a
+PR leaving the set (resolved, closed, unlinked) only updates
+`condition_state`, so it does not wake the agent again for the PRs that stayed. A base-branch move sends no event for the PR, so the snapshot
 pipeline keeps watched PRs (linked to an issue with an enabled `conflicts`
 rule) fresh: the 10-minute sweep re-fetches them once their snapshot is older
 than 5 minutes even when decided, rotating an address cursor like the

@@ -301,6 +301,53 @@ func TestWakeupConditionPRConflictsAcrossSeveralPRs(t *testing.T) {
 	}
 }
 
+// Checks and merged keys carry only the PR number, so same-numbered PRs from
+// two repositories share a key. The second one satisfying still wakes.
+func TestWakeupConditionPRSharedNumberWakesForEachPR(t *testing.T) {
+	for _, event := range []string{"merged", "checks_finished"} {
+		t.Run(event, func(t *testing.T) {
+			f, s, issue, agent := conditionFixture(t)
+			s.Tasks.PRSnapshotsEnabled = true
+			insertPR := func(repo string) string {
+				pr := f.Insert(t, "github_pull_request", testutil.Cols{
+					"workspace_id": f.WorkspaceID, "installation_id": 1,
+					"repo_owner": "fixture", "repo_name": repo, "pr_number": 7,
+					"title": "PR", "state": "open", "html_url": "https://example.test/" + repo,
+					"pr_created_at": "2026-01-01T00:00:00Z", "pr_updated_at": "2026-01-01T00:00:00Z",
+					"head_sha": "shared-head", "snapshot_head_sha": "shared-head", "checks_rollup_state": "PENDING",
+				})
+				f.Cleanup(t, "DELETE FROM issue_pull_request WHERE pull_request_id=$1", pr)
+				f.Exec(t, "INSERT INTO issue_pull_request(issue_id,pull_request_id) VALUES($1,$2)", issue, pr)
+				return pr
+			}
+			a, b := insertPR("repo-a"), insertPR("repo-b")
+			w := wakeCreate(t, f, s, issue, WakeupInput{AgentID: agent, Kind: "event", Mode: "continuous", Instruction: "Follow each pull request",
+				Condition: condition(t, map[string]any{"type": "pull_request", "event": event})})
+			wakeTick(t, f, s, w.ID)
+			if n := wakeRuns(t, f, w.ID); n != 0 {
+				t.Fatalf("before either PR satisfies: %d runs, want 0", n)
+			}
+			satisfy := func(pr string) {
+				if event == "merged" {
+					f.Exec(t, "UPDATE github_pull_request SET state='merged' WHERE id=$1", pr)
+				} else {
+					f.Exec(t, "UPDATE github_pull_request SET checks_rollup_state='SUCCESS' WHERE id=$1", pr)
+				}
+				wakeTick(t, f, s, w.ID)
+			}
+			satisfy(a)
+			if n := wakeRuns(t, f, w.ID); n != 1 {
+				t.Fatalf("after the first PR: %d runs, want 1", n)
+			}
+			f.Exec(t, "UPDATE agent_task_queue SET status='completed',completed_at=now() WHERE context->>'wakeup_id'=$1", util.UUIDToString(w.ID))
+			satisfy(b)
+			if n := wakeRuns(t, f, w.ID); n != 2 {
+				t.Fatalf("after the second PR: %d runs, want 2", n)
+			}
+		})
+	}
+}
+
 func TestWakeupConditionChildrenAndOtherIssue(t *testing.T) {
 	f, s, issue, agent := conditionFixture(t)
 	first := f.Issue(t, "Stage 1 child", testutil.Cols{"parent_issue_id": issue, "status": "todo", "stage": 1})
