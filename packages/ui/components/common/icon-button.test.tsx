@@ -198,4 +198,28 @@ describe("DeferredTooltip", () => {
       vi.useRealTimers();
     }
   });
+
+  it("still shows on an expanded disclosure toggle that has no popup", async () => {
+    vi.useFakeTimers();
+    try {
+      renderWithTooltips(
+        <DeferredTooltip
+          content="Collapse thread"
+          trigger={
+            <button type="button" aria-label="Collapse thread" aria-expanded="true">
+              <svg />
+            </button>
+          }
+        />,
+      );
+
+      fireEvent.pointerEnter(screen.getByRole("button", { name: "Collapse thread" }), { pointerType: "mouse" });
+      await act(async () => {
+        vi.advanceTimersByTime(250);
+      });
+      expect(document.querySelector("[data-slot='tooltip-content']")).toHaveTextContent("Collapse thread");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 });

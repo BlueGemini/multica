@@ -67,9 +67,14 @@ export function DeferredTooltip({
       setWarm(true);
       clearTimer();
       timerRef.current = setTimeout(() => {
-        // A trigger whose own menu/popover is open keeps the tooltip hidden.
+        // A trigger whose own menu/popover is open keeps the tooltip hidden;
+        // plain expand/collapse toggles (aria-expanded without a popup) keep it.
         const el = anchorRef.current;
-        if (el?.hasAttribute("data-popup-open") || el?.getAttribute("aria-expanded") === "true") return;
+        const popupOpen =
+          el?.hasAttribute("data-popup-open") ||
+          (el?.getAttribute("aria-expanded") === "true" &&
+            (el.getAttribute("aria-haspopup") ?? "false") !== "false");
+        if (popupOpen) return;
         setOpen(true);
       }, TOOLTIP_OPEN_DELAY);
     },

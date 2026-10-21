@@ -618,7 +618,7 @@ export function AgentCreatePanel({
       size="sm"
       onClick={submit}
       disabled={!hasContent || !actor || submitting || versionBlocked || gate.uploading || (!!anchorCommentId && !sourcePreview)}
-      aria-disabled={gate.uploading || undefined}
+      aria-disabled={gate.uploading || versionBlocked || undefined}
       // Sending is a busy state too, not just uploading.
       aria-busy={gate.uploading || submitting || undefined}
       // Keeps the button hoverable so its tooltip can say why it is blocked.
