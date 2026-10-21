@@ -69,7 +69,8 @@ type SecondaryTab = {
     | "access"
     | "environment"
     | "custom_args"
-    | "runtime_config";
+    | "runtime_config"
+    | "qoder_agent";
 };
 
 const CAPABILITY_TABS: SecondaryTab[] = [
@@ -189,7 +190,15 @@ export function AgentOverviewPane({
     wecomListing?.configured === true ||
     telegramListing?.configured === true;
 
+  // The Qoder bridge fails every task carrying skills, MCP, connected apps,
+  // env, args or a model override, and runs issues only (no chat). Those
+  // editors are not offered; the QCA agent in Qoder owns that configuration.
+  const qoderRuntime = runtime?.provider === "qoder_cloud";
+
   const visibleCapabilityTabs = useMemo(() => {
+    if (qoderRuntime) {
+      return CAPABILITY_TABS.filter((tab) => tab.id === "instructions");
+    }
     const showMcp = runtime
       ? providerSupportsMcpConfig(runtime.provider)
       : true;
@@ -210,26 +219,28 @@ export function AgentOverviewPane({
     composioMCPAppsEnabled,
     currentUserId,
     integrationsConfigured,
+    qoderRuntime,
     runtime,
   ]);
 
   const visibleSettingsTabs = useMemo(
     () =>
       SETTINGS_TABS.filter((tab) => {
+        if (qoderRuntime) return tab.id !== "env" && tab.id !== "custom_args";
         // Env is the only settings tab backed by a secret-bearing endpoint.
         // GET/PUT /api/agents/{id}/env admits the agent owner or a workspace
         // owner/admin (MUL-5438) — the same rule `canEdit` encodes — so
         // showing the tab to anyone else guarantees a 403 on "Reveal & edit".
         // The server stays the boundary; this only removes a dead entry point.
         if (tab.id === "env") return canEdit;
-        if (tab.id === "runtime_config")
-          return (
-            runtime?.provider === "openclaw" ||
-            runtime?.provider === "qoder_cloud"
-          );
+        if (tab.id === "runtime_config") return runtime?.provider === "openclaw";
         return true;
-      }),
-    [canEdit, runtime?.provider],
+      }).map((tab) =>
+        qoderRuntime && tab.id === "runtime_config"
+          ? { ...tab, labelKey: "qoder_agent" as const }
+          : tab,
+      ),
+    [canEdit, qoderRuntime, runtime?.provider],
   );
 
   const visibleViews = useMemo(
@@ -511,7 +522,7 @@ export function AgentOverviewPane({
                     />
                   )}
                   {effectiveView === "runtime_config" &&
-                    (runtime?.provider === "qoder_cloud" ? (
+                    (qoderRuntime ? (
                       <QoderAgentTab
                         canEdit={canEdit}
                         key={agent.id}
