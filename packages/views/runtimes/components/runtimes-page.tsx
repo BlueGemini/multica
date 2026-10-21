@@ -123,8 +123,8 @@ const COMING_SOON_SERVICES = [
 // `hidden @2xl:flex` and drop out of subgrid placement. MUST stay a literal
 // string so Tailwind sees the arbitrary template.
 const GRID_COLS =
-  "grid-cols-[0.5rem_minmax(160px,1fr)_minmax(96px,auto)_auto_0.5rem] " +
-  "@2xl:grid-cols-[0.5rem_minmax(220px,1fr)_152px_64px_140px_minmax(120px,auto)_auto_0.5rem]";
+  "grid-cols-[0.5rem_minmax(160px,1fr)_112px_5.5rem_0.5rem] " +
+  "@2xl:grid-cols-[0.5rem_minmax(220px,1fr)_152px_64px_140px_136px_5.5rem_0.5rem]";
 
 const OPTIONAL_CELL = "hidden @2xl:flex";
 
