@@ -19,8 +19,8 @@ func TestQoderConnectionSecrets(t *testing.T) {
 	withVCSBox(t)
 	t.Setenv("MULTICA_QODER_STATE_DIR", t.TempDir())
 	t.Cleanup(func() {
-		_, _ = testPool.Exec(context.Background(), `DELETE FROM daemon_token WHERE id IN (SELECT token_id FROM qoder_connection WHERE workspace_id=$1)`, testWorkspaceID)
-		_, _ = testPool.Exec(context.Background(), `DELETE FROM qoder_connection WHERE workspace_id=$1`, testWorkspaceID)
+		_, _ = testPool.Exec(context.Background(), `DELETE FROM daemon_token WHERE id IN (SELECT token_id FROM cloud_agent_connection WHERE provider='qoder_cloud' AND workspace_id=$1)`, testWorkspaceID)
+		_, _ = testPool.Exec(context.Background(), `DELETE FROM cloud_agent_connection WHERE provider='qoder_cloud' AND workspace_id=$1`, testWorkspaceID)
 	})
 	body := map[string]any{"name": "Managed QCA", "base_url": "https://api.qoder.com/api/v1/cloud", "environment_id": "env_test", "qoder_token": "qca-test-secret", "github_tokens": map[string]string{"https://github.com/owner/repo": "github-test-secret"}}
 	var view qoderSettingsView
@@ -29,7 +29,7 @@ func TestQoderConnectionSecrets(t *testing.T) {
 		t.Fatalf("unexpected view: %+v", view)
 	}
 	var encrypted string
-	dbfx.QueryRow(t, `SELECT config_encrypted FROM qoder_connection WHERE workspace_id=$1`, testWorkspaceID).Scan(&encrypted)
+	dbfx.QueryRow(t, `SELECT config_encrypted FROM cloud_agent_connection WHERE provider='qoder_cloud' AND workspace_id=$1`, testWorkspaceID).Scan(&encrypted)
 	raw, _ := json.Marshal(view)
 	for _, secret := range []string{"qca-test-secret", "github-test-secret"} {
 		if strings.Contains(encrypted, secret) || strings.Contains(string(raw), secret) {
@@ -60,7 +60,7 @@ func TestQoderConnectionSecrets(t *testing.T) {
 	}
 	testutil.Call(t, testHandler.StopQoderConnection, vcsHandlerRequest("POST", "/qoder/stop", nil, "")).Want(200).JSON(&view)
 	var tokenCount int
-	dbfx.QueryRow(t, `SELECT count(*) FROM daemon_token d JOIN qoder_connection c ON c.token_id=d.id WHERE c.workspace_id=$1`, testWorkspaceID).Scan(&tokenCount)
+	dbfx.QueryRow(t, `SELECT count(*) FROM daemon_token d JOIN cloud_agent_connection c ON c.token_id=d.id AND c.provider='qoder_cloud' WHERE c.workspace_id=$1`, testWorkspaceID).Scan(&tokenCount)
 	if tokenCount != 0 {
 		t.Fatal("stopped credential still exists")
 	}
@@ -69,7 +69,7 @@ func TestQoderConnectionSecrets(t *testing.T) {
 	}
 	runtimeID := dbfx.Runtime(t, "active QCA", testutil.Cols{"provider": "qoder_cloud", "runtime_mode": "cloud"})
 	var revision int64
-	dbfx.QueryRow(t, `SELECT revision FROM qoder_connection WHERE workspace_id=$1`, testWorkspaceID).Scan(&revision)
+	dbfx.QueryRow(t, `SELECT revision FROM cloud_agent_connection WHERE provider='qoder_cloud' AND workspace_id=$1`, testWorkspaceID).Scan(&revision)
 	if err := testHandler.qoderReady(context.Background(), testWorkspaceID, revision, runtimeID); err != nil {
 		t.Fatal(err)
 	}
@@ -90,12 +90,84 @@ func TestQoderConnectionSecrets(t *testing.T) {
 	testutil.Call(t, testHandler.SaveQoderConnection, vcsHandlerRequest("PUT", "/qoder", body, "")).Want(400)
 }
 
+func TestQoderBaseURL(t *testing.T) {
+	for raw, want := range map[string]string{
+		"":                                       qoderAPIURL,
+		"https://api.qoder.com/api/v1/cloud/":    qoderAPIURL,
+		" https://api.qoder.com.cn/api/v1/cloud": "https://api.qoder.com.cn/api/v1/cloud",
+	} {
+		if got, ok := qoderBaseURL(raw); !ok || got != want {
+			t.Fatalf("qoderBaseURL(%q) = %q, %v", raw, got, ok)
+		}
+	}
+	for _, raw := range []string{"https://api.qoder.com.cn.evil.test/api/v1/cloud", "http://api.qoder.com/api/v1/cloud", "https://api.qoder.com.cn/api/v1"} {
+		if _, ok := qoderBaseURL(raw); ok {
+			t.Fatalf("qoderBaseURL(%q) accepted", raw)
+		}
+	}
+}
+
+func TestQoderConnectionLimits(t *testing.T) {
+	if testHandler == nil {
+		t.Skip("database not available")
+	}
+	withVCSBox(t)
+	t.Setenv("MULTICA_QODER_STATE_DIR", t.TempDir())
+	t.Cleanup(func() {
+		_, _ = testPool.Exec(context.Background(), `DELETE FROM daemon_token WHERE id IN (SELECT token_id FROM cloud_agent_connection WHERE provider='qoder_cloud' AND workspace_id=$1)`, testWorkspaceID)
+		_, _ = testPool.Exec(context.Background(), `DELETE FROM cloud_agent_connection WHERE provider='qoder_cloud' AND workspace_id=$1`, testWorkspaceID)
+	})
+	body := map[string]any{"name": "Managed QCA", "base_url": "https://api.qoder.com/api/v1/cloud", "environment_id": "env_test", "qoder_token": "qca-test-secret"}
+	var view qoderSettingsView
+	testutil.Call(t, testHandler.SaveQoderConnection, vcsHandlerRequest("PUT", "/qoder", body, "")).Want(200).JSON(&view)
+	if view.MaxConcurrency != defaultQoderConcurrency || view.RunTimeoutMinutes != defaultQoderRunTimeout {
+		t.Fatalf("defaults not applied: %+v", view)
+	}
+	for _, invalid := range []map[string]any{{"max_concurrency": 11}, {"max_concurrency": -1}, {"run_timeout_minutes": 4}, {"run_timeout_minutes": 241}} {
+		req := map[string]any{}
+		for k, v := range body {
+			req[k] = v
+		}
+		for k, v := range invalid {
+			req[k] = v
+		}
+		testutil.Call(t, testHandler.SaveQoderConnection, vcsHandlerRequest("PUT", "/qoder", req, "")).Want(400)
+	}
+	body["base_url"] = "https://api.qoder.com.cn/api/v1/cloud/"
+	testutil.Call(t, testHandler.SaveQoderConnection, vcsHandlerRequest("PUT", "/qoder", body, "")).Want(200).JSON(&view)
+	if view.BaseURL != "https://api.qoder.com.cn/api/v1/cloud" {
+		t.Fatalf("China region not saved: %+v", view)
+	}
+	body["max_concurrency"] = 5
+	body["run_timeout_minutes"] = 90
+	testutil.Call(t, testHandler.SaveQoderConnection, vcsHandlerRequest("PUT", "/qoder", body, "")).Want(200).JSON(&view)
+	if view.MaxConcurrency != 5 || view.RunTimeoutMinutes != 90 {
+		t.Fatalf("limits not saved: %+v", view)
+	}
+	// Omitted limits keep the saved values rather than resetting to defaults.
+	delete(body, "max_concurrency")
+	delete(body, "run_timeout_minutes")
+	testutil.Call(t, testHandler.SaveQoderConnection, vcsHandlerRequest("PUT", "/qoder", body, "")).Want(200).JSON(&view)
+	if view.MaxConcurrency != 5 || view.RunTimeoutMinutes != 90 {
+		t.Fatalf("limits reset on save: %+v", view)
+	}
+	// A journal holding concurrent runs blocks configuration changes.
+	journal, err := testHandler.sealVCSSecret(`{"binding":"b","runs":[{"task_id":"t","phase":"prepared"}]}`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := testPool.Exec(context.Background(), `UPDATE cloud_agent_connection SET journal_encrypted=$2 WHERE provider='qoder_cloud' AND workspace_id=$1`, testWorkspaceID, journal); err != nil {
+		t.Fatal(err)
+	}
+	testutil.Call(t, testHandler.SaveQoderConnection, vcsHandlerRequest("PUT", "/qoder", body, "")).Want(409)
+}
+
 func TestQoderManagedRegistrationAndRevocation(t *testing.T) {
 	withVCSBox(t)
 	t.Setenv("MULTICA_QODER_STATE_DIR", t.TempDir())
 	t.Cleanup(func() {
-		_, _ = testPool.Exec(context.Background(), `DELETE FROM daemon_token WHERE id IN (SELECT token_id FROM qoder_connection WHERE workspace_id=$1)`, testWorkspaceID)
-		_, _ = testPool.Exec(context.Background(), `DELETE FROM qoder_connection WHERE workspace_id=$1`, testWorkspaceID)
+		_, _ = testPool.Exec(context.Background(), `DELETE FROM daemon_token WHERE id IN (SELECT token_id FROM cloud_agent_connection WHERE provider='qoder_cloud' AND workspace_id=$1)`, testWorkspaceID)
+		_, _ = testPool.Exec(context.Background(), `DELETE FROM cloud_agent_connection WHERE provider='qoder_cloud' AND workspace_id=$1`, testWorkspaceID)
 	})
 	input := map[string]any{"name": "QCA", "base_url": qoderAPIURL, "environment_id": "env_test", "qoder_token": "fixture-token"}
 	testutil.Call(t, testHandler.SaveQoderConnection, vcsHandlerRequest("PUT", "/qoder", input, "")).Want(200)
@@ -139,18 +211,18 @@ func TestQoderRetirementCancelsRemoteAndClearsPrompt(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, err = testPool.Exec(ctx, `INSERT INTO qoder_connection(workspace_id,owner_id,token_id,config_encrypted,enabled,journal_encrypted) VALUES($1,$2,$2,$3,false,$4)`, testWorkspaceID, testUserID, encrypted, journal)
+	_, err = testPool.Exec(ctx, `INSERT INTO cloud_agent_connection(workspace_id,provider,owner_id,token_id,config_encrypted,enabled,journal_encrypted) VALUES($1,'qoder_cloud',$2,$2,$3,false,$4)`, testWorkspaceID, testUserID, encrypted, journal)
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() {
-		_, _ = testPool.Exec(ctx, `DELETE FROM qoder_connection WHERE workspace_id=$1`, testWorkspaceID)
+		_, _ = testPool.Exec(ctx, `DELETE FROM cloud_agent_connection WHERE provider='qoder_cloud' AND workspace_id=$1`, testWorkspaceID)
 	})
 	if err = testHandler.cleanupQoderJournal(ctx, testWorkspaceID); err != nil {
 		t.Fatal(err)
 	}
 	var remaining, status string
-	dbfx.QueryRow(t, `SELECT journal_encrypted FROM qoder_connection WHERE workspace_id=$1`, testWorkspaceID).Scan(&remaining)
+	dbfx.QueryRow(t, `SELECT journal_encrypted FROM cloud_agent_connection WHERE provider='qoder_cloud' AND workspace_id=$1`, testWorkspaceID).Scan(&remaining)
 	dbfx.QueryRow(t, `SELECT status FROM agent_task_queue WHERE id=$1`, taskID).Scan(&status)
 	if cancelled != 1 || remaining != "" || status != "failed" {
 		t.Fatalf("retirement: cancels=%d journal cleared=%v status=%s", cancelled, remaining == "", status)
@@ -162,13 +234,13 @@ func TestQoderStepLeaseReleasesDatabaseConnection(t *testing.T) {
 	t.Setenv("MULTICA_QODER_STATE_DIR", t.TempDir())
 	ctx := context.Background()
 	t.Cleanup(func() {
-		_, _ = testPool.Exec(ctx, `DELETE FROM daemon_token WHERE id IN (SELECT token_id FROM qoder_connection WHERE workspace_id=$1)`, testWorkspaceID)
-		_, _ = testPool.Exec(ctx, `DELETE FROM qoder_connection WHERE workspace_id=$1`, testWorkspaceID)
+		_, _ = testPool.Exec(ctx, `DELETE FROM daemon_token WHERE id IN (SELECT token_id FROM cloud_agent_connection WHERE provider='qoder_cloud' AND workspace_id=$1)`, testWorkspaceID)
+		_, _ = testPool.Exec(ctx, `DELETE FROM cloud_agent_connection WHERE provider='qoder_cloud' AND workspace_id=$1`, testWorkspaceID)
 	})
 	input := map[string]any{"name": "QCA", "base_url": qoderAPIURL, "environment_id": "env_test", "qoder_token": "fixture-token"}
 	testutil.Call(t, testHandler.SaveQoderConnection, vcsHandlerRequest("PUT", "/qoder", input, "")).Want(200)
 	var revision int64
-	dbfx.QueryRow(t, `SELECT revision FROM qoder_connection WHERE workspace_id=$1`, testWorkspaceID).Scan(&revision)
+	dbfx.QueryRow(t, `SELECT revision FROM cloud_agent_connection WHERE provider='qoder_cloud' AND workspace_id=$1`, testWorkspaceID).Scan(&revision)
 	baseline := testPool.Stat().AcquiredConns()
 	release, err := testHandler.acquireQoderStep(ctx, testWorkspaceID, revision)
 	if err != nil {

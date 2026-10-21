@@ -18,6 +18,20 @@ import (
 
 const qoderAPIURL = "https://api.qoder.com/api/v1/cloud"
 
+// Managed connections may only reach Qoder's public regional APIs, preventing SSRF.
+var qoderAPIURLs = map[string]bool{
+	qoderAPIURL:                             true,
+	"https://api.qoder.com.cn/api/v1/cloud": true,
+}
+
+func qoderBaseURL(raw string) (string, bool) {
+	base := strings.TrimRight(strings.TrimSpace(raw), "/")
+	if base == "" {
+		return qoderAPIURL, true
+	}
+	return base, qoderAPIURLs[base]
+}
+
 type qoderCatalogItem struct {
 	ID   string `json:"id"`
 	Name string `json:"name"`
@@ -112,7 +126,12 @@ func (h *Handler) ListQoderAgents(w http.ResponseWriter, r *http.Request) {
 		writeError(w, 500, "cannot read QCA configuration")
 		return
 	}
-	items, err := fetchQoderCatalog(r.Context(), qoderAPIURL, cfg.QoderToken, "agents")
+	base, ok := qoderBaseURL(cfg.BaseURL)
+	if !ok {
+		writeError(w, 409, "unsupported QCA API URL")
+		return
+	}
+	items, err := fetchQoderCatalog(r.Context(), base, cfg.QoderToken, "agents")
 	if err != nil {
 		writeError(w, 502, err.Error())
 		return
@@ -132,7 +151,8 @@ func (h *Handler) ListQoderEnvironments(w http.ResponseWriter, r *http.Request) 
 	}
 
 	var input struct {
-		Token string `json:"qoder_token"`
+		Token   string `json:"qoder_token"`
+		BaseURL string `json:"base_url"`
 	}
 	dec := json.NewDecoder(http.MaxBytesReader(w, r.Body, 16<<10))
 	dec.DisallowUnknownFields()
@@ -145,20 +165,29 @@ func (h *Handler) ListQoderEnvironments(w http.ResponseWriter, r *http.Request) 
 		writeError(w, 400, "request must contain one JSON object")
 		return
 	}
+	cfg, _, _, _, err := h.readQoderSettings(r.Context(), uuidToString(ws))
+	if err != nil && !errors.Is(err, pgx.ErrNoRows) {
+		writeError(w, 500, "cannot read QCA configuration")
+		return
+	}
+	requested := input.BaseURL
+	if strings.TrimSpace(requested) == "" {
+		requested = cfg.BaseURL
+	}
+	base, ok := qoderBaseURL(requested)
+	if !ok {
+		writeError(w, 400, "unsupported QCA API URL")
+		return
+	}
 	token := strings.TrimSpace(input.Token)
 	if token == "" {
-		cfg, _, _, _, err := h.readQoderSettings(r.Context(), uuidToString(ws))
-		if err != nil && !errors.Is(err, pgx.ErrNoRows) {
-			writeError(w, 500, "cannot read QCA configuration")
-			return
-		}
 		token = cfg.QoderToken
 	}
 	if token == "" || strings.ContainsAny(token, "\r\n\t ") {
 		writeError(w, 400, "QCA token is required")
 		return
 	}
-	items, err := fetchQoderCatalog(r.Context(), qoderAPIURL, token, "environments")
+	items, err := fetchQoderCatalog(r.Context(), base, token, "environments")
 	if err != nil {
 		writeError(w, 502, err.Error())
 		return
@@ -167,10 +196,10 @@ func (h *Handler) ListQoderEnvironments(w http.ResponseWriter, r *http.Request) 
 }
 
 func validateQoderAgentConfig(raw []byte) error {
-	var cfg struct {
-		AgentID string `json:"qoder_agent_id"`
-	}
-	if json.Unmarshal(raw, &cfg) != nil || !qoderruntime.ValidAgentID(cfg.AgentID) {
+	if _, err := qoderruntime.ParseAgentConfig(raw); err != nil {
+		if strings.HasPrefix(err.Error(), "default repository") {
+			return err
+		}
 		return fmt.Errorf("select a QCA Agent in the agent runtime configuration")
 	}
 	return nil

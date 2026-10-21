@@ -4,18 +4,29 @@ import { useEffect, useState } from "react";
 import {
   CheckCircle2,
   CircleAlert,
+  Gauge,
   Loader2,
   KeyRound,
   Pencil,
   Plus,
+  ShieldCheck,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Badge } from "@multica/ui/components/ui/badge";
 import { useQuery } from "@tanstack/react-query";
 import { useAuthStore } from "@multica/core/auth";
-import { memberListOptions } from "@multica/core/workspace/queries";
-import { useWorkspaceId } from "@multica/core/hooks";
 import {
+  agentListOptions,
+  memberListOptions,
+} from "@multica/core/workspace/queries";
+import { useWorkspaceId } from "@multica/core/hooks";
+import { useWorkspacePaths } from "@multica/core/paths";
+import { runtimeListOptions } from "@multica/core/runtimes/queries";
+import {
+  MAX_CONCURRENCY,
+  MAX_RUN_TIMEOUT,
+  MIN_RUN_TIMEOUT,
+  QODER_REGIONS,
   qoderOptions,
   useQoderEnvironments,
   useStopQoder,
@@ -23,6 +34,7 @@ import {
   useSaveQoder,
   type QoderConnection,
   type QoderInput,
+  type QoderRegion,
 } from "@multica/core/runtimes/qoder";
 import { Button } from "@multica/ui/components/ui/button";
 import {
@@ -33,40 +45,81 @@ import {
   SelectItem,
 } from "@multica/ui/components/ui/select";
 import { Input } from "@multica/ui/components/ui/input";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@multica/ui/components/ui/alert-dialog";
+import { createPathWithParams } from "../../agents/create/squad-param";
+import { useNavigation } from "../../navigation";
+import { QoderConnectForm } from "./qoder-connect-form";
 import { QoderStatusBadge } from "./qoder-status-badge";
 import { useT } from "../../i18n";
 
-export function QoderConfiguration({
-  onAddAgent,
-}: {
-  onAddAgent?: () => void;
-}) {
+export function QoderConfiguration() {
   const wsId = useWorkspaceId();
   const query = useQuery(qoderOptions(wsId));
   const { t } = useT("runtimes");
+  const user = useAuthStore((s) => s.user);
+  const { data: members = [] } = useQuery(memberListOptions(wsId));
+  const member = members.find((m) => m.user_id === user?.id);
+  const canManage = member?.role === "owner" || member?.role === "admin";
   if (query.isPending) return <p role="status">{t(($) => $.qoder.loading)}</p>;
   if (query.isError) return <p role="alert">{query.error.message}</p>;
   if (query.data?.available !== true)
     return <p>{t(($) => $.qoder.unavailable)}</p>;
-  return <QoderForm wsId={wsId} data={query.data} onAddAgent={onAddAgent} />;
+  // A first connection only needs a token and an environment; the full form
+  // is for changing a connection that already exists.
+  if (!query.data.configured && canManage) {
+    return (
+      <QoderConnectForm
+        wsId={wsId}
+        connection={query.data}
+        submitLabel={t(($) => $.qoder.connect.submit)}
+        onConnected={() => toast.success(t(($) => $.qoder.connect.connected))}
+      />
+    );
+  }
+  return <QoderForm wsId={wsId} data={query.data} />;
 }
 
 function QoderForm({
   wsId,
   data,
-  onAddAgent,
 }: {
   wsId: string;
   data: QoderConnection;
-  onAddAgent?: () => void;
 }) {
   const { t } = useT("runtimes");
+  const paths = useWorkspacePaths();
+  const navigation = useNavigation();
+  const { data: runtimes = [] } = useQuery(runtimeListOptions(wsId));
+  const { data: agents = [] } = useQuery(agentListOptions(wsId));
+  const qoderRuntimes = runtimes.filter(
+    (runtime) => runtime.provider === "qoder_cloud",
+  );
+  const onlineQoderRuntime = qoderRuntimes.find(
+    (runtime) => runtime.status === "online",
+  );
+  const boundAgents = agents.filter(
+    (agent) =>
+      !agent.archived_at &&
+      qoderRuntimes.some((runtime) => runtime.id === agent.runtime_id),
+  );
+  const [confirmStop, setConfirmStop] = useState(false);
   const [input, setInput] = useState<QoderInput>(() => ({
     name: data.name || "Qoder Cloud Agent",
-    baseUrl: data.baseUrl || "https://api.qoder.com/api/v1/cloud",
+    baseUrl: data.baseUrl || QODER_REGIONS.global,
     environmentId: data.environmentId,
     qoderToken: "",
     githubTokens: {},
+    maxConcurrency: data.maxConcurrency,
+    runTimeoutMinutes: data.runTimeoutMinutes,
   }));
   const [editingToken, setEditingToken] = useState(!data.hasToken);
   const [editingRepositories, setEditingRepositories] = useState(
@@ -91,7 +144,11 @@ function QoderForm({
     const timer = setTimeout(
       () => {
         loadEnvironments(
-          { token: input.qoderToken, signal: controller.signal },
+          {
+            token: input.qoderToken,
+            baseUrl: input.baseUrl,
+            signal: controller.signal,
+          },
           {
             onSuccess: (items) => {
               if (controller.signal.aborted) return;
@@ -112,11 +169,20 @@ function QoderForm({
     };
   }, [
     input.qoderToken,
+    input.baseUrl,
     data.hasToken,
     canManage,
     loadEnvironments,
     resetEnvironments,
   ]);
+  const region =
+    (Object.keys(QODER_REGIONS) as QoderRegion[]).find(
+      (key) => QODER_REGIONS[key] === input.baseUrl,
+    ) ?? "global";
+  const regionItems = [
+    { value: "global", label: t(($) => $.qoder.region_global) },
+    { value: "cn", label: t(($) => $.qoder.region_cn) },
+  ];
   const environmentValid =
     !!input.environmentId &&
     environments.data?.some((item) => item.id === input.environmentId) === true;
@@ -125,7 +191,10 @@ function QoderForm({
   const hasUnsavedChanges =
     input.name !== (data.name || "Qoder Cloud Agent") ||
     input.environmentId !== data.environmentId ||
+    input.baseUrl !== (data.baseUrl || QODER_REGIONS.global) ||
     input.qoderToken !== "" ||
+    input.maxConcurrency !== data.maxConcurrency ||
+    input.runTimeoutMinutes !== data.runTimeoutMinutes ||
     repos.length !== data.repositories.length ||
     repos.some(
       (row) => row.token !== "" || !data.repositories.includes(row.url),
@@ -139,13 +208,26 @@ function QoderForm({
   });
   const busy =
     !canManage || save.isPending || check.isPending || stop.isPending;
-  const edit = (key: keyof Omit<QoderInput, "githubTokens">, value: string) => {
+  const edit = (
+    key: "name" | "baseUrl" | "environmentId" | "qoderToken",
+    value: string,
+  ) => {
     setInput((old) => ({
       ...old,
       [key]: value,
-      ...(key === "qoderToken" ? { environmentId: "" } : {}),
+      ...(key === "qoderToken" || key === "baseUrl"
+        ? { environmentId: "" }
+        : {}),
     }));
+    if (key === "baseUrl") setEditingToken(true);
     check.reset();
+    setSaved(false);
+  };
+  const editLimit = (
+    key: "maxConcurrency" | "runTimeoutMinutes",
+    value: number,
+  ) => {
+    setInput((old) => ({ ...old, [key]: value }));
     setSaved(false);
   };
   return (
@@ -185,6 +267,37 @@ function QoderForm({
             {data.lastError}
           </p>
         )}
+        <div className="space-y-2">
+          <p id="qoder-region-label" className="text-caption">
+            {t(($) => $.qoder.region)}
+          </p>
+          <Select
+            items={regionItems}
+            value={region}
+            onValueChange={(value) =>
+              value && edit("baseUrl", QODER_REGIONS[value as QoderRegion])
+            }
+            disabled={busy}
+          >
+            <SelectTrigger
+              className="w-full"
+              aria-labelledby="qoder-region-label"
+            >
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent alignItemWithTrigger={false}>
+              {regionItems.map((item) => (
+                <SelectItem key={item.value} value={item.value}>
+                  {item.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <p className="break-all text-caption text-muted-foreground">
+            {t(($) => $.qoder.region_hint)} {t(($) => $.qoder.api_url)}:{" "}
+            {input.baseUrl}
+          </p>
+        </div>
         <div className="grid gap-4 sm:grid-cols-2">
           <label className="block space-y-1 text-caption">
             {t(($) => $.qoder.name)}
@@ -288,7 +401,7 @@ function QoderForm({
               disabled={busy || environments.isPending}
               onClick={() =>
                 loadEnvironments(
-                  { token: input.qoderToken },
+                  { token: input.qoderToken, baseUrl: input.baseUrl },
                   {
                     onSuccess: (items) => {
                       if (!input.environmentId && items.length === 1)
@@ -302,9 +415,6 @@ function QoderForm({
             </Button>
           )}
         </div>
-        <p className="break-all text-caption text-muted-foreground">
-          {t(($) => $.qoder.api_url)}: {input.baseUrl}
-        </p>
       </section>
       <fieldset className="space-y-4 border-t pt-5">
         <legend className="flex items-center gap-2 pr-3 text-body font-medium">
@@ -409,6 +519,66 @@ function QoderForm({
           {t(($) => $.qoder.add_repository)}
         </Button>
       </fieldset>
+      <fieldset className="space-y-4 border-t pt-5">
+        <legend className="flex items-center gap-2 pr-3 text-body font-medium">
+          <Gauge aria-hidden="true" className="size-4 text-muted-foreground" />
+          {t(($) => $.qoder.execution)}
+        </legend>
+        <div className="grid gap-4 sm:grid-cols-2">
+          <label className="block space-y-1 text-caption">
+            {t(($) => $.qoder.concurrency)}
+            <Input
+              type="number"
+              inputMode="numeric"
+              min={1}
+              max={MAX_CONCURRENCY}
+              step={1}
+              required
+              value={input.maxConcurrency}
+              disabled={busy}
+              onChange={(e) =>
+                editLimit("maxConcurrency", e.target.valueAsNumber || 0)
+              }
+            />
+            <span className="block text-muted-foreground">
+              {t(($) => $.qoder.concurrency_hint)}
+            </span>
+          </label>
+          <label className="block space-y-1 text-caption">
+            {t(($) => $.qoder.run_timeout)}
+            <Input
+              type="number"
+              inputMode="numeric"
+              min={MIN_RUN_TIMEOUT}
+              max={MAX_RUN_TIMEOUT}
+              step={5}
+              required
+              value={input.runTimeoutMinutes}
+              disabled={busy}
+              onChange={(e) =>
+                editLimit("runTimeoutMinutes", e.target.valueAsNumber || 0)
+              }
+            />
+            <span className="block text-muted-foreground">
+              {t(($) => $.qoder.run_timeout_hint)}
+            </span>
+          </label>
+        </div>
+        <div className="flex items-start gap-2 rounded-lg bg-muted/50 p-3 text-caption">
+          <ShieldCheck
+            aria-hidden="true"
+            className="mt-0.5 size-4 shrink-0 text-muted-foreground"
+          />
+          <div className="min-w-0 space-y-1">
+            <p className="font-medium">
+              {t(($) => $.qoder.data_disclosure_title)}
+            </p>
+            <p className="leading-relaxed text-muted-foreground">
+              {t(($) => $.qoder.data_disclosure)}
+            </p>
+          </div>
+        </div>
+      </fieldset>
       {(save.error || stop.error) && (
         <p role="alert" className="text-caption text-destructive">
           {(save.error || stop.error)?.message}
@@ -467,7 +637,7 @@ function QoderForm({
             variant="ghost"
             disabled={busy}
             aria-busy={stop.isPending}
-            onClick={() => stop.mutate()}
+            onClick={() => setConfirmStop(true)}
           >
             {t(($) => $.qoder.stop)}
           </Button>
@@ -501,13 +671,67 @@ function QoderForm({
           type="button"
           variant="outline"
           className="w-full"
-          disabled={!onAddAgent || busy || !data.enabled || hasUnsavedChanges}
-          onClick={onAddAgent}
+          disabled={
+            !onlineQoderRuntime ||
+            busy ||
+            !data.enabled ||
+            data.status !== "online" ||
+            hasUnsavedChanges
+          }
+          onClick={() =>
+            onlineQoderRuntime &&
+            navigation.push(
+              createPathWithParams(paths.newAgentManual(), {
+                runtime: onlineQoderRuntime.id,
+              }),
+            )
+          }
         >
           <Plus aria-hidden="true" className="size-4" />
           {t(($) => $.qoder.add_agent)}
         </Button>
       </div>
+      <AlertDialog
+        open={confirmStop}
+        onOpenChange={(open) => {
+          if (!open && !stop.isPending) setConfirmStop(false);
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{t(($) => $.qoder.stop_confirm.title)}</AlertDialogTitle>
+            <AlertDialogDescription>
+              {boundAgents.length > 0
+                ? t(($) => $.qoder.stop_confirm.description_agents, {
+                    count: boundAgents.length,
+                  })
+                : t(($) => $.qoder.stop_confirm.description)}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          {boundAgents.length > 0 ? (
+            <ul className="max-h-40 space-y-1 overflow-y-auto rounded-md bg-muted/60 px-3 py-2 text-caption">
+              {boundAgents.map((agent) => (
+                <li key={agent.id} className="truncate">
+                  {agent.name}
+                </li>
+              ))}
+            </ul>
+          ) : null}
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={stop.isPending}>
+              {t(($) => $.qoder.stop_confirm.cancel)}
+            </AlertDialogCancel>
+            <AlertDialogAction
+              disabled={stop.isPending}
+              onClick={() =>
+                stop.mutate(undefined, { onSettled: () => setConfirmStop(false) })
+              }
+            >
+              {t(($) => $.qoder.stop)}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </form>
   );
 }

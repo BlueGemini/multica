@@ -23,7 +23,7 @@ func TestRepositoryCredentialRequestOnly(t *testing.T) {
 		t.Fatal("missing request credential")
 	}
 	state := filepath.Join(dir, "state.json")
-	if err := save(state, &journal{Run: r}); err != nil {
+	if err := save(state, &journal{Runs: []*run{r}}); err != nil {
 		t.Fatal(err)
 	}
 	data, err := os.ReadFile(state)

@@ -1,9 +1,10 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import {
   ChevronRight,
   Cloud,
+  Laptop,
   Loader2,
   Monitor,
   Plus,
@@ -57,7 +58,7 @@ import { getMikaOnboarding, pickContentLang } from "../../onboarding/templates";
 import { qoderOptions } from "@multica/core/runtimes/qoder";
 import { isRuntimeUsableForUser } from "@multica/core/runtimes";
 import { QoderCloudCard } from "./qoder-cloud-card";
-import { AddQoderAgentDialog } from "../../agents/components/add-qoder-agent-dialog";
+import { createPathWithParams } from "../../agents/create/squad-param";
 import { RemoteRuntimeDialog } from "./remote-runtime-dialog";
 import { ConnectRemoteDialog } from "./connect-remote-dialog";
 import { CloudRuntimeDialog } from "./cloud-runtime-dialog";
@@ -105,7 +106,6 @@ export function RuntimesPage({
   const qc = useQueryClient();
   const paths = useWorkspacePaths();
   const { data: qoderConnection } = useQuery(qoderOptions(wsId));
-  const [showAddQoderAgent, setShowAddQoderAgent] = useState(false);
   const [configureQoder, setConfigureQoder] = useState(false);
   const [showRemoteRuntimeDialog, setShowRemoteRuntimeDialog] = useState(false);
   const [showConnectDialog, setShowConnectDialog] = useState(false);
@@ -195,14 +195,17 @@ export function RuntimesPage({
           ),
       )
     : machines;
+  const localMachines = listedMachines.filter(
+    (machine) => machine.section === "local",
+  );
   const remoteMachines = listedMachines.filter(
+    (machine) => machine.section === "remote",
+  );
+  const cloudMachines = listedMachines.filter(
     (machine) => machine.section === "cloud",
   );
-  const computers = listedMachines.filter(
-    (machine) => machine.section !== "cloud",
-  );
-  const remoteCount =
-    remoteMachines.length +
+  const cloudCount =
+    cloudMachines.length +
     (showQoderCard && qoderConnection?.configured ? 1 : 0);
   const qoderAgentCount = agents.filter((agent) =>
     runtimes.some(
@@ -210,26 +213,27 @@ export function RuntimesPage({
         runtime.id === agent.runtime_id && runtime.provider === "qoder_cloud",
     ),
   ).length;
-  const canAddQoderAgent =
-    !!qoderRuntime &&
+  const qoderCreateAgentHref =
+    qoderRuntime &&
     qoderConnection?.enabled === true &&
-    qoderConnection.status === "online";
-  const addQoderAgent = () => {
-    setShowRemoteRuntimeDialog(false);
-    setShowAddQoderAgent(true);
-  };
+    qoderConnection.status === "online"
+      ? createPathWithParams(paths.newAgentManual(), {
+          runtime: qoderRuntime.id,
+        })
+      : null;
   const showEmpty =
     !showQoderCard &&
     machines.length === 0 &&
     orphanProfileRuntimes.length === 0 &&
     !bootstrapping &&
     hasLocalMachine !== true;
+  const showLocal = hasLocalMachine === true || localMachines.length > 0;
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <PageHeaderBar
-        remoteCount={remoteCount}
-        computerCount={computers.length}
+        remoteCount={cloudCount}
+        computerCount={localMachines.length + remoteMachines.length}
         onConnectRemote={() => setShowConnectDialog(true)}
         onRemoteRuntime={() => {
           setConfigureQoder(false);
@@ -245,7 +249,7 @@ export function RuntimesPage({
         </div>
       ) : (
         <div className="min-h-0 flex-1 overflow-y-auto">
-          <div className={cn(PAGE_RAIL, PAGE_GUTTER, "flex flex-col py-4 sm:py-6")}>
+          <div className={cn(PAGE_RAIL, PAGE_GUTTER, "flex flex-col gap-8 py-4 sm:py-6")}>
             {!agentsLoading &&
               !chatSessionsLoading &&
               memberNeedsMikaSetup(agents, chatSessions) &&
@@ -261,16 +265,52 @@ export function RuntimesPage({
                   currentUserId={currentUserId ?? null}
                 />
               )}
-            {(showQoderCard || remoteMachines.length > 0) && (
-              <section className="mb-6 space-y-3">
-                <h2 className="text-body font-medium">
-                  {t(($) => $.page.remote_runtimes)}
-                </h2>
+            {showLocal && (
+              <RuntimeSection
+                icon={Laptop}
+                title={t(($) => $.page.sections.local.title)}
+                description={t(($) => $.page.sections.local.description)}
+              >
+                <MachineList
+                  machines={localMachines}
+                  bootstrapping={bootstrapping}
+                />
+              </RuntimeSection>
+            )}
+            <RuntimeSection
+              icon={Server}
+              title={t(($) => $.page.sections.remote.title)}
+              description={t(($) => $.page.sections.remote.description)}
+              action={
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setShowConnectDialog(true)}
+                >
+                  <Plus aria-hidden="true" className="size-3.5" />
+                  {t(($) => $.page.connect_remote)}
+                </Button>
+              }
+            >
+              {remoteMachines.length > 0 ? (
+                <MachineList machines={remoteMachines} />
+              ) : (
+                <p className="rounded-lg border border-dashed px-4 py-5 text-center text-caption text-muted-foreground">
+                  {t(($) => $.page.sections.remote.empty)}
+                </p>
+              )}
+            </RuntimeSection>
+            <RuntimeSection
+              icon={Cloud}
+              title={t(($) => $.page.sections.cloud.title)}
+              description={t(($) => $.page.sections.cloud.description)}
+            >
+              <div className="space-y-3">
                 {showQoderCard && qoderConnection && (
                   <QoderCloudCard
                     connection={qoderConnection}
                     agentCount={qoderAgentCount}
-                    canAddAgent={canAddQoderAgent}
+                    createAgentHref={qoderCreateAgentHref}
                     detailHref={
                       qoderMachine
                         ? paths.runtimeDetail(qoderMachine.id)
@@ -280,25 +320,14 @@ export function RuntimesPage({
                       setConfigureQoder(true);
                       setShowRemoteRuntimeDialog(true);
                     }}
-                    onAddAgent={addQoderAgent}
                   />
                 )}
-                {remoteMachines.length > 0 && (
-                  <MachineList machines={remoteMachines} />
+                {cloudMachines.length > 0 && (
+                  <MachineList machines={cloudMachines} />
                 )}
-              </section>
-            )}
-            {(computers.length > 0 || bootstrapping) && (
-              <section className="space-y-3">
-                <h2 className="text-body font-medium">
-                  {t(($) => $.page.computers)}
-                </h2>
-                <MachineList
-                  machines={computers}
-                  bootstrapping={bootstrapping}
-                />
-              </section>
-            )}
+                <ComingSoonStrip />
+              </div>
+            </RuntimeSection>
             {orphanProfileRuntimes.length > 0 && (
               <OrphanRuntimeProfiles
                 runtimes={orphanProfileRuntimes}
@@ -313,14 +342,7 @@ export function RuntimesPage({
       {showRemoteRuntimeDialog && (
         <RemoteRuntimeDialog
           configure={configureQoder}
-          onAddAgent={canAddQoderAgent ? addQoderAgent : undefined}
           onClose={() => setShowRemoteRuntimeDialog(false)}
-        />
-      )}
-      {showAddQoderAgent && qoderRuntime && (
-        <AddQoderAgentDialog
-          runtime={qoderRuntime}
-          onClose={() => setShowAddQoderAgent(false)}
         />
       )}
       {showConnectDialog && (
@@ -455,6 +477,61 @@ function MikaSetupCard({
         </DialogContent>
       </Dialog>
     </>
+  );
+}
+
+function RuntimeSection({
+  icon: Icon,
+  title,
+  description,
+  action,
+  children,
+}: {
+  icon: typeof Server;
+  title: string;
+  description: string;
+  action?: ReactNode;
+  children: ReactNode;
+}) {
+  return (
+    <section className="space-y-3">
+      <div className="flex items-end justify-between gap-3">
+        <div className="min-w-0">
+          <h2 className="flex items-center gap-2 text-body font-semibold">
+            <Icon aria-hidden="true" className="size-4 text-muted-foreground" />
+            {title}
+          </h2>
+          <p className="mt-0.5 text-caption text-muted-foreground">
+            {description}
+          </p>
+        </div>
+        {action}
+      </div>
+      {children}
+    </section>
+  );
+}
+
+const COMING_SOON_PROVIDERS = [
+  { provider: "cursor", name: "Cursor Cloud Agents" },
+  { provider: "claude", name: "Claude Managed Agents" },
+];
+
+function ComingSoonStrip() {
+  const { t } = useT("runtimes");
+  return (
+    <div className="flex flex-wrap items-center gap-2 rounded-lg border border-dashed px-4 py-3 text-caption text-muted-foreground">
+      <span>{t(($) => $.page.sections.cloud.coming_soon)}</span>
+      {COMING_SOON_PROVIDERS.map(({ provider, name }) => (
+        <span
+          key={provider}
+          className="inline-flex items-center gap-1.5 rounded-full bg-muted px-2 py-0.5"
+        >
+          <ProviderLogo provider={provider} className="size-3.5" />
+          {name}
+        </span>
+      ))}
+    </div>
   );
 }
 

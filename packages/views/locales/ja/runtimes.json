@@ -29,7 +29,23 @@
     "remote_runtimes": "リモートランタイム",
     "computers": "コンピューター",
     "remote_count_other": "リモートランタイム {{count}} 件",
-    "computer_count_other": "コンピューター {{count}} 台"
+    "computer_count_other": "コンピューター {{count}} 台",
+    "sections": {
+      "local": {
+        "title": "このデバイス",
+        "description": "いま使っているデバイス"
+      },
+      "remote": {
+        "title": "リモート",
+        "description": "このワークスペースで Multica を実行している他のデバイス",
+        "empty": "リモートデバイスはまだありません。サーバーや別のコンピュータで Multica を実行すると追加されます。"
+      },
+      "cloud": {
+        "title": "クラウド",
+        "description": "デバイスがオンラインでなくてもタスクを実行するホスト型サービス",
+        "coming_soon": "近日公開"
+      }
+    }
   },
   "mika_setup": {
     "title": "ランタイムの準備ができました。Mika と始めましょう。",
@@ -477,6 +493,10 @@
     "not_configured": "Not configured",
     "name": "Runtime name",
     "api_url": "QCA API URL",
+    "region": "リージョン",
+    "region_global": "グローバル（qoder.com）",
+    "region_cn": "中国（qoder.com.cn）",
+    "region_hint": "PAT を作成したサイトを選択してください。PAT はそのリージョンでのみ使用できます。",
     "token": "QCA access token",
     "keep_secret": "Leave blank to keep the saved token",
     "repositories": "GitHub authorization",
@@ -526,7 +546,41 @@
     "credentials_configured": "設定済み",
     "agent_count_other": "エージェント {{count}} 件",
     "github_url": "GitHub URL",
-    "github_token": "GitHub トークン"
+    "github_token": "GitHub トークン",
+    "execution": "実行設定",
+    "concurrency": "同時実行数",
+    "concurrency_hint": "上限を超えたタスクはキューで待機します。",
+    "run_timeout": "実行タイムアウト（分）",
+    "run_timeout_hint": "この時間を過ぎても終わらない実行はキャンセルされ、失敗として記録されます。",
+    "data_disclosure_title": "Multica が Qoder に送信する内容",
+    "data_disclosure": "Issue のタイトルと説明、関連コメント、プロジェクトのコンテキスト、エージェントの指示。GitHub トークンは実行時のリポジトリのマウントにのみ使われます。",
+    "usage": "実行中 {{active}}/{{limit}} · 待機 {{queued}}",
+    "open_settings": "設定を開く",
+    "default_repository": "デフォルトのリポジトリ",
+    "default_repository_hint": "Issue のプロジェクトにリポジトリがない場合にマウントされます。接続にこのリポジトリの GitHub トークンが必要です。",
+    "default_branch": "ブランチ",
+    "default_branch_placeholder": "デフォルトブランチ",
+    "create_agent": "これでエージェントを作成",
+    "connect": {
+      "submit": "接続",
+      "connected": "Qoder に接続しました。数秒で利用できるようになります。",
+      "token": "個人アクセストークン",
+      "token_rejected": "{{region}}ではこのトークンを使えません。トークンは作成したサイトでのみ有効です。",
+      "retry_cn": "中国サイトで再試行",
+      "retry_global": "グローバルサイトで再試行",
+      "verifying": "トークンを確認中…",
+      "verified": "トークンを確認しました",
+      "environment_waiting": "トークンの確認後に読み込まれます",
+      "repo_count_other": "{{count}} 件のリポジトリ",
+      "optional": "任意",
+      "execution_summary": "同時に最大 {{concurrency}} 件 · タイムアウト {{timeout}} 分"
+    },
+    "stop_confirm": {
+      "title": "Qoder Cloud Agent を停止しますか？",
+      "description": "再開するまで、新しいタスクは Qoder に送られません。",
+      "description_agents_other": "次の {{count}} 件のエージェントは指示と履歴を保持しますが、Qoder を再開するか別のランタイムに移すまで新しいタスクを受け付けません。",
+      "cancel": "キャンセル"
+    }
   },
   "remote_runtime": {
     "action": "リモートランタイムを追加",

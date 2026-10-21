@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -38,7 +39,12 @@ type Config struct {
 	RunTimeout        time.Duration                         `json:"-"`
 	SubmissionTimeout time.Duration                         `json:"-"`
 	PollInterval      time.Duration                         `json:"-"`
+	// MaxConcurrency bounds simultaneous remote sessions; extra tasks stay queued in Multica.
+	MaxConcurrency int `json:"max_concurrency,omitempty"`
 }
+
+// MaxConcurrencyLimit caps how many sessions one connection may run at once.
+const MaxConcurrencyLimit = 10
 
 type Bridge struct {
 	cfg            Config
@@ -46,6 +52,7 @@ type Bridge struct {
 	state          *journal
 	path           string
 	log            *slog.Logger
+	turn           int
 }
 
 func New(cfg Config, log *slog.Logger) (*Bridge, error) {
@@ -72,6 +79,12 @@ func New(cfg Config, log *slog.Logger) (*Bridge, error) {
 	if cfg.RunTimeout < time.Second || cfg.SubmissionTimeout < time.Second {
 		return nil, fmt.Errorf("timeouts must be positive")
 	}
+	if cfg.MaxConcurrency == 0 {
+		cfg.MaxConcurrency = 1
+	}
+	if cfg.MaxConcurrency < 1 || cfg.MaxConcurrency > MaxConcurrencyLimit {
+		return nil, fmt.Errorf("max concurrency must be between 1 and %d", MaxConcurrencyLimit)
+	}
 	if cfg.Name == "" {
 		cfg.Name = "Qoder Cloud Agent"
 	}
@@ -89,8 +102,9 @@ func New(cfg Config, log *slog.Logger) (*Bridge, error) {
 	return &Bridge{cfg: cfg, multica: m, qoder: q, path: filepath.Join(cfg.StateDir, "state.json"), log: log}, nil
 }
 
-// Run is single-instance per state directory and processes one run at a time.
-// Restart resumes the journal instead of declaring remote work orphaned.
+// Run is single-instance per state directory and processes up to
+// MaxConcurrency runs. Restart resumes the journal instead of declaring remote
+// work orphaned.
 func (b *Bridge) Run(ctx context.Context) error {
 	if err := os.MkdirAll(b.cfg.StateDir, 0700); err != nil {
 		return err
@@ -118,7 +132,7 @@ func (b *Bridge) Run(ctx context.Context) error {
 	}
 	// Validate remote access before accepting work. Existing runs still reconcile
 	// even if the live agent/environment was removed after the session snapshot.
-	if b.state.Run == nil {
+	if len(b.state.Runs) == 0 {
 		if err := b.Check(ctx); err != nil {
 			return err
 		}
@@ -149,15 +163,13 @@ func (b *Bridge) Run(ctx context.Context) error {
 			b.log.WarnContext(ctx, "runtime heartbeat failed", "error", err)
 			var denied *apiError
 			if errors.As(err, &denied) && (denied.Status == 401 || denied.Status == 403 || denied.Status == 404) {
-				if b.state.Run != nil && b.state.Run.SessionID != "" && b.state.Run.Phase != "final" {
-					if cancelErr := b.cancel(ctx); cancelErr != nil {
-						b.log.WarnContext(ctx, "waiting to stop remote work after runtime access was lost", "error", cancelErr)
-						select {
-						case <-ctx.Done():
-							return nil
-						case <-ticker.C:
-							continue
-						}
+				if cancelErr := b.cancelActive(ctx); cancelErr != nil {
+					b.log.WarnContext(ctx, "waiting to stop remote work after runtime access was lost", "error", cancelErr)
+					select {
+					case <-ctx.Done():
+						return nil
+					case <-ticker.C:
+						continue
 					}
 				}
 				return fmt.Errorf("runtime access lost: %w", err)
@@ -200,37 +212,88 @@ func (b *Bridge) register(ctx context.Context, binding string) error {
 	if len(response.Runtimes) != 1 || response.Runtimes[0].ID == "" || response.Runtimes[0].Provider != Provider {
 		return fmt.Errorf("invalid runtime registration response")
 	}
-	if b.state.Run != nil && b.state.RuntimeID != "" && b.state.RuntimeID != response.Runtimes[0].ID {
+	if len(b.state.Runs) > 0 && b.state.RuntimeID != "" && b.state.RuntimeID != response.Runtimes[0].ID {
 		return fmt.Errorf("active journal belongs to a deleted runtime; reconcile its remote session before restarting")
 	}
 	b.state.RuntimeID = response.Runtimes[0].ID
 	return nil
 }
-func (b *Bridge) taskCall(ctx context.Context, suffix string, body, out any) error {
-	return b.multica.call(ctx, http.MethodPost, "/api/daemon/tasks/"+url.PathEscape(b.state.Run.TaskID)+suffix, body, out)
+func (b *Bridge) taskCall(ctx context.Context, r *run, suffix string, body, out any) error {
+	return b.multica.call(ctx, http.MethodPost, "/api/daemon/tasks/"+url.PathEscape(r.TaskID)+suffix, body, out)
 }
+
+// step advances every active run, then claims new work while capacity remains.
+// One failing run must not stall the others, so errors are collected and the
+// first is returned after all runs had their turn. Rotating the starting run
+// keeps a slow provider call from starving the same run on every tick.
 func (b *Bridge) step(ctx context.Context) error {
-	if b.state.Run == nil {
-		var response struct {
-			Task *claimedTask `json:"task"`
-		}
-		if err := b.multica.call(ctx, http.MethodPost, "/api/daemon/runtimes/"+url.PathEscape(b.state.RuntimeID)+"/tasks/claim", map[string]any{}, &response); err != nil {
+	var firstErr error
+	keep := func(r *run, err error) error {
+		var diskErr *persistenceError
+		if errors.As(err, &diskErr) {
 			return err
 		}
-		if response.Task == nil {
-			return nil
+		if firstErr == nil {
+			firstErr = fmt.Errorf("run %s: %w", r.TaskID, err)
 		}
-		r, err := b.prepare(ctx, response.Task)
-		if err != nil {
-			r = &run{TaskID: response.Task.ID, Phase: "final", Outcome: "failed", Failure: err.Error()}
+		return nil
+	}
+	runs := append([]*run(nil), b.state.Runs...)
+	for i := range runs {
+		if ctx.Err() != nil {
+			return ctx.Err()
 		}
-		r.Deadline = time.Now().Add(b.cfg.RunTimeout)
-		b.state.Run = r
-		if err := b.persist(); err != nil {
-			return err
+		r := runs[(b.turn+i)%len(runs)]
+		if err := b.stepRun(ctx, r); err != nil {
+			if err := keep(r, err); err != nil {
+				return err
+			}
 		}
 	}
-	r := b.state.Run
+	b.turn++
+	for len(b.state.Runs) < b.cfg.MaxConcurrency && ctx.Err() == nil {
+		r, err := b.claim(ctx)
+		if err != nil {
+			if firstErr == nil {
+				firstErr = err
+			}
+			break
+		}
+		if r == nil {
+			break
+		}
+		if err := b.stepRun(ctx, r); err != nil {
+			if err := keep(r, err); err != nil {
+				return err
+			}
+		}
+	}
+	return firstErr
+}
+
+func (b *Bridge) claim(ctx context.Context) (*run, error) {
+	var response struct {
+		Task *claimedTask `json:"task"`
+	}
+	if err := b.multica.call(ctx, http.MethodPost, "/api/daemon/runtimes/"+url.PathEscape(b.state.RuntimeID)+"/tasks/claim", map[string]any{}, &response); err != nil {
+		return nil, err
+	}
+	if response.Task == nil {
+		return nil, nil
+	}
+	r, err := b.prepare(ctx, response.Task)
+	if err != nil {
+		r = &run{TaskID: response.Task.ID, Phase: "final", Outcome: "failed", Failure: err.Error()}
+	}
+	r.Deadline = time.Now().Add(b.cfg.RunTimeout)
+	b.state.Runs = append(b.state.Runs, r)
+	if err := b.persist(); err != nil {
+		return nil, err
+	}
+	return r, nil
+}
+
+func (b *Bridge) stepRun(ctx context.Context, r *run) error {
 	if r.Phase != "final" {
 		if r.Deadline.IsZero() {
 			r.Deadline = time.Now().Add(b.cfg.RunTimeout)
@@ -248,7 +311,7 @@ func (b *Bridge) step(ctx context.Context) error {
 				}
 				b.cleanup(ctx)
 			}
-			return b.reject(ctx, "Qoder execution deadline exceeded")
+			return b.reject(ctx, r, "Qoder execution deadline exceeded")
 		}
 	}
 	var status struct {
@@ -269,15 +332,15 @@ func (b *Bridge) step(ctx context.Context) error {
 			b.cleanup(ctx)
 		}
 		if status.Status == "cancelled" {
-			if err := b.taskCall(ctx, "/cancel-ack", map[string]any{}, nil); err != nil {
+			if err := b.taskCall(ctx, r, "/cancel-ack", map[string]any{}, nil); err != nil {
 				return err
 			}
 		}
-		b.state.Run = nil
+		b.state.remove(r)
 		return b.persist()
 	}
 	if r.Phase == "final" {
-		return b.deliver(ctx)
+		return b.deliver(ctx, r)
 	}
 	if time.Now().Before(r.RetryAt) {
 		return nil
@@ -285,19 +348,33 @@ func (b *Bridge) step(ctx context.Context) error {
 	if r.Phase == "creating" {
 		// The provider may have created a session before the response was lost.
 		// Never create a second session automatically for the same run.
-		return b.reject(ctx, "Qoder session creation was not confirmed; inspect remote sessions before retrying")
+		return b.reject(ctx, r, "Qoder session creation was not confirmed; inspect remote sessions before retrying")
 	}
 	if status.Status == "dispatched" {
-		if err := b.taskCall(ctx, "/start", map[string]any{}, nil); err != nil {
+		if err := b.taskCall(ctx, r, "/start", map[string]any{}, nil); err != nil {
 			return err
 		}
 	} else if status.Status != "running" {
 		return fmt.Errorf("unexpected Multica run status %q", status.Status)
 	}
+	if r.Phase == "prepared" && r.PriorSessionID != "" {
+		continued, err := b.continueSession(ctx, r)
+		if err != nil {
+			return err
+		}
+		if continued {
+			r.SessionID = r.PriorSessionID
+			r.Continued = true
+			r.Phase = "created"
+			if err := b.persist(); err != nil {
+				return err
+			}
+		}
+	}
 	if r.Phase == "prepared" {
 		resources, err := b.sessionResources(r.Resources)
 		if err != nil {
-			return b.reject(ctx, err.Error())
+			return b.reject(ctx, r, err.Error())
 		}
 		var session struct {
 			ID string `json:"id"`
@@ -313,7 +390,7 @@ func (b *Bridge) step(ctx context.Context) error {
 				return b.persist()
 			}
 			if definitelyRejected(err) {
-				return b.reject(ctx, "Qoder rejected session creation: "+err.Error())
+				return b.reject(ctx, r, "Qoder rejected session creation: "+err.Error())
 			}
 			return err
 		}
@@ -326,7 +403,7 @@ func (b *Bridge) step(ctx context.Context) error {
 			return err
 		}
 	}
-	if err := b.taskCall(ctx, "/session", map[string]string{"session_id": r.SessionID}, nil); err != nil {
+	if err := b.taskCall(ctx, r, "/session", map[string]string{"session_id": r.SessionID}, nil); err != nil {
 		return err
 	}
 	if r.Phase == "created" {
@@ -343,8 +420,16 @@ func (b *Bridge) step(ctx context.Context) error {
 				r.RetryAt = time.Now().Add(30 * time.Second)
 				return b.persist()
 			}
+			if definitelyRejected(err) && r.Continued {
+				// The earlier session can no longer take messages; a definite
+				// rejection means nothing was delivered, so start a fresh session.
+				r.SessionID, r.PriorSessionID, r.Continued = "", "", false
+				r.Phase = "prepared"
+				r.SubmissionDeadline = time.Time{}
+				return b.persist()
+			}
 			if definitelyRejected(err) {
-				return b.reject(ctx, "Qoder rejected the task message: "+err.Error())
+				return b.reject(ctx, r, "Qoder rejected the task message: "+err.Error())
 			}
 			return err
 		}
@@ -353,10 +438,63 @@ func (b *Bridge) step(ctx context.Context) error {
 			return err
 		}
 	}
-	return b.events(ctx)
+	return b.events(ctx, r)
 }
-func (b *Bridge) cancel(ctx context.Context) error {
-	return b.cancelSession(ctx, b.state.Run.SessionID)
+
+// continueSession reports whether the agent's previous session on this issue
+// can take the follow-up. Only an idle session that no other active run is
+// using qualifies; anything else falls back to a new session.
+func (b *Bridge) continueSession(ctx context.Context, r *run) (bool, error) {
+	for _, other := range b.state.Runs {
+		if other != r && other.SessionID == r.PriorSessionID {
+			return false, nil
+		}
+	}
+	var s struct {
+		Status        string          `json:"status"`
+		Agent         json.RawMessage `json:"agent"`
+		EnvironmentID string          `json:"environment_id"`
+	}
+	if err := b.qoder.call(ctx, http.MethodGet, "/sessions/"+url.PathEscape(r.PriorSessionID), nil, &s); err != nil {
+		if definitelyRejected(err) {
+			return false, nil
+		}
+		return false, err
+	}
+	if s.Status != "idle" {
+		return false, nil
+	}
+	if id := sessionAgentID(s.Agent); (id != "" && id != r.AgentID) || (s.EnvironmentID != "" && s.EnvironmentID != b.cfg.EnvironmentID) {
+		return false, nil
+	}
+	return true, nil
+}
+
+// sessionAgentID accepts the agent as a bare ID or as an object with an id.
+func sessionAgentID(raw json.RawMessage) string {
+	var id string
+	if json.Unmarshal(raw, &id) == nil {
+		return id
+	}
+	var obj struct {
+		ID string `json:"id"`
+	}
+	_ = json.Unmarshal(raw, &obj)
+	return obj.ID
+}
+
+// cancelActive stops every remote session that is still executing.
+func (b *Bridge) cancelActive(ctx context.Context) error {
+	var firstErr error
+	for _, r := range b.state.Runs {
+		if r.SessionID == "" || r.Phase == "final" {
+			continue
+		}
+		if err := b.cancelSession(ctx, r.SessionID); err != nil && firstErr == nil {
+			firstErr = err
+		}
+	}
+	return firstErr
 }
 func (b *Bridge) cancelSession(ctx context.Context, sessionID string) error {
 	if err := b.qoder.call(ctx, http.MethodPost, "/sessions/"+url.PathEscape(sessionID)+"/cancel", map[string]any{}, nil); err != nil {
@@ -381,8 +519,7 @@ func (b *Bridge) cancelSession(ctx context.Context, sessionID string) error {
 	}
 	return nil
 }
-func (b *Bridge) deliver(ctx context.Context) error {
-	r := b.state.Run
+func (b *Bridge) deliver(ctx context.Context, r *run) error {
 	body := map[string]any{"session_id": r.SessionID}
 	suffix := "/complete"
 	if r.Outcome == "completed" {
@@ -392,10 +529,10 @@ func (b *Bridge) deliver(ctx context.Context) error {
 		body["error"] = r.Failure
 		body["failure_reason"] = "qoder_cloud_execution"
 	}
-	if err := b.taskCall(ctx, suffix, body, nil); err != nil {
+	if err := b.taskCall(ctx, r, suffix, body, nil); err != nil {
 		return err
 	}
-	b.state.Run = nil
+	b.state.remove(r)
 	return b.persist()
 }
 
@@ -403,15 +540,14 @@ func definitelyRejected(err error) bool {
 	var rejected *apiError
 	return errors.As(err, &rejected) && rejected.Status >= 400 && rejected.Status < 500 && rejected.Status != 408 && rejected.Status != 429
 }
-func (b *Bridge) reject(ctx context.Context, reason string) error {
-	r := b.state.Run
+func (b *Bridge) reject(ctx context.Context, r *run, reason string) error {
 	r.Phase = "final"
 	r.Outcome = "failed"
 	r.Failure = reason
 	if err := b.persist(); err != nil {
 		return err
 	}
-	return b.deliver(ctx)
+	return b.deliver(ctx, r)
 }
 
 // Check validates access without registering a runtime or executing a task.

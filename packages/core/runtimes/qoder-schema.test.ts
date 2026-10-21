@@ -35,6 +35,36 @@ describe("QCA response boundary", () => {
     expect(result.hasToken).toBe(true);
     expect(JSON.stringify(result)).not.toContain("must-not-surface");
   });
+  it("maps execution limits and usage, defaulting malformed values", () => {
+    expect(
+      parseQoderConnection({
+        available: true,
+        max_concurrency: 5,
+        run_timeout_minutes: 90,
+        active_runs: 2,
+        queued_runs: 1,
+      }),
+    ).toMatchObject({
+      maxConcurrency: 5,
+      runTimeoutMinutes: 90,
+      activeRuns: 2,
+      queuedRuns: 1,
+    });
+    expect(
+      parseQoderConnection({
+        available: true,
+        max_concurrency: 0,
+        run_timeout_minutes: "60",
+        active_runs: -1,
+      }),
+    ).toMatchObject({
+      available: true,
+      maxConcurrency: 3,
+      runTimeoutMinutes: 60,
+      activeRuns: 0,
+      queuedRuns: 0,
+    });
+  });
 });
 
 

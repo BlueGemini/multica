@@ -1,6 +1,19 @@
 import { z } from "zod";
 import { parseWithFallback } from "../api/schema";
 
+// Mirrors the server defaults and bounds in handler/qoder_connection.go.
+export const DEFAULT_CONCURRENCY = 3;
+export const MAX_CONCURRENCY = 10;
+export const DEFAULT_RUN_TIMEOUT = 60;
+export const MIN_RUN_TIMEOUT = 5;
+export const MAX_RUN_TIMEOUT = 240;
+// A PAT only works against the region that issued it.
+export const QODER_REGIONS = {
+  global: "https://api.qoder.com/api/v1/cloud",
+  cn: "https://api.qoder.com.cn/api/v1/cloud",
+} as const;
+export type QoderRegion = keyof typeof QODER_REGIONS;
+
 const schema = z
   .object({
     configured: z.boolean().catch(false),
@@ -13,6 +26,10 @@ const schema = z
     enabled: z.boolean().catch(false),
     status: z.string().catch(""),
     last_error: z.string().catch(""),
+    max_concurrency: z.number().int().positive().catch(DEFAULT_CONCURRENCY),
+    run_timeout_minutes: z.number().int().positive().catch(DEFAULT_RUN_TIMEOUT),
+    active_runs: z.number().int().nonnegative().catch(0),
+    queued_runs: z.number().int().nonnegative().catch(0),
   })
   .transform((v) => ({
     configured: v.configured,
@@ -25,6 +42,10 @@ const schema = z
     enabled: v.enabled,
     status: v.status,
     lastError: v.last_error,
+    maxConcurrency: v.max_concurrency,
+    runTimeoutMinutes: v.run_timeout_minutes,
+    activeRuns: v.active_runs,
+    queuedRuns: v.queued_runs,
   }));
 export type QoderConnection = z.output<typeof schema>;
 export type QoderInput = {
@@ -33,6 +54,8 @@ export type QoderInput = {
   environmentId: string;
   qoderToken: string;
   githubTokens: Record<string, string>;
+  maxConcurrency: number;
+  runTimeoutMinutes: number;
 };
 export function parseQoderConnection(data: unknown): QoderConnection {
   return parseWithFallback(
@@ -49,6 +72,10 @@ export function parseQoderConnection(data: unknown): QoderConnection {
       enabled: false,
       status: "",
       lastError: "",
+      maxConcurrency: DEFAULT_CONCURRENCY,
+      runTimeoutMinutes: DEFAULT_RUN_TIMEOUT,
+      activeRuns: 0,
+      queuedRuns: 0,
     },
     { endpoint: "qoder" },
   );

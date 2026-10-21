@@ -84,16 +84,26 @@ wide fallback credential is used. This is bridge-hosted configuration; Multica's
 web UI does not yet manage GitHub credentials for this runtime.
 
 A project may bind one HTTPS GitHub repository and an optional branch ref.
-Workspace repository listings are context only, not implicit mounts.
+Without one, the agent's default repository (`runtime_config.repository`) is
+mounted, and failing that the workspace's only repository when a credential is
+configured for it. Other workspace repositories are context only.
+
+The prompt asks the agent to push a branch named `multica/<identifier>-<slug>`
+and to prefix the pull request title with the issue identifier, so Multica's
+GitHub integration links the pull request back to the issue.
 
 
 ## Execution and recovery
 
-- One run executes at a time per bridge. Deploy one instance per configuration
-  with its dedicated persistent state volume; this PoC is not an HA service.
-- Each Multica run creates a fresh Qoder session. Do not send additional messages
-  directly to a bridge-owned session while its run is active. Follow-up runs receive current
-  issue and triggering/coalesced comment context, not the previous conversation.
+- Up to `max_concurrency` runs (default 1 for this binary, 3 for managed
+  connections, at most 10) execute at once per bridge; further tasks stay
+  queued in Multica. Deploy one instance per configuration with its dedicated
+  persistent state volume; this is not an HA service.
+- A follow-up run on the same issue continues the agent's previous Qoder session
+  when that session is idle, uses the same Qoder agent and environment, and no
+  other run is using it. Otherwise a fresh session starts with the current issue
+  and triggering/coalesced comment context. Do not send additional messages
+  directly to a bridge-owned session while its run is active.
 - Progress uses cursor-paginated persisted events, polled every three seconds.
   Event IDs and opaque page cursors are tracked separately. A turn is successful
   only after its user message and `session.status_idle` with `end_turn`, without
@@ -179,8 +189,9 @@ Workspace administrators can open **Runtimes → Add remote runtime → Qoder Cl
 managed QCA connection per workspace, load environments from the PAT and check environment access, bind GitHub
 repository tokens, save/start, or stop an idle runtime. The existing project
 resource picker selects the repository and starting branch. The managed form
-currently targets the official `https://api.qoder.com/api/v1/cloud` endpoint;
-custom endpoints remain available to the standalone bridge only.
+offers Qoder's official regions, `https://api.qoder.com/api/v1/cloud` (Global) and
+`https://api.qoder.com.cn/api/v1/cloud` (China); a PAT works only in the region
+that issued it. Custom endpoints remain available to the standalone bridge only.
 
 Server setup requires `MULTICA_VCS_SECRET_KEY` (a base64-encoded 32-byte encryption
 key) and `MULTICA_QODER_STATE_DIR` (a persistent writable directory). Keep the key

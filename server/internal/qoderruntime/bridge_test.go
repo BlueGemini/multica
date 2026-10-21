@@ -170,7 +170,7 @@ func TestIssueRun(t *testing.T) {
 	if h.complete["session_id"] != "sess_1" || !strings.Contains(fmt.Sprint(h.complete["output"]), "Tests passed") {
 		t.Fatalf("result: %#v", h.complete)
 	}
-	if h.creates != 1 || h.sends != 1 || len(h.messages) != 1 || h.b.state.Run != nil {
+	if h.creates != 1 || h.sends != 1 || len(h.messages) != 1 || h.b.state.first() != nil {
 		t.Fatal("incorrect lifecycle")
 	}
 	data, err := os.ReadFile(h.b.path)
@@ -192,7 +192,7 @@ func TestAmbiguousSubmitReconcilesAfterRestart(t *testing.T) {
 		t.Fatal(err)
 	}
 	h.b.state = j
-	if j.Run.Phase != "sending" || j.Run.SessionID != "sess_1" {
+	if j.first().Phase != "sending" || j.first().SessionID != "sess_1" {
 		t.Fatal("missing intent")
 	}
 	h.finish("end_turn")
@@ -226,7 +226,7 @@ func TestCancelStopsRemote(t *testing.T) {
 	if err := h.b.step(context.Background()); err != nil {
 		t.Fatal(err)
 	}
-	if h.cancels != 1 || h.b.state.Run != nil || h.complete != nil {
+	if h.cancels != 1 || h.b.state.first() != nil || h.complete != nil {
 		t.Fatal("incorrect cancellation")
 	}
 }
@@ -339,7 +339,7 @@ func TestOpaquePaginationWithEmptyProjectedPage(t *testing.T) {
 
 func TestTerminalReportSurvivesRestart(t *testing.T) {
 	h := setup(t)
-	h.b.state.Run = &run{TaskID: "task-1", SessionID: "sess_1", Phase: "final", Outcome: "completed", Output: "Recovered result"}
+	h.b.state.Runs = []*run{&run{TaskID: "task-1", SessionID: "sess_1", Phase: "final", Outcome: "completed", Output: "Recovered result"}}
 	if err := h.b.persist(); err != nil {
 		t.Fatal(err)
 	}
@@ -370,7 +370,7 @@ func TestRejectedMessageFailsRun(t *testing.T) {
 	if err := h.b.step(context.Background()); err != nil {
 		t.Fatal(err)
 	}
-	if h.failure == nil || h.b.state.Run != nil {
+	if h.failure == nil || h.b.state.first() != nil {
 		t.Fatal("definite rejection left run pending")
 	}
 }
@@ -433,7 +433,7 @@ func TestPerAgentSessionBinding(t *testing.T) {
 				t.Fatalf("session agent = %q, want %q", h.sessionAgent, id)
 			}
 			restored, err := readJournal(h.b.path, "test")
-			if err != nil || restored.Run.AgentID != id {
+			if err != nil || restored.first().AgentID != id {
 				t.Fatal("per-run agent binding not persisted")
 			}
 		})
@@ -457,18 +457,18 @@ func TestRunDeadlineReleasesQueue(t *testing.T) {
 	if err := h.b.step(context.Background()); err != nil {
 		t.Fatal(err)
 	}
-	h.b.state.Run.Deadline = time.Now().Add(-time.Second)
+	h.b.state.first().Deadline = time.Now().Add(-time.Second)
 	if err := h.b.step(context.Background()); err != nil {
 		t.Fatal(err)
 	}
-	if h.failure == nil || h.b.state.Run != nil || h.cancels != 1 {
+	if h.failure == nil || h.b.state.first() != nil || h.cancels != 1 {
 		t.Fatal("expired run did not cancel and finish")
 	}
 }
 
 func TestAmbiguousCreationIsNotRepeated(t *testing.T) {
 	h := setup(t)
-	h.b.state.Run = &run{TaskID: "task-1", Phase: "creating", Deadline: time.Now().Add(time.Hour)}
+	h.b.state.Runs = []*run{&run{TaskID: "task-1", Phase: "creating", Deadline: time.Now().Add(time.Hour)}}
 	if err := h.b.step(context.Background()); err != nil {
 		t.Fatal(err)
 	}
@@ -485,11 +485,11 @@ func TestTimeoutKeepsFailedCancellationForRecovery(t *testing.T) {
 	remote := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(503) }))
 	defer remote.Close()
 	h.b.qoder.base = remote.URL
-	h.b.state.Run.Deadline = time.Now().Add(-time.Second)
+	h.b.state.first().Deadline = time.Now().Add(-time.Second)
 	if err := h.b.step(context.Background()); err != nil {
 		t.Fatal(err)
 	}
-	if h.b.state.Run != nil || len(h.b.state.Cleanup) != 1 || h.failure == nil {
+	if h.b.state.first() != nil || len(h.b.state.Cleanup) != 1 || h.failure == nil {
 		t.Fatal("failed cancellation blocked queue or lost session")
 	}
 	j, err := readJournal(h.b.path, "test")
@@ -512,7 +512,7 @@ func TestDeletedRemoteSessionFailsRun(t *testing.T) {
 	if err := h.b.step(context.Background()); err != nil {
 		t.Fatal(err)
 	}
-	if h.failure == nil || h.b.state.Run != nil {
+	if h.failure == nil || h.b.state.first() != nil {
 		t.Fatal("deleted session not terminal")
 	}
 }
@@ -526,7 +526,7 @@ func TestRateLimitedCreationRetriesAfterDelay(t *testing.T) {
 	if err := h.b.step(context.Background()); err != nil {
 		t.Fatal(err)
 	}
-	if h.b.state.Run == nil || h.b.state.Run.Phase != "prepared" || h.failure != nil {
+	if h.b.state.first() == nil || h.b.state.first().Phase != "prepared" || h.failure != nil {
 		t.Fatal("rate limit became permanent failure")
 	}
 	if err := h.b.step(context.Background()); err != nil {
@@ -544,11 +544,11 @@ func TestSubmissionDeadlineReleasesUnconfirmedRun(t *testing.T) {
 		t.Fatal("expected lost response")
 	}
 	h.events = nil
-	h.b.state.Run.SubmissionDeadline = time.Now().Add(-time.Second)
+	h.b.state.first().SubmissionDeadline = time.Now().Add(-time.Second)
 	if err := h.b.step(context.Background()); err != nil {
 		t.Fatal(err)
 	}
-	if h.failure == nil || h.b.state.Run != nil || h.sends != 1 {
+	if h.failure == nil || h.b.state.first() != nil || h.sends != 1 {
 		t.Fatal("unconfirmed submission blocked queue or resent")
 	}
 }
@@ -565,7 +565,7 @@ func TestManagedJournalPersistsWithoutLocalFiles(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if restored.Run == nil || restored.Run.SessionID != "sess_1" || restored.Run.Deadline.IsZero() {
+	if restored.first() == nil || restored.first().SessionID != "sess_1" || restored.first().Deadline.IsZero() {
 		t.Fatal("managed recovery lost session or deadline")
 	}
 }
@@ -597,4 +597,12 @@ func TestToolResultsPreserveCallIdentity(t *testing.T) {
 			}
 		})
 	}
+}
+
+// first returns the oldest active run, which single-run tests inspect.
+func (j *journal) first() *run {
+	if len(j.Runs) == 0 {
+		return nil
+	}
+	return j.Runs[0]
 }

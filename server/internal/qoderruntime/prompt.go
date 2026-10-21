@@ -30,11 +30,9 @@ func (b *Bridge) prepare(ctx context.Context, t *claimedTask) (*run, error) {
 	if t.Agent == nil {
 		return nil, fmt.Errorf("associate a QCA Agent in the Multica agent runtime configuration")
 	}
-	var binding struct {
-		AgentID string `json:"qoder_agent_id"`
-	}
-	if err := json.Unmarshal(t.Agent.RuntimeConfig, &binding); err != nil || !ValidAgentID(binding.AgentID) {
-		return nil, fmt.Errorf("associate a QCA Agent in the Multica agent runtime configuration")
+	binding, err := ParseAgentConfig(t.Agent.RuntimeConfig)
+	if err != nil {
+		return nil, err
 	}
 	r.AgentID = binding.AgentID
 	taskAPI := *b.multica
@@ -53,9 +51,13 @@ func (b *Bridge) prepare(ctx context.Context, t *claimedTask) (*run, error) {
 	var p strings.Builder
 	p.WriteString("Complete the following Multica issue in your Qoder environment. Return a final summary including code changes, tests and branch/PR/MR links when available. This bridge does not expose a local Multica daemon.\n")
 	if t.PriorSessionID != "" {
-		p.WriteString("This is a new Qoder session; previous remote conversation state is not loaded.\n")
+		r.PriorSessionID = t.PriorSessionID
+		p.WriteString("This is a follow-up on the same issue. If the earlier conversation is not in your context, rely on the issue and comments below.\n")
 	}
 	fmt.Fprintf(&p, "\nRun: %s\nIssue: %s\n\n%s\n\n%s\n", t.ID, t.IssueIdentifier, issue.Title, issue.Description)
+	if t.IssueIdentifier != "" {
+		fmt.Fprintf(&p, "\nWhen you change code, push a new branch named %s (never the default branch), open a pull request whose title starts with \"%s: \", and put the pull request link in your final summary. Multica links the pull request to this issue through that identifier.\n", BranchName(t.IssueIdentifier, issue.Title), t.IssueIdentifier)
+	}
 	if t.Agent != nil {
 		fmt.Fprintf(&p, "\nAgent instructions:\n%s\n", t.Agent.Instructions)
 	}
@@ -76,36 +78,104 @@ func (b *Bridge) prepare(ctx context.Context, t *claimedTask) (*run, error) {
 		if res.ResourceType != "github_repo" {
 			continue
 		}
-		var ref struct {
-			URL string `json:"url"`
-			Ref string `json:"ref"`
-		}
+		var ref Repository
 		if err := json.Unmarshal(res.ResourceRef, &ref); err != nil {
 			return nil, fmt.Errorf("invalid repository resource")
 		}
-		u, err := url.Parse(ref.URL)
-		if err != nil || u.Scheme != "https" || u.Hostname() != "github.com" || u.User != nil || u.RawQuery != "" || u.Fragment != "" {
-			return nil, fmt.Errorf("PoC repository resources must use an HTTPS github.com URL without credentials")
-		}
-		resource := map[string]any{"type": "github_repository", "url": ref.URL}
-		if strings.HasPrefix(ref.Ref, "refs/tags/") || regexp.MustCompile(`^[a-fA-F0-9]{40}([a-fA-F0-9]{24})?$`).MatchString(ref.Ref) {
-			return nil, fmt.Errorf("Qoder bridge PoC supports branch refs only")
-		}
-		ref.Ref = strings.TrimPrefix(ref.Ref, "refs/heads/")
-		if ref.Ref != "" {
-			resource["checkout"] = map[string]string{"type": "branch", "name": ref.Ref}
+		resource, err := repositoryResource(ref)
+		if err != nil {
+			return nil, err
 		}
 		r.Resources = append(r.Resources, resource)
 		if len(r.Resources) > 1 {
-			return nil, fmt.Errorf("Qoder bridge PoC supports one project repository per run")
+			return nil, fmt.Errorf("Qoder Cloud Agent supports one project repository per run")
 		}
 	}
-	// Workspace repositories are informational; only explicitly bound project repositories are mounted.
+	// Project repositories win; otherwise use the agent's default repository,
+	// and finally the workspace's only repository when it has a credential.
+	if len(r.Resources) == 0 && binding.Repository != nil && binding.Repository.URL != "" {
+		resource, err := repositoryResource(*binding.Repository)
+		if err != nil {
+			return nil, err
+		}
+		r.Resources = append(r.Resources, resource)
+	}
+	if len(r.Resources) == 0 && len(t.Repos) == 1 {
+		if resource, err := repositoryResource(Repository{URL: t.Repos[0].URL}); err == nil {
+			if _, err := b.sessionResources([]map[string]any{resource}); err == nil {
+				r.Resources = append(r.Resources, resource)
+			}
+		}
+	}
 	for _, repo := range t.Repos {
 		fmt.Fprintf(&p, "\nAvailable repository: %s (%s)\n", repo.URL, repo.Description)
 	}
 	r.Prompt = p.String()
 	return r, nil
+}
+
+// Repository is a GitHub repository and optional branch mounted into a session.
+type Repository struct {
+	URL string `json:"url"`
+	Ref string `json:"ref,omitempty"`
+}
+
+// AgentConfig is the runtime_config of a Multica agent bound to Qoder.
+type AgentConfig struct {
+	AgentID    string      `json:"qoder_agent_id"`
+	Repository *Repository `json:"repository,omitempty"`
+}
+
+// ParseAgentConfig validates the Qoder binding stored on a Multica agent.
+func ParseAgentConfig(raw json.RawMessage) (AgentConfig, error) {
+	var cfg AgentConfig
+	if err := json.Unmarshal(raw, &cfg); err != nil || !ValidAgentID(cfg.AgentID) {
+		return cfg, fmt.Errorf("associate a QCA Agent in the Multica agent runtime configuration")
+	}
+	if cfg.Repository != nil && cfg.Repository.URL != "" {
+		if _, err := repositoryResource(*cfg.Repository); err != nil {
+			return cfg, fmt.Errorf("default repository: %w", err)
+		}
+	}
+	return cfg, nil
+}
+
+var commitRef = regexp.MustCompile(`^[a-fA-F0-9]{40}([a-fA-F0-9]{24})?$`)
+
+func repositoryResource(ref Repository) (map[string]any, error) {
+	u, err := url.Parse(ref.URL)
+	if err != nil || u.Scheme != "https" || u.Hostname() != "github.com" || u.User != nil || u.RawQuery != "" || u.Fragment != "" {
+		return nil, fmt.Errorf("repositories must use an HTTPS github.com URL without credentials")
+	}
+	resource := map[string]any{"type": "github_repository", "url": ref.URL}
+	if strings.HasPrefix(ref.Ref, "refs/tags/") || commitRef.MatchString(ref.Ref) {
+		return nil, fmt.Errorf("Qoder Cloud Agent supports branch refs only")
+	}
+	if name := strings.TrimPrefix(ref.Ref, "refs/heads/"); name != "" {
+		resource["checkout"] = map[string]string{"type": "branch", "name": name}
+	}
+	return resource, nil
+}
+
+var nonSlug = regexp.MustCompile(`[^a-z0-9]+`)
+
+// BranchName gives remote work a branch Multica's GitHub integration links back
+// to the issue: the identifier must appear in the branch name.
+func BranchName(identifier, title string) string {
+	slug := strings.Trim(nonSlug.ReplaceAllString(strings.ToLower(title), "-"), "-")
+	if len(slug) > 40 {
+		slug = slug[:41]
+		if i := strings.LastIndex(slug, "-"); i > 0 {
+			slug = slug[:i]
+		} else {
+			slug = slug[:40]
+		}
+	}
+	branch := "multica/" + strings.ToLower(identifier)
+	if slug != "" {
+		branch += "-" + slug
+	}
+	return branch
 }
 
 // Built-in platform skills have no ID and assume local CLI tools. Do not inject

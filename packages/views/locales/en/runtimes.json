@@ -31,7 +31,23 @@
     "remote_count_one": "{{count}} remote runtime",
     "remote_count_other": "{{count}} remote runtimes",
     "computer_count_one": "{{count}} computer",
-    "computer_count_other": "{{count}} computers"
+    "computer_count_other": "{{count}} computers",
+    "sections": {
+      "local": {
+        "title": "This device",
+        "description": "The device you are using right now"
+      },
+      "remote": {
+        "title": "Remote",
+        "description": "Other devices running Multica in this workspace",
+        "empty": "No remote devices yet. Run Multica on a server or another computer to add one."
+      },
+      "cloud": {
+        "title": "Cloud",
+        "description": "Hosted services that run tasks without any device online",
+        "coming_soon": "Coming soon"
+      }
+    }
   },
   "mika_setup": {
     "title": "Your runtime is ready. Start with Mika.",
@@ -495,6 +511,10 @@
     "not_configured": "Not configured",
     "name": "Runtime name",
     "api_url": "QCA API URL",
+    "region": "Region",
+    "region_global": "Global (qoder.com)",
+    "region_cn": "China (qoder.com.cn)",
+    "region_hint": "Use the site where you created the PAT; a PAT only works in its own region.",
     "token": "QCA access token",
     "keep_secret": "Leave blank to keep the saved token",
     "repositories": "GitHub authorization",
@@ -545,7 +565,43 @@
     "agent_count_one": "{{count}} agent",
     "agent_count_other": "{{count}} agents",
     "github_url": "GitHub URL",
-    "github_token": "GitHub token"
+    "github_token": "GitHub token",
+    "execution": "Execution",
+    "concurrency": "Concurrent runs",
+    "concurrency_hint": "Runs beyond this limit wait in the queue.",
+    "run_timeout": "Run timeout (minutes)",
+    "run_timeout_hint": "A run still going after this long is cancelled and marked failed.",
+    "data_disclosure_title": "What Multica sends to Qoder",
+    "data_disclosure": "The issue title and description, relevant comments, project context and the agent's instructions. GitHub tokens are only used to mount the repository for a run.",
+    "usage": "{{active}} of {{limit}} running · {{queued}} queued",
+    "open_settings": "Open settings",
+    "default_repository": "Default repository",
+    "default_repository_hint": "Mounted when the issue's project has no repository. The connection needs a GitHub token for it.",
+    "default_branch": "Branch",
+    "default_branch_placeholder": "Default branch",
+    "create_agent": "Create an agent with it",
+    "connect": {
+      "submit": "Connect",
+      "connected": "Qoder connected. It will be ready in a few seconds.",
+      "token": "Personal access token",
+      "token_rejected": "{{region}} does not accept this token. A token only works on the site that created it.",
+      "retry_cn": "Retry on China site",
+      "retry_global": "Retry on Global site",
+      "verifying": "Verifying token…",
+      "verified": "Token verified",
+      "environment_waiting": "Environments load once the token is verified",
+      "repo_count_one": "{{count}} repository",
+      "repo_count_other": "{{count}} repositories",
+      "optional": "Optional",
+      "execution_summary": "Up to {{concurrency}} at once · {{timeout}} min timeout"
+    },
+    "stop_confirm": {
+      "title": "Stop Qoder Cloud Agent?",
+      "description": "New tasks will not be sent to Qoder until it is started again.",
+      "description_agents_one": "This agent keeps its instructions and history but cannot take new tasks until Qoder is started again or it moves to another runtime.",
+      "description_agents_other": "These {{count}} agents keep their instructions and history but cannot take new tasks until Qoder is started again or they move to another runtime.",
+      "cancel": "Cancel"
+    }
   },
   "remote_runtime": {
     "action": "Add remote runtime",

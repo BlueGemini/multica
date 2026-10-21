@@ -183,8 +183,12 @@ The bridge executes issue runs through Qoder's managed session API; it does not
 run a local coding-agent CLI. Model, tools, skills and credentials are configured
 on Qoder. Local-directory resources and Multica execution overrides are rejected.
 
-Each run uses a fresh session, with its ID pinned to the Multica run. The service
-needs persistent state for restart recovery. Cancel from Multica to stop remote
+Each run's session ID is pinned to the Multica run. A follow-up run on the same
+issue continues the agent's previous session when it is idle; otherwise a fresh
+session starts. The prompt asks the agent to push a `multica/<identifier>-<slug>`
+branch and prefix the pull request title with the issue identifier, so the GitHub
+integration links the pull request. The service needs persistent state for
+restart recovery. Cancel from Multica to stop remote
 work; stopping the bridge process alone leaves remote execution running. Do not
 use `runtime update` to upgrade the bridge: deploy its binary through its service
 manager. For setup and recovery, consult the Qoder Cloud Agent section of the
@@ -210,7 +214,10 @@ stop/restart. Active tasks must finish or be cancelled before configuration
 changes. `GET/PUT /api/workspaces/{id}/qoder`, `POST .../qoder/check`, and
 `POST .../qoder/stop` expose this flow; writes/checks are admin-only and no
 credential plaintext is returned. Blank secrets retain saved values; an empty
-`github_tokens` object removes all repository credentials.
+`github_tokens` object removes all repository credentials. `max_concurrency`
+(1–10, default 3) bounds simultaneous runs, with extra tasks queued in Multica;
+`run_timeout_minutes` (5–240, default 60) bounds each run. `GET` also reports
+`active_runs` and `queued_runs`.
 
 
 Managed runtimes store the QCA PAT and selected environment. Entering a PAT loads
@@ -218,6 +225,9 @@ available environments automatically; a single environment is selected by defaul
 `POST .../qoder/environments` lists environments using an entered or saved PAT
 (admin-only). `GET .../qoder/agents` lists names and IDs using the saved PAT for
 workspace members. Lists exclude archived resources. Each Multica agent stores its
-own `runtime_config.qoder_agent_id`; each run creates a session using that
-association and the shared runtime's environment. QCA model/tool/skill management
-remains in Qoder.
+own `runtime_config.qoder_agent_id`; each run uses that association and the
+shared runtime's environment. An optional `runtime_config.repository`
+(`{"url": "https://github.com/owner/repo", "ref": "main"}`) is mounted when the
+issue's project binds no repository; the workspace's only repository is the last
+fallback when the connection holds its credential. QCA model/tool/skill
+management remains in Qoder.

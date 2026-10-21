@@ -9,15 +9,22 @@ import (
 	"time"
 )
 
-// One journal belongs to exactly one bridge configuration and one active run.
-// Credentials are never persisted. Keep this directory on persistent storage.
+// One journal belongs to exactly one bridge configuration and holds every
+// active run, bounded by the connection's concurrency limit. Credentials are
+// never persisted. Keep this directory on persistent storage.
 type journal struct {
 	Binding   string   `json:"binding"`
 	RuntimeID string   `json:"runtime_id"`
 	Cleanup   []string `json:"cleanup,omitempty"`
-	Run       *run     `json:"run,omitempty"`
+	Runs      []*run   `json:"runs,omitempty"`
+	// Run is the single-run format written before concurrency; decode folds it into Runs.
+	Run *run `json:"run,omitempty"`
 }
 type run struct {
+	// PriorSessionID is the session of this agent's previous run on the issue.
+	// An idle prior session is continued instead of creating a new one.
+	PriorSessionID     string           `json:"prior_session_id,omitempty"`
+	Continued          bool             `json:"continued,omitempty"`
 	Deadline           time.Time        `json:"deadline"`
 	SubmissionDeadline time.Time        `json:"submission_deadline,omitempty"`
 	RetryAt            time.Time        `json:"retry_at,omitempty"`
@@ -87,13 +94,22 @@ func decodeJournal(b []byte, binding string) (*journal, error) {
 		j.Binding = binding
 	}
 	if j.Run != nil {
-		if j.Run.TaskID == "" {
+		j.Runs = append(j.Runs, j.Run)
+		j.Run = nil
+	}
+	seen := map[string]bool{}
+	for _, r := range j.Runs {
+		if r == nil || r.TaskID == "" {
 			return nil, fmt.Errorf("bridge journal has no task ID")
 		}
-		switch j.Run.Phase {
+		if seen[r.TaskID] {
+			return nil, fmt.Errorf("bridge journal has a duplicate task")
+		}
+		seen[r.TaskID] = true
+		switch r.Phase {
 		case "prepared", "creating", "final":
 		case "created", "sending", "running":
-			if j.Run.SessionID == "" {
+			if r.SessionID == "" {
 				return nil, fmt.Errorf("bridge journal has no session ID")
 			}
 		default:
@@ -101,6 +117,15 @@ func decodeJournal(b []byte, binding string) (*journal, error) {
 		}
 	}
 	return &j, nil
+}
+
+func (j *journal) remove(r *run) {
+	for i, existing := range j.Runs {
+		if existing == r {
+			j.Runs = append(j.Runs[:i], j.Runs[i+1:]...)
+			return
+		}
+	}
 }
 
 type persistenceError struct{ err error }

@@ -135,15 +135,15 @@ func TestLocalMultica(t *testing.T) {
 	// Lose exactly one successful transcript response after the real server commits.
 	b.multica.client = &http.Client{Timeout: 10 * time.Second, Transport: &loseMessageResponse{base: http.DefaultTransport}}
 	err = b.step(ctx)
-	if err == nil || b.state.Run == nil {
+	if err == nil || b.state.first() == nil {
 		t.Fatalf("expected lost message response, got err=%v", err)
 	}
-	taskID := b.state.Run.TaskID
+	taskID := b.state.first().TaskID
 	if err = b.step(ctx); err != nil {
 		t.Fatal(err)
 	}
-	if b.state.Run != nil {
-		t.Fatalf("run did not finish: phase=%s failure=%s", b.state.Run.Phase, b.state.Run.Failure)
+	if b.state.first() != nil {
+		t.Fatalf("run did not finish: phase=%s failure=%s", b.state.first().Phase, b.state.first().Failure)
 	}
 	var status struct {
 		Status string `json:"status"`

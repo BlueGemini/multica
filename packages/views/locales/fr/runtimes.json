@@ -31,7 +31,23 @@
     "remote_count_one": "{{count}} environnement distant",
     "remote_count_other": "{{count}} environnements distants",
     "computer_count_one": "{{count}} ordinateur",
-    "computer_count_other": "{{count}} ordinateurs"
+    "computer_count_other": "{{count}} ordinateurs",
+    "sections": {
+      "local": {
+        "title": "Cet appareil",
+        "description": "L'appareil que vous utilisez en ce moment"
+      },
+      "remote": {
+        "title": "Distant",
+        "description": "Les autres appareils qui exécutent Multica dans cet espace de travail",
+        "empty": "Aucun appareil distant pour l'instant. Lancez Multica sur un serveur ou un autre ordinateur pour en ajouter un."
+      },
+      "cloud": {
+        "title": "Cloud",
+        "description": "Des services hébergés qui exécutent les tâches sans appareil en ligne",
+        "coming_soon": "Bientôt disponible"
+      }
+    }
   },
   "mika_setup": {
     "title": "Votre runtime est prêt. Commencez avec Mika.",
@@ -495,6 +511,10 @@
     "not_configured": "Non configuré",
     "name": "Nom de l’environnement d’exécution",
     "api_url": "URL de l’API QCA",
+    "region": "Région",
+    "region_global": "International (qoder.com)",
+    "region_cn": "Chine (qoder.com.cn)",
+    "region_hint": "Choisissez le site où vous avez créé le PAT ; un PAT ne fonctionne que dans sa région.",
     "token": "Jeton d’accès QCA",
     "keep_secret": "Laissez vide pour conserver le jeton enregistré",
     "repositories": "Autorisation GitHub",
@@ -545,7 +565,43 @@
     "agent_count_one": "{{count}} agent",
     "agent_count_other": "{{count}} agents",
     "github_url": "URL GitHub",
-    "github_token": "Jeton GitHub"
+    "github_token": "Jeton GitHub",
+    "execution": "Exécution",
+    "concurrency": "Exécutions simultanées",
+    "concurrency_hint": "Au-delà de cette limite, les tâches attendent dans la file.",
+    "run_timeout": "Délai d'exécution (minutes)",
+    "run_timeout_hint": "Une exécution encore en cours après ce délai est annulée et marquée en échec.",
+    "data_disclosure_title": "Ce que Multica envoie à Qoder",
+    "data_disclosure": "Le titre et la description du ticket, les commentaires pertinents, le contexte du projet et les instructions de l'agent. Les jetons GitHub servent uniquement à monter le dépôt pendant une exécution.",
+    "usage": "{{active}} sur {{limit}} en cours · {{queued}} en attente",
+    "open_settings": "Ouvrir les paramètres",
+    "default_repository": "Dépôt par défaut",
+    "default_repository_hint": "Monté quand le projet du ticket n'a pas de dépôt. La connexion doit avoir un jeton GitHub pour ce dépôt.",
+    "default_branch": "Branche",
+    "default_branch_placeholder": "Branche par défaut",
+    "create_agent": "Créer un agent avec",
+    "connect": {
+      "submit": "Connecter",
+      "connected": "Qoder est connecté. Il sera prêt dans quelques secondes.",
+      "token": "Jeton d'accès personnel",
+      "token_rejected": "{{region}} n'accepte pas ce jeton. Un jeton ne fonctionne que sur le site qui l'a créé.",
+      "retry_cn": "Réessayer sur le site Chine",
+      "retry_global": "Réessayer sur le site international",
+      "verifying": "Vérification du jeton…",
+      "verified": "Jeton vérifié",
+      "environment_waiting": "Les environnements se chargent une fois le jeton vérifié",
+      "repo_count_one": "{{count}} dépôt",
+      "repo_count_other": "{{count}} dépôts",
+      "optional": "Facultatif",
+      "execution_summary": "Jusqu'à {{concurrency}} à la fois · délai de {{timeout}} min"
+    },
+    "stop_confirm": {
+      "title": "Arrêter Qoder Cloud Agent ?",
+      "description": "Aucune nouvelle tâche ne sera envoyée à Qoder tant qu'il n'est pas redémarré.",
+      "description_agents_one": "Cet agent conserve ses instructions et son historique, mais ne peut plus recevoir de tâches tant que Qoder n'est pas redémarré ou qu'il ne change pas de runtime.",
+      "description_agents_other": "Ces {{count}} agents conservent leurs instructions et leur historique, mais ne peuvent plus recevoir de tâches tant que Qoder n'est pas redémarré ou qu'ils ne changent pas de runtime.",
+      "cancel": "Annuler"
+    }
   },
   "remote_runtime": {
     "action": "Ajouter un environnement distant",

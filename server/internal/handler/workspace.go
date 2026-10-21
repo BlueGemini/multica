@@ -1238,10 +1238,10 @@ func (h *Handler) DeleteWorkspace(w http.ResponseWriter, r *http.Request) {
 		{
 			name: "delete QCA connection",
 			run: func() error {
-				if _, err := tx.Exec(ctx, `DELETE FROM daemon_token WHERE id IN (SELECT token_id FROM qoder_connection WHERE workspace_id=$1)`, requester.WorkspaceID); err != nil {
+				if _, err := tx.Exec(ctx, `DELETE FROM daemon_token WHERE id IN (SELECT token_id FROM cloud_agent_connection WHERE provider='qoder_cloud' AND workspace_id=$1)`, requester.WorkspaceID); err != nil {
 					return err
 				}
-				_, err := tx.Exec(ctx, `DELETE FROM qoder_connection WHERE workspace_id=$1`, requester.WorkspaceID)
+				_, err := tx.Exec(ctx, `DELETE FROM cloud_agent_connection WHERE provider='qoder_cloud' AND workspace_id=$1`, requester.WorkspaceID)
 				return err
 			},
 		},

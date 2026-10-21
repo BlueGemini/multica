@@ -29,7 +29,23 @@
     "remote_runtimes": "远端运行时",
     "computers": "电脑",
     "remote_count_other": "{{count}} 个远端运行时",
-    "computer_count_other": "{{count}} 台电脑"
+    "computer_count_other": "{{count}} 台电脑",
+    "sections": {
+      "local": {
+        "title": "本机",
+        "description": "你正在用的这台设备"
+      },
+      "remote": {
+        "title": "远端",
+        "description": "工作区里其他运行 Multica 的设备",
+        "empty": "还没有远端设备。在服务器或其他电脑上运行 Multica 即可添加。"
+      },
+      "cloud": {
+        "title": "云端",
+        "description": "托管服务执行任务，设备不用在线",
+        "coming_soon": "即将推出"
+      }
+    }
   },
   "mika_setup": {
     "title": "运行时已准备好，和 Mika 开始。",
@@ -477,6 +493,10 @@
     "not_configured": "尚未配置",
     "name": "运行时名称",
     "api_url": "QCA API 地址",
+    "region": "服务区域",
+    "region_global": "国际站（qoder.com）",
+    "region_cn": "中国站（qoder.com.cn）",
+    "region_hint": "选择创建 PAT 的站点，PAT 只能在对应区域使用。",
     "token": "QCA 访问凭证",
     "keep_secret": "留空保留已保存的凭证",
     "repositories": "GitHub 仓库授权",
@@ -526,7 +546,41 @@
     "credentials_configured": "已配置",
     "agent_count_other": "{{count}} 个智能体",
     "github_url": "GitHub URL",
-    "github_token": "GitHub 访问凭证"
+    "github_token": "GitHub 访问凭证",
+    "execution": "执行设置",
+    "concurrency": "并发运行数",
+    "concurrency_hint": "超过上限的任务会排队等待。",
+    "run_timeout": "单次运行超时（分钟）",
+    "run_timeout_hint": "超过该时长仍未结束的运行会被取消并标记为失败。",
+    "data_disclosure_title": "Multica 会发送给 Qoder 的内容",
+    "data_disclosure": "任务标题与描述、相关评论、项目上下文和智能体指令。GitHub 凭证仅用于在运行时挂载仓库。",
+    "usage": "运行中 {{active}}/{{limit}} · 排队 {{queued}}",
+    "open_settings": "查看设置",
+    "default_repository": "默认仓库",
+    "default_repository_hint": "任务所属项目未绑定仓库时挂载。连接中需要为该仓库配置 GitHub 凭证。",
+    "default_branch": "分支",
+    "default_branch_placeholder": "默认分支",
+    "create_agent": "用它创建智能体",
+    "connect": {
+      "submit": "连接",
+      "connected": "Qoder 已连接，几秒后即可使用。",
+      "token": "个人访问令牌",
+      "token_rejected": "{{region}}不认这个令牌。令牌只能在创建它的站点使用。",
+      "retry_cn": "切换到中国站重试",
+      "retry_global": "切换到国际站重试",
+      "verifying": "正在验证令牌…",
+      "verified": "令牌已验证",
+      "environment_waiting": "令牌验证后自动加载",
+      "repo_count_other": "{{count}} 个仓库",
+      "optional": "可选",
+      "execution_summary": "最多同时 {{concurrency}} 个 · 单次超时 {{timeout}} 分钟"
+    },
+    "stop_confirm": {
+      "title": "停止 Qoder Cloud Agent？",
+      "description": "重新启动之前，新任务不会再发给 Qoder。",
+      "description_agents_other": "下面 {{count}} 个智能体会保留指令和历史，但在重新启动 Qoder 或更换运行时之前无法接新任务。",
+      "cancel": "取消"
+    }
   },
   "remote_runtime": {
     "action": "添加远端运行时",

@@ -6,7 +6,15 @@ import {
 import { api } from "../api";
 import { runtimeKeys } from "./queries";
 import type { QoderInput } from "./qoder-schema";
-export type { QoderInput, QoderConnection } from "./qoder-schema";
+export type { QoderInput, QoderConnection, QoderRegion } from "./qoder-schema";
+export {
+  QODER_REGIONS,
+  DEFAULT_CONCURRENCY,
+  MAX_CONCURRENCY,
+  DEFAULT_RUN_TIMEOUT,
+  MIN_RUN_TIMEOUT,
+  MAX_RUN_TIMEOUT,
+} from "./qoder-schema";
 export const qoderKey = (wsId: string) => ["qoder", wsId] as const;
 export const qoderOptions = (wsId: string) =>
   queryOptions({
@@ -52,8 +60,15 @@ export const qoderAgentsOptions = (wsId: string) =>
 
 export function useQoderEnvironments(wsId: string) {
   return useMutation({
-    mutationFn: ({ token, signal }: { token: string; signal?: AbortSignal }) =>
-      api.listQoderEnvironments(wsId, token, signal),
+    mutationFn: ({
+      token,
+      baseUrl,
+      signal,
+    }: {
+      token: string;
+      baseUrl: string;
+      signal?: AbortSignal;
+    }) => api.listQoderEnvironments(wsId, token, baseUrl, signal),
     gcTime: 0,
   });
 }

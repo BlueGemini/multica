@@ -1,9 +1,16 @@
 "use client";
 
-import { Bot, Cloud, KeyRound, Plus } from "lucide-react";
+import {
+  Activity,
+  Bot,
+  CircleAlert,
+  Cloud,
+  KeyRound,
+  Plus,
+} from "lucide-react";
 import type { QoderConnection } from "@multica/core/runtimes/qoder";
 import { Badge } from "@multica/ui/components/ui/badge";
-import { Button } from "@multica/ui/components/ui/button";
+import { Button, buttonVariants } from "@multica/ui/components/ui/button";
 import { AppLink } from "../../navigation";
 import { useT } from "../../i18n";
 import { QoderStatusBadge } from "./qoder-status-badge";
@@ -11,17 +18,16 @@ import { QoderStatusBadge } from "./qoder-status-badge";
 export function QoderCloudCard({
   connection,
   agentCount,
-  canAddAgent,
+  createAgentHref,
   detailHref,
   onConfigure,
-  onAddAgent,
 }: {
   connection: QoderConnection;
   agentCount: number;
-  canAddAgent: boolean;
+  /** Step 2 of agent creation on the Qoder runtime; absent until it is online. */
+  createAgentHref: string | null;
   detailHref?: string;
   onConfigure: () => void;
-  onAddAgent: () => void;
 }) {
   const { t } = useT("runtimes");
   return (
@@ -53,23 +59,66 @@ export function QoderCloudCard({
             <p className="text-caption leading-relaxed text-muted-foreground">
               {t(($) => $.qoder.cloud_description)}
             </p>
-            <p className="inline-flex items-center gap-1.5 rounded-md bg-muted px-2 py-1 text-caption text-muted-foreground">
-              <Bot aria-hidden="true" className="size-3.5" />
-              {t(($) => $.qoder.agent_count, { count: agentCount })}
-            </p>
+            <div className="flex flex-wrap gap-2">
+              <p className="inline-flex items-center gap-1.5 rounded-md bg-muted px-2 py-1 text-caption text-muted-foreground">
+                <Bot aria-hidden="true" className="size-3.5" />
+                {t(($) => $.qoder.agent_count, { count: agentCount })}
+              </p>
+              {connection.configured && connection.enabled && (
+                <p className="inline-flex items-center gap-1.5 rounded-md bg-muted px-2 py-1 text-caption tabular-nums text-muted-foreground">
+                  <Activity aria-hidden="true" className="size-3.5" />
+                  {t(($) => $.qoder.usage, {
+                    active: connection.activeRuns,
+                    limit: connection.maxConcurrency,
+                    queued: connection.queuedRuns,
+                  })}
+                </p>
+              )}
+            </div>
           </div>
         </div>
         <div className="flex shrink-0 flex-wrap gap-2 sm:justify-end">
-          <Button variant="outline" onClick={onConfigure}>
+          <Button
+            variant={connection.configured ? "outline" : "default"}
+            onClick={onConfigure}
+          >
             <KeyRound aria-hidden="true" className="size-4" />
-            {t(($) => $.qoder.configure_credentials)}
+            {connection.configured
+              ? t(($) => $.qoder.configure_credentials)
+              : t(($) => $.qoder.connect.submit)}
           </Button>
-          <Button onClick={onAddAgent} disabled={!canAddAgent}>
-            <Plus aria-hidden="true" className="size-4" />
-            {t(($) => $.qoder.add_agent)}
-          </Button>
+          {createAgentHref ? (
+            <AppLink href={createAgentHref} className={buttonVariants()}>
+              <Plus aria-hidden="true" className="size-4" />
+              {t(($) => $.qoder.create_agent)}
+            </AppLink>
+          ) : connection.configured ? (
+            <Button disabled>
+              <Plus aria-hidden="true" className="size-4" />
+              {t(($) => $.qoder.create_agent)}
+            </Button>
+          ) : null}
         </div>
       </div>
+      {connection.enabled &&
+        connection.status === "error" &&
+        connection.lastError && (
+          <div
+            role="alert"
+            className="mt-2 flex items-center gap-3 rounded-lg border border-destructive/20 bg-destructive/5 px-4 py-2.5 text-caption text-destructive"
+          >
+            <CircleAlert aria-hidden="true" className="size-4 shrink-0" />
+            <p className="min-w-0 flex-1 break-words">{connection.lastError}</p>
+            <Button
+              size="sm"
+              variant="ghost"
+              className="shrink-0"
+              onClick={onConfigure}
+            >
+              {t(($) => $.qoder.open_settings)}
+            </Button>
+          </div>
+        )}
     </div>
   );
 }

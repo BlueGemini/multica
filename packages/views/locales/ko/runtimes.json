@@ -29,7 +29,23 @@
     "remote_runtimes": "원격 런타임",
     "computers": "컴퓨터",
     "remote_count_other": "원격 런타임 {{count}}개",
-    "computer_count_other": "컴퓨터 {{count}}대"
+    "computer_count_other": "컴퓨터 {{count}}대",
+    "sections": {
+      "local": {
+        "title": "이 기기",
+        "description": "지금 사용 중인 기기"
+      },
+      "remote": {
+        "title": "원격",
+        "description": "이 워크스페이스에서 Multica를 실행 중인 다른 기기",
+        "empty": "아직 원격 기기가 없습니다. 서버나 다른 컴퓨터에서 Multica를 실행하면 추가됩니다."
+      },
+      "cloud": {
+        "title": "클라우드",
+        "description": "기기가 온라인이 아니어도 작업을 실행하는 호스팅 서비스",
+        "coming_soon": "출시 예정"
+      }
+    }
   },
   "mika_setup": {
     "title": "런타임이 준비되었습니다. Mika와 시작하세요.",
@@ -477,6 +493,10 @@
     "not_configured": "Not configured",
     "name": "Runtime name",
     "api_url": "QCA API URL",
+    "region": "리전",
+    "region_global": "글로벌(qoder.com)",
+    "region_cn": "중국(qoder.com.cn)",
+    "region_hint": "PAT를 만든 사이트를 선택하세요. PAT는 해당 리전에서만 사용할 수 있습니다.",
     "token": "QCA access token",
     "keep_secret": "Leave blank to keep the saved token",
     "repositories": "GitHub authorization",
@@ -526,7 +546,41 @@
     "credentials_configured": "설정됨",
     "agent_count_other": "에이전트 {{count}}개",
     "github_url": "GitHub URL",
-    "github_token": "GitHub 토큰"
+    "github_token": "GitHub 토큰",
+    "execution": "실행 설정",
+    "concurrency": "동시 실행 수",
+    "concurrency_hint": "한도를 넘는 작업은 대기열에서 기다립니다.",
+    "run_timeout": "실행 제한 시간(분)",
+    "run_timeout_hint": "이 시간이 지나도 끝나지 않은 실행은 취소되고 실패로 기록됩니다.",
+    "data_disclosure_title": "Multica가 Qoder로 보내는 내용",
+    "data_disclosure": "이슈 제목과 설명, 관련 댓글, 프로젝트 컨텍스트, 에이전트 지침. GitHub 토큰은 실행 시 저장소를 마운트하는 데만 사용됩니다.",
+    "usage": "실행 중 {{active}}/{{limit}} · 대기 {{queued}}",
+    "open_settings": "설정 열기",
+    "default_repository": "기본 저장소",
+    "default_repository_hint": "이슈의 프로젝트에 저장소가 없을 때 마운트됩니다. 연결에 이 저장소의 GitHub 토큰이 필요합니다.",
+    "default_branch": "브랜치",
+    "default_branch_placeholder": "기본 브랜치",
+    "create_agent": "이것으로 에이전트 만들기",
+    "connect": {
+      "submit": "연결",
+      "connected": "Qoder가 연결되었습니다. 몇 초 후 사용할 수 있습니다.",
+      "token": "개인 액세스 토큰",
+      "token_rejected": "{{region}}에서는 이 토큰을 사용할 수 없습니다. 토큰은 생성한 사이트에서만 유효합니다.",
+      "retry_cn": "중국 사이트로 다시 시도",
+      "retry_global": "글로벌 사이트로 다시 시도",
+      "verifying": "토큰 확인 중…",
+      "verified": "토큰 확인됨",
+      "environment_waiting": "토큰을 확인하면 불러옵니다",
+      "repo_count_other": "저장소 {{count}}개",
+      "optional": "선택 사항",
+      "execution_summary": "동시에 최대 {{concurrency}}개 · 제한 시간 {{timeout}}분"
+    },
+    "stop_confirm": {
+      "title": "Qoder Cloud Agent를 중지할까요?",
+      "description": "다시 시작하기 전까지 새 작업은 Qoder로 보내지지 않습니다.",
+      "description_agents_other": "아래 에이전트 {{count}}개는 지침과 기록을 유지하지만, Qoder를 다시 시작하거나 다른 런타임으로 옮기기 전까지 새 작업을 받을 수 없습니다.",
+      "cancel": "취소"
+    }
   },
   "remote_runtime": {
     "action": "원격 런타임 추가",

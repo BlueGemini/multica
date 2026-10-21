@@ -39,8 +39,7 @@ func (e event) text() string {
 	}
 	return strings.Join(parts, "\n")
 }
-func (b *Bridge) events(ctx context.Context) error {
-	r := b.state.Run
+func (b *Bridge) events(ctx context.Context, r *run) error {
 	q := url.Values{"limit": {"100"}, "order": {"asc"}}
 	if r.Page != "" {
 		q.Set("page", r.Page)
@@ -55,7 +54,7 @@ func (b *Bridge) events(ctx context.Context) error {
 	if err := b.qoder.call(ctx, http.MethodGet, "/sessions/"+url.PathEscape(r.SessionID)+"/events?"+q.Encode(), nil, &page); err != nil {
 		var ae *apiError
 		if errors.As(err, &ae) && ae.Status == http.StatusNotFound {
-			return b.reject(ctx, "Qoder session no longer exists")
+			return b.reject(ctx, r, "Qoder session no longer exists")
 		}
 		return err
 	}
@@ -117,7 +116,7 @@ func (b *Bridge) events(ctx context.Context) error {
 		if len(msg) > 0 {
 			msg["seq"] = r.Seq + 1
 			msg["idempotency_key"] = "qoder:" + e.ID
-			if err := b.taskCall(ctx, "/messages", map[string]any{"messages": []map[string]any{msg}}, nil); err != nil {
+			if err := b.taskCall(ctx, r, "/messages", map[string]any{"messages": []map[string]any{msg}}, nil); err != nil {
 				return err
 			}
 			r.Seq++
@@ -128,7 +127,7 @@ func (b *Bridge) events(ctx context.Context) error {
 			return err
 		}
 		if r.Phase == "final" {
-			return b.deliver(ctx)
+			return b.deliver(ctx, r)
 		}
 	}
 	r.Page = ""

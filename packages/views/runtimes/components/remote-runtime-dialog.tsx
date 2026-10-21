@@ -30,11 +30,9 @@ const remoteRuntimeTypes = [
 export function RemoteRuntimeDialog({
   onClose,
   configure = false,
-  onAddAgent,
 }: {
   onClose: () => void;
   configure?: boolean;
-  onAddAgent?: () => void;
 }) {
   const { t } = useT("runtimes");
   const labelId = useId();
@@ -93,7 +91,7 @@ export function RemoteRuntimeDialog({
             </Select>
           </div>
         )}
-        {Configuration && <Configuration key={type} onAddAgent={onAddAgent} />}
+        {Configuration && <Configuration key={type} />}
       </DialogContent>
     </Dialog>
   );

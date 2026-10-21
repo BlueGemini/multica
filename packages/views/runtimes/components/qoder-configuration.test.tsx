@@ -16,7 +16,11 @@ const mocks = vi.hoisted(() => ({
   listMembers: vi.fn(),
   listQoderEnvironments: vi.fn(),
   checkQoderConnection: vi.fn(),
+  stopQoderConnection: vi.fn(),
+  listRuntimes: vi.fn(),
+  listAgents: vi.fn(),
 }));
+const mockPush = vi.hoisted(() => vi.fn());
 vi.mock("@multica/core/api", () => ({ api: mocks }));
 vi.mock("@multica/core/hooks", () => ({ useWorkspaceId: () => "ws-test" }));
 vi.mock("@multica/core/auth", () => {
@@ -29,6 +33,12 @@ vi.mock("@multica/core/auth", () => {
   };
 });
 vi.mock("sonner", () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
+vi.mock("@multica/core/paths", () => ({
+  useWorkspacePaths: () => ({ newAgentManual: () => "/acme/agents/new/manual" }),
+}));
+vi.mock("../../navigation", () => ({
+  useNavigation: () => ({ push: mockPush }),
+}));
 
 beforeEach(() => {
   mocks.getQoderConnection.mockResolvedValue({
@@ -42,9 +52,20 @@ beforeEach(() => {
     enabled: true,
     status: "online",
     lastError: "",
+    maxConcurrency: 3,
+    runTimeoutMinutes: 60,
+    activeRuns: 0,
+    queuedRuns: 0,
   });
   mocks.listMembers.mockResolvedValue([{ user_id: "owner", role: "owner" }]);
   mocks.checkQoderConnection.mockResolvedValue(undefined);
+  mocks.listRuntimes.mockResolvedValue([
+    { id: "rt_qoder", provider: "qoder_cloud", status: "online" },
+  ]);
+  mocks.listAgents.mockResolvedValue([
+    { id: "a1", name: "Reviewer", runtime_id: "rt_qoder", archived_at: null },
+    { id: "a2", name: "Local helper", runtime_id: "rt_local", archived_at: null },
+  ]);
 });
 afterEach(() => {
   cleanup();
@@ -75,11 +96,42 @@ it("selects the only environment, hides saved PATs and reports connection succes
   ).toHaveTextContent("Web environment");
   expect(screen.queryByText("QCA Agent ID")).not.toBeInTheDocument();
   expect(screen.getByPlaceholderText("Saved, never displayed")).toBeDisabled();
+  expect(screen.getByText("What Multica sends to Qoder")).toBeInTheDocument();
+  fireEvent.change(screen.getByLabelText(/Concurrent runs/), {
+    target: { value: "5" },
+  });
   fireEvent.click(check);
   await screen.findByText("Connection successful");
   expect(mocks.checkQoderConnection).toHaveBeenCalledWith(
     "ws-test",
-    expect.objectContaining({ environmentId: "env_one", qoderToken: "" }),
+    expect.objectContaining({
+      environmentId: "env_one",
+      qoderToken: "",
+      maxConcurrency: 5,
+      runTimeoutMinutes: 60,
+    }),
+  );
+  client.clear();
+});
+it("loads environments from the saved region", async () => {
+  mocks.getQoderConnection.mockResolvedValue({
+    ...(await mocks.getQoderConnection()),
+    baseUrl: "https://api.qoder.com.cn/api/v1/cloud",
+  });
+  mocks.listQoderEnvironments.mockResolvedValue([
+    { id: "env_cn", name: "CN environment" },
+  ]);
+  const client = mount();
+  expect(
+    await screen.findByRole("combobox", { name: "Region" }),
+  ).toHaveTextContent("China (qoder.com.cn)");
+  await waitFor(() =>
+    expect(mocks.listQoderEnvironments).toHaveBeenCalledWith(
+      "ws-test",
+      "",
+      "https://api.qoder.com.cn/api/v1/cloud",
+      expect.anything(),
+    ),
   );
   client.clear();
 });
@@ -98,5 +150,33 @@ it("requires an explicit choice when several environments are available", async 
   expect(
     screen.getByRole("button", { name: "Test connection" }),
   ).toBeDisabled();
+  client.clear();
+});
+it("connects a first-time workspace with the short form", async () => {
+  mocks.getQoderConnection.mockResolvedValue({
+    ...(await mocks.getQoderConnection()),
+    configured: false,
+    hasToken: false,
+    enabled: false,
+    status: "offline",
+  });
+  mocks.listQoderEnvironments.mockResolvedValue([]);
+  const client = mount();
+  expect(await screen.findByRole("button", { name: "Connect" })).toBeDisabled();
+  expect(screen.queryByRole("button", { name: "Test connection" })).not.toBeInTheDocument();
+  client.clear();
+});
+it("asks before stopping and names the agents it strands", async () => {
+  mocks.listQoderEnvironments.mockResolvedValue([
+    { id: "env_one", name: "Web environment" },
+  ]);
+  const client = mount();
+  const stopButton = await screen.findByRole("button", { name: "Stop runtime" });
+  await waitFor(() => expect(stopButton).toBeEnabled());
+  fireEvent.click(stopButton);
+  expect(await screen.findByText("Stop Qoder Cloud Agent?")).toBeInTheDocument();
+  expect(await screen.findByText("Reviewer")).toBeInTheDocument();
+  expect(screen.queryByText("Local helper")).not.toBeInTheDocument();
+  expect(mocks.stopQoderConnection).not.toHaveBeenCalled();
   client.clear();
 });
