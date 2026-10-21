@@ -474,14 +474,24 @@ func resourceFingerprint(resources []map[string]any) string {
 	for _, res := range resources {
 		raw, _ := res["url"].(string)
 		key, _ := repositoryKey(raw)
-		branch := ""
-		if checkout, ok := res["checkout"].(map[string]string); ok {
-			branch = checkout["name"]
-		}
 		token, _ := res["authorization_token"].(string)
-		fmt.Fprintf(h, "%s\x00%s\x00%s\n", key, branch, token)
+		fmt.Fprintf(h, "%s\x00%s\x00%s\n", key, checkoutBranch(res["checkout"]), token)
 	}
 	return hex.EncodeToString(h.Sum(nil))
+}
+
+// checkoutBranch reads the branch from a freshly built resource
+// (map[string]string) or one restored from the journal (map[string]any).
+func checkoutBranch(checkout any) string {
+	raw, err := json.Marshal(checkout)
+	if err != nil {
+		return ""
+	}
+	var c struct {
+		Name string `json:"name"`
+	}
+	_ = json.Unmarshal(raw, &c)
+	return c.Name
 }
 
 // continueSession reports whether the agent's previous session on this issue

@@ -340,3 +340,22 @@ func TestAgentDefaultRepository(t *testing.T) {
 		}
 	}
 }
+
+func TestResourceFingerprintSurvivesJournalRoundTrip(t *testing.T) {
+	release, err := repositoryResource(Repository{URL: "https://github.com/acme/a", Ref: "release"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defaultBranch, _ := repositoryResource(Repository{URL: "https://github.com/acme/a"})
+	raw, _ := json.Marshal(&run{TaskID: "t", Resources: []map[string]any{release}})
+	var restored run
+	if err := json.Unmarshal(raw, &restored); err != nil {
+		t.Fatal(err)
+	}
+	if got, want := resourceFingerprint(restored.Resources), resourceFingerprint([]map[string]any{release}); got != want {
+		t.Fatal("restored resources fingerprint differently")
+	}
+	if resourceFingerprint(restored.Resources) == resourceFingerprint([]map[string]any{defaultBranch}) {
+		t.Fatal("restored branch dropped from fingerprint")
+	}
+}
