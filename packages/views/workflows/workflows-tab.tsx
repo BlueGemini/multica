@@ -95,6 +95,7 @@ export function WorkflowsTab() {
         template={open === NEW_WORKFLOW && !duplicateOf ? template : null}
         canEdit={open === NEW_WORKFLOW ? canCreate : canEditWorkflow(open)}
         canDuplicate={canCreate}
+        canCreateStatus={isAdmin}
         onBack={backToList}
         onOpen={(target) =>
           "id" in target
