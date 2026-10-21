@@ -103,6 +103,14 @@ interface Draft {
   handoffs: Record<string, Handoff>;
 }
 
+/**
+ * The key a column goes by in the editor: its status, or — for a status the
+ * save creates — its draft id, so its handoff can be edited before the save.
+ */
+function columnKey(column: DraftColumn): string {
+  return "status_key" in column ? column.status_key : column.id;
+}
+
 function hasHandoff(h: Handoff | undefined): h is Handoff {
   return !!h && (h.handler.type !== "none" || !!h.next_status_key || !!h.back_status_key);
 }
@@ -240,6 +248,16 @@ export function WorkflowEditorPage({
   const targetKeys = columns.flatMap((c) => ("status_key" in c ? [c.status_key] : []));
   // Next and back can only name statuses that exist before the save.
   const flow = { steps: targetKeys.map((status_key) => ({ status_key, ...NO_HANDOFF })) };
+  // The flow as one column sees it: the statuses that exist before the save,
+  // plus the column itself when it is new, so its default next is right.
+  const flowFor = (column: DraftColumn) =>
+    "status_key" in column
+      ? flow
+      : {
+          steps: columns
+            .filter((c) => "status_key" in c || c.id === column.id)
+            .map((c) => ({ status_key: columnKey(c), ...NO_HANDOFF })),
+        };
   const selectedId = selected ?? "todo";
   const selectedColumn = columns.find((c) => c.id === selectedId && "status_key" in c && statusAcceptsHandoff(c.status_key));
   const selectedStep: IssueWorkflowStep | null =
@@ -261,7 +279,9 @@ export function WorkflowEditorPage({
   const addNew = () => {
     const name = newName?.trim();
     if (!name) return;
-    setDraft((d) => ({ ...d, middle: [...d.middle, { id: `new:${name}:${Date.now()}`, new_name: name }] }));
+    const id = `new:${name}:${Date.now()}`;
+    setDraft((d) => ({ ...d, middle: [...d.middle, { id, new_name: name }] }));
+    setSelected(id);
     setNewName(null);
   };
 
@@ -341,7 +361,8 @@ export function WorkflowEditorPage({
     { id: "cancelled", status_key: "cancelled" },
   ];
   const current = listed.find((c) => c.id === selectedId) ?? listed[1]!;
-  const nextOf = (key: string, h: Handoff | undefined) => h?.next_status_key ?? workflowNextStatus(flow, key);
+  const nextOf = (column: DraftColumn, h: Handoff | undefined) =>
+    h?.next_status_key ?? workflowNextStatus(flowFor(column), columnKey(column));
   const card = (column: DraftColumn) => {
     const key = "status_key" in column ? column.status_key : null;
     const optional = key === "backlog" || key === "blocked";
@@ -351,7 +372,7 @@ export function WorkflowEditorPage({
       off,
       start: key === "todo",
       handoff: off ? undefined : draft.handoffs[column.id],
-      next: key && !off ? nextOf(key, draft.handoffs[column.id]) : undefined,
+      next: off ? undefined : nextOf(column, draft.handoffs[column.id]) || undefined,
       selected: current.id === column.id,
       onSelect: () => setSelected(column.id),
       toggle: optional
@@ -542,9 +563,9 @@ export function WorkflowEditorPage({
           column={current}
           off={isOff(current)}
           handoff={draft.handoffs[current.id]}
-          flow={flow}
+          flow={flowFor(current)}
           canEdit={canEdit}
-          statusOptions={middleIds.has(current.id) && "status_key" in current ? addable : null}
+          statusOptions={middleIds.has(current.id) ? addable : null}
           onReplaceStatus={(key) => replaceStatus(current, key)}
           onRemove={canEdit && middleIds.has(current.id) ? () => removeColumn(current) : undefined}
           onPatch={(patch) => patchHandoff(current.id, patch)}
@@ -657,7 +678,7 @@ function StepCard({
   const handlerLabel = useStepHandlerLabel(null);
   const { getActorName } = useActorName();
   const label = "status_key" in column ? labelOf(column.status_key) : column.new_name;
-  const step = handoff && "status_key" in column ? { status_key: column.status_key, ...handoff } : undefined;
+  const step = handoff ? { status_key: columnKey(column), ...handoff } : undefined;
   const who = handlerLabel(step);
   const actor = stepHandlerActor(step, null);
 
@@ -853,18 +874,18 @@ function StepDetail({
         <DetailField label={t(($) => $.workflows.editor.on_enter)}>
           {off ? (
             <p className="text-caption leading-5 text-muted-foreground">{t(($) => $.workflows.editor.step_off)}</p>
-          ) : key && statusAcceptsHandoff(key) ? (
+          ) : !key || statusAcceptsHandoff(key) ? (
+            // A new status is a middle column, so it always takes a handoff;
+            // the save creates the status and keeps the handoff on it.
             <HandoffFields
-              step={{ status_key: key, ...(handoff ?? NO_HANDOFF) }}
+              step={{ status_key: columnKey(column), ...(handoff ?? NO_HANDOFF) }}
               workflow={flow}
               canEdit={canEdit}
               onPatch={onPatch}
               onPreview={onPreview}
             />
           ) : (
-            <p className="text-caption leading-5 text-muted-foreground">
-              {key ? t(($) => $.workflows.editor.no_handoff_step) : t(($) => $.workflows.editor.new_step_handoff)}
-            </p>
+            <p className="text-caption leading-5 text-muted-foreground">{t(($) => $.workflows.editor.no_handoff_step)}</p>
           )}
         </DetailField>
       </div>

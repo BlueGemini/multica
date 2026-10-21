@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useId, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { api, clientErrorMessage } from "@multica/core/api";
@@ -285,6 +285,9 @@ export function HandoffFields({
 }) {
   const { t } = useT("issues");
   const mode = modeOf(step.handler);
+  // Not derived from the status key: a step for a status still to be created
+  // goes by a draft id that need not be a valid element id.
+  const instructionsId = useId();
   const nextDefault = workflowNextStatus({ steps: workflow.steps.map((s) => ({ ...s, next_status_key: undefined })) }, step.status_key);
   const choose = (m: HandoffMode) => {
     if (m === mode) return;
@@ -348,10 +351,10 @@ export function HandoffFields({
           <Field
             label={t(($) => $.workflows.handoff.instructions)}
             hint={t(($) => $.workflows.editor.instructions_hint)}
-            htmlFor={`workflow-handoff-instructions-${step.status_key}`}
+            htmlFor={instructionsId}
           >
             <Textarea
-              id={`workflow-handoff-instructions-${step.status_key}`}
+              id={instructionsId}
               rows={4}
               maxLength={8000}
               readOnly={!canEdit}
