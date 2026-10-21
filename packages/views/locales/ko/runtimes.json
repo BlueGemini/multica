@@ -1,10 +1,10 @@
 {
   "page": {
     "title": "런타임",
-    "tagline": "에이전트의 CLI 세션을 실행하는 기기와 클라우드 워커입니다.",
+    "tagline": "에이전트가 작업을 실행하는 머신과 클라우드 서비스입니다.",
     "learn_more": "자세히 보기 →",
-    "connect_remote": "컴퓨터 추가",
-    "search_placeholder": "런타임 검색...",
+    "connect_remote": "머신 추가",
+    "search_placeholder": "머신 또는 클라우드 서비스 검색…",
     "scope_mine": "내 것",
     "scope_all": "전체",
     "live": "실시간",
@@ -13,7 +13,7 @@
     "filter_all_description": "이 보기의 모든 런타임",
     "empty": {
       "title": "아직 런타임이 없습니다",
-      "hint": "데스크톱 앱은 이 컴퓨터를 자동 감지합니다. 다른 컴퓨터는 여기서 연결하세요."
+      "hint": "데스크톱 앱은 이 컴퓨터를 자동 감지합니다. 다른 머신은 여기서 추가하세요."
     },
     "no_matches": {
       "title": "일치하는 결과 없음",
@@ -26,25 +26,58 @@
       "title": "로컬 런타임 시작 중...",
       "hint": "워크스페이스에 연결 중..."
     },
-    "remote_runtimes": "원격 런타임",
-    "computers": "컴퓨터",
-    "remote_count_other": "원격 런타임 {{count}}개",
-    "computer_count_other": "컴퓨터 {{count}}대",
-    "sections": {
-      "local": {
-        "title": "이 기기",
-        "description": "지금 사용 중인 기기"
-      },
-      "remote": {
-        "title": "원격",
-        "description": "이 워크스페이스에서 Multica를 실행 중인 다른 기기",
-        "empty": "아직 원격 기기가 없습니다. 서버나 다른 컴퓨터에서 Multica를 실행하면 추가됩니다."
+    "add": "추가",
+    "add_menu": {
+      "machines": "머신",
+      "this_computer": "이 컴퓨터",
+      "this_computer_connected": "연결됨 · {{name}}",
+      "this_computer_download": "데스크톱 앱을 내려받아 연결",
+      "other_machine": "다른 머신 또는 서버",
+      "other_machine_hint": "해당 머신에서 명령 두 개 실행",
+      "cloud_services": "클라우드 서비스",
+      "qoder_connect_hint": "PAT로 한 번 연결하면 워크스페이스 전체에서 사용",
+      "qoder_manage_hint": "연결됨 · 연결 관리",
+      "cloud_runtime_hint": "Multica가 호스팅하는 클라우드 노드 생성"
+    },
+    "columns": {
+      "name": "이름",
+      "harness": "Harness",
+      "agents": "에이전트",
+      "workload": "작업량",
+      "status": "상태"
+    },
+    "groups": {
+      "machines": {
+        "title": "머신",
+        "description": "각 머신에 설치된 CLI로 실행하며 머신이 온라인이어야 합니다"
       },
       "cloud": {
-        "title": "클라우드",
-        "description": "기기가 온라인이 아니어도 작업을 실행하는 호스팅 서비스",
+        "title": "클라우드 서비스",
+        "description": "호스팅 샌드박스에서 실행하며 기기가 온라인일 필요가 없습니다",
         "coming_soon": "출시 예정"
       }
+    },
+    "rows": {
+      "this_computer_title": "이 컴퓨터에서 실행",
+      "this_computer_hint": "데스크톱 앱을 내려받아 로그인하면 이 컴퓨터의 Claude Code, Codex 등이 자동으로 표시됩니다",
+      "download_desktop": "데스크톱 앱 다운로드",
+      "add_machine_title": "다른 머신 또는 서버 추가",
+      "add_machine_hint": "해당 머신에서 명령 두 개를 실행하면 에이전트가 그 머신의 CLI를 사용할 수 있습니다",
+      "view_commands": "명령 보기",
+      "offline_since": "오프라인 · {{time}}",
+      "owner_you": "나",
+      "qoder_subtitle": "Qoder · 워크스페이스 공유 연결",
+      "qoder_unconnected_subtitle": "Qoder 호스팅 샌드박스 · 한 번 연결하면 워크스페이스 전체에서 사용",
+      "connect": "연결",
+      "manage": "연결 관리",
+      "not_connected": "연결 안 됨",
+      "provided_by": "{{vendor}} 제공",
+      "no_matches": "일치하는 머신 또는 클라우드 서비스가 없습니다"
+    },
+    "filters": {
+      "all": "전체",
+      "online": "온라인",
+      "offline": "오프라인"
     }
   },
   "mika_setup": {
@@ -95,7 +128,7 @@
     "rename": "기기 이름 변경",
     "rename_dialog": {
       "title": "기기 이름 변경",
-      "description": "이 컴퓨터와 모든 런타임에 사용됩니다.",
+      "description": "이 머신과 모든 런타임에 사용됩니다.",
       "placeholder": "예: 내 MacBook",
       "hint": "비워 두면 기기의 기본 이름을 사용합니다.",
       "cancel": "취소",
@@ -219,16 +252,16 @@
   "running_other": "실행 중 {{count}}개",
   "queued_other": "대기 중 {{count}}개",
   "connect": {
-    "title": "컴퓨터 추가",
-    "description": "추가하려는 컴퓨터에서 아래 두 명령을 실행하세요. 데몬이 온라인이 되는 순간 감지합니다.",
+    "title": "머신 추가",
+    "description": "추가하려는 머신에서 아래 두 명령을 실행하세요. 데몬이 온라인이 되는 순간 감지합니다.",
     "step1_label": "Multica CLI 설치",
     "platform_group": "플랫폼 선택",
     "platform_macos_linux": "macOS / Linux",
     "platform_windows": "Windows",
     "step2_label": "데몬 시작",
     "step2_hint": "로그인을 위해 브라우저를 열고, 이후 데몬을 백그라운드에서 계속 실행합니다.",
-    "live_listening": "컴퓨터를 기다리는 중",
-    "troubleshooting": "해당 컴퓨터에서 브라우저를 열 수 없나요?",
+    "live_listening": "머신을 기다리는 중",
+    "troubleshooting": "해당 머신에서 브라우저를 열 수 없나요?",
     "trouble_intro": "브라우저 로그인 대신 토큰을 사용하세요. 2단계를 대체하며 터미널이 있는 곳이면 어디서든 작동합니다.",
     "trouble_token_hint_prefix": "토큰은 ",
     "trouble_token_hint_destination": "설정 → 토큰",
@@ -237,8 +270,8 @@
     "trouble_view_logs": "로그 보기",
     "copy_aria": "복사",
     "cancel": "취소",
-    "success_title": "컴퓨터 연결됨",
-    "success_description": "컴퓨터가 연결되었습니다. 에이전트를 만들 수 있습니다.",
+    "success_title": "머신 연결됨",
+    "success_description": "머신이 연결되었습니다. 에이전트를 만들 수 있습니다.",
     "view_runtime": "런타임 보기",
     "create_agent": "에이전트 만들기"
   },
@@ -580,12 +613,8 @@
       "description": "다시 시작하기 전까지 새 작업은 Qoder로 보내지지 않습니다.",
       "description_agents_other": "아래 에이전트 {{count}}개는 지침과 기록을 유지하지만, Qoder를 다시 시작하거나 다른 런타임으로 옮기기 전까지 새 작업을 받을 수 없습니다.",
       "cancel": "취소"
-    }
-  },
-  "remote_runtime": {
-    "action": "원격 런타임 추가",
-    "description": "관리형 에이전트 서비스를 선택하고 연결을 설정하세요. Multica가 원격 작업 실행을 관리합니다.",
-    "type": "런타임 유형",
-    "select_type": "런타임 유형 선택"
+    },
+    "connect_title": "Qoder Cloud Agent 연결",
+    "connect_description": "Qoder PAT로 한 번 연결하세요. Multica는 Qoder 샌드박스에서 작업을 실행하고 자격 증명을 암호화해 저장합니다."
   }
 }

@@ -1,10 +1,10 @@
 {
   "page": {
     "title": "Runtimes",
-    "tagline": "Machines and cloud workers running CLI sessions for your agents.",
+    "tagline": "Machines and cloud services your agents run tasks on.",
     "learn_more": "Learn more →",
-    "connect_remote": "Add a computer",
-    "search_placeholder": "Search runtimes…",
+    "connect_remote": "Add a machine",
+    "search_placeholder": "Search machines or cloud services…",
     "scope_mine": "Mine",
     "scope_all": "All",
     "live": "Live",
@@ -13,7 +13,7 @@
     "filter_all_description": "All runtimes in this view",
     "empty": {
       "title": "No runtimes yet",
-      "hint": "Desktop detects this computer automatically. Connect other computers here."
+      "hint": "Desktop detects this computer automatically. Add other machines here."
     },
     "no_matches": {
       "title": "No matches",
@@ -26,27 +26,58 @@
       "title": "Starting local runtime…",
       "hint": "Connecting to the workspace..."
     },
-    "remote_runtimes": "Remote runtimes",
-    "computers": "Computers",
-    "remote_count_one": "{{count}} remote runtime",
-    "remote_count_other": "{{count}} remote runtimes",
-    "computer_count_one": "{{count}} computer",
-    "computer_count_other": "{{count}} computers",
-    "sections": {
-      "local": {
-        "title": "This device",
-        "description": "The device you are using right now"
-      },
-      "remote": {
-        "title": "Remote",
-        "description": "Other devices running Multica in this workspace",
-        "empty": "No remote devices yet. Run Multica on a server or another computer to add one."
+    "add": "Add",
+    "add_menu": {
+      "machines": "Machines",
+      "this_computer": "This computer",
+      "this_computer_connected": "Connected · {{name}}",
+      "this_computer_download": "Download the desktop app to connect it",
+      "other_machine": "Other machine or server",
+      "other_machine_hint": "Run two commands on that machine",
+      "cloud_services": "Cloud services",
+      "qoder_connect_hint": "Connect once with a PAT for the whole workspace",
+      "qoder_manage_hint": "Connected · manage connection",
+      "cloud_runtime_hint": "Provision a Multica-hosted cloud node"
+    },
+    "columns": {
+      "name": "Name",
+      "harness": "Harness",
+      "agents": "Agents",
+      "workload": "Workload",
+      "status": "Status"
+    },
+    "groups": {
+      "machines": {
+        "title": "Machines",
+        "description": "Run with the CLIs installed on each machine; the machine must be online"
       },
       "cloud": {
-        "title": "Cloud",
-        "description": "Hosted services that run tasks without any device online",
+        "title": "Cloud services",
+        "description": "Run in hosted sandboxes; no device needs to be online",
         "coming_soon": "Coming soon"
       }
+    },
+    "rows": {
+      "this_computer_title": "Run on this computer",
+      "this_computer_hint": "Download the desktop app and sign in; Claude Code, Codex and other CLIs on this computer show up here automatically",
+      "download_desktop": "Download desktop",
+      "add_machine_title": "Add another machine or server",
+      "add_machine_hint": "Run two commands on that machine so agents can use the CLIs installed there",
+      "view_commands": "View commands",
+      "offline_since": "Offline · {{time}}",
+      "owner_you": "You",
+      "qoder_subtitle": "Qoder · shared workspace connection",
+      "qoder_unconnected_subtitle": "Qoder-hosted sandboxes · connect once for the whole workspace",
+      "connect": "Connect",
+      "manage": "Manage connection",
+      "not_connected": "Not connected",
+      "provided_by": "By {{vendor}}",
+      "no_matches": "No machines or cloud services match"
+    },
+    "filters": {
+      "all": "All",
+      "online": "Online",
+      "offline": "Offline"
     }
   },
   "mika_setup": {
@@ -101,7 +132,7 @@
     "rename": "Rename machine",
     "rename_dialog": {
       "title": "Rename machine",
-      "description": "Used for this computer and all its runtimes.",
+      "description": "Used for this machine and all its runtimes.",
       "placeholder": "e.g. Bohan's MacBook",
       "hint": "Leave empty to use the device's default name.",
       "cancel": "Cancel",
@@ -233,16 +264,16 @@
   "queued_one": "{{count}} queued",
   "queued_other": "{{count}} queued",
   "connect": {
-    "title": "Add a computer",
-    "description": "Run these two commands on the computer you want to add. We'll detect it the moment the daemon comes online.",
+    "title": "Add a machine",
+    "description": "Run these two commands on the machine you want to add. We'll detect it the moment the daemon comes online.",
     "step1_label": "Install the Multica CLI",
     "platform_group": "Choose your platform",
     "platform_macos_linux": "macOS / Linux",
     "platform_windows": "Windows",
     "step2_label": "Start the daemon",
     "step2_hint": "Opens a browser to sign in, then keeps the daemon running in the background.",
-    "live_listening": "Waiting for your computer",
-    "troubleshooting": "Can't open a browser on that computer?",
+    "live_listening": "Waiting for your machine",
+    "troubleshooting": "Can't open a browser on that machine?",
     "trouble_intro": "Use a token instead of the browser sign-in. This replaces step 2 and works anywhere you have a terminal.",
     "trouble_token_hint_prefix": "Create a token in ",
     "trouble_token_hint_destination": "Settings → Tokens",
@@ -251,8 +282,8 @@
     "trouble_view_logs": "View logs",
     "copy_aria": "Copy",
     "cancel": "Cancel",
-    "success_title": "Computer connected",
-    "success_description": "Computer connected. You can now create an agent.",
+    "success_title": "Machine connected",
+    "success_description": "Machine connected. You can now create an agent.",
     "view_runtime": "View runtime",
     "create_agent": "Create an agent"
   },
@@ -601,12 +632,8 @@
       "description_agents_one": "This agent keeps its instructions and history but cannot take new tasks until Qoder is started again or it moves to another runtime.",
       "description_agents_other": "These {{count}} agents keep their instructions and history but cannot take new tasks until Qoder is started again or they move to another runtime.",
       "cancel": "Cancel"
-    }
-  },
-  "remote_runtime": {
-    "action": "Add remote runtime",
-    "description": "Choose a managed agent provider and configure its connection. Multica runs tasks remotely and manages execution.",
-    "type": "Runtime type",
-    "select_type": "Select a runtime type"
+    },
+    "connect_title": "Connect Qoder Cloud Agent",
+    "connect_description": "Connect once with a Qoder PAT. Multica runs tasks in Qoder's sandboxes and stores credentials encrypted."
   }
 }
