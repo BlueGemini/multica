@@ -502,6 +502,48 @@ func TestWorkflowOwnerPermissions(t *testing.T) {
 		}
 	}
 
+	// Statuses are shared by every board, so a member's workflow write may
+	// reuse an existing status, by key or by name, but not add one.
+	existing := createTestCustomStatus(t, "wfreuse"+workflowTestSuffix(), "started")
+	newSteps := func(name string) map[string]any {
+		return map[string]any{"steps": []map[string]any{
+			{"status_key": "in_progress"},
+			{"new_status": map[string]any{"name": name, "category": "started"}},
+		}}
+	}
+	statusCount := func() int {
+		var n int
+		dbfx.QueryRow(t, `SELECT count(*) FROM issue_status WHERE workspace_id = $1`, testWorkspaceID).Scan(&n)
+		return n
+	}
+	before := statusCount()
+	novel := "Member status " + workflowTestSuffix()
+	patchSteps := func(as func(*http.Request) *http.Request, body map[string]any) *testutil.Response {
+		return testutil.Call(t, testHandler.UpdateIssueWorkflow,
+			withURLParam(as(workflowRequest("PATCH", "/api/issue-workflows/"+wf.ID, body)), "id", wf.ID))
+	}
+	patchSteps(asOwner, newSteps(novel)).Want(http.StatusForbidden)
+	createBody := newSteps(novel)
+	createBody["name"] = "Member new " + workflowTestSuffix()
+	testutil.Call(t, testHandler.CreateIssueWorkflow, asOwner(workflowRequest("POST", "/api/issue-workflows", createBody))).Want(http.StatusForbidden)
+	if got := statusCount(); got != before {
+		t.Fatalf("a member's workflow write added %d status(es)", got-before)
+	}
+	patchSteps(asOwner, newSteps(existing.Name)).Want(http.StatusOK)
+	if got := statusCount(); got != before {
+		t.Fatal("reusing a status by name must not add one")
+	}
+	var adminWF IssueWorkflowResponse
+	patchSteps(asAdmin, newSteps(novel)).Want(http.StatusOK).JSON(&adminWF)
+	t.Cleanup(func() {
+		testPool.Exec(context.Background(), `DELETE FROM issue_status WHERE workspace_id = $1 AND name = $2`, testWorkspaceID, novel)
+	})
+	if got := statusCount(); got != before+1 {
+		t.Fatalf("an admin's workflow write added %d status(es), want 1", got-before)
+	}
+	// Back to the steps the handoff checks below expect.
+	patchSteps(asAdmin, map[string]any{"steps": statusSteps("backlog", "in_progress", "blocked")}).Want(http.StatusOK)
+
 	// Copying the workflow for one project switches that project, which
 	// needs the project's lead or an admin, even for the workflow's owner.
 	projectID := createWorkflowTestProject(t, "Workflow owner project")

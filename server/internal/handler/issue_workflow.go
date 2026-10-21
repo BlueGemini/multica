@@ -344,7 +344,17 @@ var newStatusDefaultColor = map[string]string{
 // resolveStepInputs turns step inputs into steps, creating the new statuses
 // they name. The caller holds the exclusive catalog lock. A non-empty message
 // is a caller error.
-func resolveStepInputs(ctx context.Context, qtx *db.Queries, wsUUID pgtype.UUID, inputs []IssueWorkflowStepInput) ([]issueworkflow.Step, []db.IssueStatus, string, error) {
+// errStatusCreateForbidden reports a workflow write that would add a status
+// to the workspace catalog for a caller who may not: statuses are shared by
+// every board, so only owners/admins create them (MUL-8120). Reusing an
+// existing status, by key or by name, stays open.
+var errStatusCreateForbidden = errors.New("only workspace admins can create statuses")
+
+// resolveStepInputs turns the request's steps into workflow steps, creating
+// the new statuses they name. allowCreate is false for callers who may not
+// add statuses; a step naming one that does not exist yet then fails with
+// errStatusCreateForbidden.
+func resolveStepInputs(ctx context.Context, qtx *db.Queries, wsUUID pgtype.UUID, inputs []IssueWorkflowStepInput, allowCreate bool) ([]issueworkflow.Step, []db.IssueStatus, string, error) {
 	steps := make([]issueworkflow.Step, 0, len(inputs))
 	var created []db.IssueStatus
 	for _, in := range inputs {
@@ -358,11 +368,13 @@ func resolveStepInputs(ctx context.Context, qtx *db.Queries, wsUUID pgtype.UUID,
 			step.Handler = issueworkflow.Handler{Type: in.Handler.Type, ID: in.Handler.ID}
 		}
 		if in.NewStatus != nil {
-			entry, msg, err := createWorkflowStatus(ctx, qtx, wsUUID, *in.NewStatus)
+			entry, isNew, msg, err := createWorkflowStatus(ctx, qtx, wsUUID, *in.NewStatus, allowCreate)
 			if msg != "" || err != nil {
 				return nil, nil, msg, err
 			}
-			created = append(created, entry)
+			if isNew {
+				created = append(created, entry)
+			}
 			step.StatusKey = entry.Key
 		}
 		steps = append(steps, step)
@@ -370,10 +382,10 @@ func resolveStepInputs(ctx context.Context, qtx *db.Queries, wsUUID pgtype.UUID,
 	return steps, created, "", nil
 }
 
-func createWorkflowStatus(ctx context.Context, qtx *db.Queries, wsUUID pgtype.UUID, in NewWorkflowStatus) (db.IssueStatus, string, error) {
+func createWorkflowStatus(ctx context.Context, qtx *db.Queries, wsUUID pgtype.UUID, in NewWorkflowStatus, allowCreate bool) (db.IssueStatus, bool, string, error) {
 	name := strings.TrimSpace(in.Name)
 	if name == "" || utf8.RuneCountInString(name) > 64 {
-		return db.IssueStatus{}, "status name must be 1-64 characters", nil
+		return db.IssueStatus{}, false, "status name must be 1-64 characters", nil
 	}
 	category, ok := issuestatus.ParseCategory(in.Category)
 	if !ok {
@@ -383,7 +395,7 @@ func createWorkflowStatus(ctx context.Context, qtx *db.Queries, wsUUID pgtype.UU
 	if strings.TrimSpace(in.Color) != "" {
 		c, err := normalizeColor(in.Color)
 		if err != nil {
-			return db.IssueStatus{}, err.Error(), nil
+			return db.IssueStatus{}, false, err.Error(), nil
 		}
 		color = c
 	}
@@ -391,12 +403,15 @@ func createWorkflowStatus(ctx context.Context, qtx *db.Queries, wsUUID pgtype.UU
 	// so the same template applied twice lands on the same statuses.
 	entries, err := qtx.ListIssueStatusEntries(ctx, db.ListIssueStatusEntriesParams{WorkspaceID: wsUUID, IncludeArchived: false})
 	if err != nil {
-		return db.IssueStatus{}, "", err
+		return db.IssueStatus{}, false, "", err
 	}
 	for _, e := range entries {
 		if strings.EqualFold(e.Name, name) {
-			return e, "", nil
+			return e, false, "", nil
 		}
+	}
+	if !allowCreate {
+		return db.IssueStatus{}, false, "", errStatusCreateForbidden
 	}
 	entry, msg, err := createIssueStatusEntryLocked(ctx, qtx, wsUUID, category, db.CreateIssueStatusEntryParams{
 		WorkspaceID: wsUUID,
@@ -405,9 +420,9 @@ func createWorkflowStatus(ctx context.Context, qtx *db.Queries, wsUUID pgtype.UU
 		Color:       color,
 	})
 	if err != nil && isUniqueViolation(err) {
-		return db.IssueStatus{}, fmt.Sprintf("a status named %q already exists", name), nil
+		return db.IssueStatus{}, false, fmt.Sprintf("a status named %q already exists", name), nil
 	}
-	return entry, msg, err
+	return entry, err == nil && msg == "", msg, err
 }
 
 // validateHandoffHandlers checks that each concrete handler exists in the
@@ -500,9 +515,13 @@ func (h *Handler) CreateIssueWorkflow(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "failed to save workflow")
 		return
 	}
-	steps, createdStatuses, msg, err := resolveStepInputs(ctx, qtx, wsUUID, inputs)
+	steps, createdStatuses, msg, err := resolveStepInputs(ctx, qtx, wsUUID, inputs, isWorkspaceAdmin(member))
 	if msg != "" {
 		writeErrorCode(w, http.StatusBadRequest, "invalid_workflow", msg)
+		return
+	}
+	if errors.Is(err, errStatusCreateForbidden) {
+		writeErrorCode(w, http.StatusForbidden, "status_create_forbidden", err.Error())
 		return
 	}
 	if err != nil {
@@ -699,9 +718,13 @@ func (h *Handler) UpdateIssueWorkflow(w http.ResponseWriter, r *http.Request) {
 	var createdStatuses []db.IssueStatus
 	if req.Steps != nil {
 		var msg string
-		steps, createdStatuses, msg, err = resolveStepInputs(ctx, qtx, wsUUID, *req.Steps)
+		steps, createdStatuses, msg, err = resolveStepInputs(ctx, qtx, wsUUID, *req.Steps, isWorkspaceAdmin(member))
 		if msg != "" {
 			writeErrorCode(w, http.StatusBadRequest, "invalid_workflow", msg)
+			return
+		}
+		if errors.Is(err, errStatusCreateForbidden) {
+			writeErrorCode(w, http.StatusForbidden, "status_create_forbidden", err.Error())
 			return
 		}
 		if err != nil {
