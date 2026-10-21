@@ -606,3 +606,30 @@ func (j *journal) first() *run {
 	}
 	return j.Runs[0]
 }
+
+func TestJournalStorageConfig(t *testing.T) {
+	base := Config{MulticaURL: "http://127.0.0.1:1", MulticaToken: "m", WorkspaceID: workspaceID, QoderURL: "http://127.0.0.1:2", QoderToken: "q", EnvironmentID: "env_1"}
+	load := func(context.Context) ([]byte, error) { return nil, nil }
+	save := func(context.Context, []byte) error { return nil }
+
+	external := base
+	external.LoadState, external.SaveState = load, save
+	if _, err := New(external, nil); err != nil {
+		t.Fatalf("external journal needs no state directory: %v", err)
+	}
+	onDisk := base
+	onDisk.StateDir = t.TempDir()
+	if _, err := New(onDisk, nil); err != nil {
+		t.Fatalf("on-disk journal rejected: %v", err)
+	}
+	for name, cfg := range map[string]Config{
+		"no journal":     base,
+		"load only":      func() Config { c := base; c.LoadState = load; c.StateDir = t.TempDir(); return c }(),
+		"save only":      func() Config { c := base; c.SaveState = save; c.StateDir = t.TempDir(); return c }(),
+		"no environment": func() Config { c := external; c.EnvironmentID = ""; return c }(),
+	} {
+		if _, err := New(cfg, nil); err == nil {
+			t.Errorf("%s accepted", name)
+		}
+	}
+}

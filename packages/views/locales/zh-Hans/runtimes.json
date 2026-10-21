@@ -512,7 +512,7 @@
     "title": "QCA 运行时",
     "description": "连接 Qoder Cloud Agent，由 Multica 管理执行并加密保存凭证。工作区管理员可修改配置。",
     "loading": "加载中...",
-    "unavailable": "请先在服务端配置 MULTICA_VCS_SECRET_KEY 和持久化目录 MULTICA_QODER_STATE_DIR。",
+    "unavailable": "请先在服务端配置 MULTICA_VCS_SECRET_KEY。",
     "online": "在线",
     "error": "连接异常",
     "starting": "启动中",

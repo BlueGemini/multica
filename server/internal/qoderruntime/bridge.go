@@ -61,8 +61,14 @@ func New(cfg Config, log *slog.Logger) (*Bridge, error) {
 		return nil, fmt.Errorf("workspace ID must be a UUID")
 	}
 	cfg.WorkspaceID = workspace.String()
-	if cfg.StateDir == "" || cfg.EnvironmentID == "" {
-		return nil, fmt.Errorf("state directory and environment ID are required")
+	if cfg.EnvironmentID == "" {
+		return nil, fmt.Errorf("environment ID is required")
+	}
+	if (cfg.LoadState == nil) != (cfg.SaveState == nil) {
+		return nil, fmt.Errorf("journal load and save must be configured together")
+	}
+	if cfg.LoadState == nil && cfg.StateDir == "" {
+		return nil, fmt.Errorf("state directory is required when the journal is stored on disk")
 	}
 	if cfg.PollInterval == 0 {
 		cfg.PollInterval = 3 * time.Second
@@ -102,18 +108,22 @@ func New(cfg Config, log *slog.Logger) (*Bridge, error) {
 	return &Bridge{cfg: cfg, multica: m, qoder: q, path: filepath.Join(cfg.StateDir, "state.json"), log: log}, nil
 }
 
-// Run is single-instance per state directory and processes up to
-// MaxConcurrency runs. Restart resumes the journal instead of declaring remote
-// work orphaned.
+// Run is single-instance per journal and processes up to MaxConcurrency runs.
+// Restart resumes the journal instead of declaring remote work orphaned. An
+// on-disk journal is guarded by a file lock; an external journal's owner
+// (the server's Qoder supervisor) must guarantee a single bridge itself.
 func (b *Bridge) Run(ctx context.Context) error {
-	if err := os.MkdirAll(b.cfg.StateDir, 0700); err != nil {
-		return err
+	var err error
+	if b.cfg.LoadState == nil {
+		if err = os.MkdirAll(b.cfg.StateDir, 0700); err != nil {
+			return err
+		}
+		lock, err := lockState(filepath.Join(b.cfg.StateDir, "bridge.lock"))
+		if err != nil {
+			return err
+		}
+		defer lock.Close()
 	}
-	lock, err := lockState(filepath.Join(b.cfg.StateDir, "bridge.lock"))
-	if err != nil {
-		return err
-	}
-	defer lock.Close()
 	binding := Binding(b.multica.base, b.cfg.WorkspaceID, b.qoder.base, b.cfg.EnvironmentID)
 	if b.cfg.SaveState != nil {
 		binding = Binding("", b.cfg.WorkspaceID, b.qoder.base, b.cfg.EnvironmentID)

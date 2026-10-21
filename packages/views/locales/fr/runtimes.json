@@ -528,7 +528,7 @@
     "title": "Environnement QCA",
     "description": "Connectez Qoder Cloud Agent. Multica gère l’exécution et chiffre les identifiants. Les administrateurs de l’espace de travail peuvent modifier cette configuration.",
     "loading": "Chargement…",
-    "unavailable": "Configuration serveur requise : définissez MULTICA_VCS_SECRET_KEY et un répertoire persistant MULTICA_QODER_STATE_DIR.",
+    "unavailable": "Configuration serveur requise : définissez MULTICA_VCS_SECRET_KEY.",
     "online": "En ligne",
     "error": "Erreur de connexion",
     "starting": "Démarrage",

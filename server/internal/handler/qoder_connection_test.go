@@ -17,7 +17,6 @@ func TestQoderConnectionSecrets(t *testing.T) {
 		t.Skip("database not available")
 	}
 	withVCSBox(t)
-	t.Setenv("MULTICA_QODER_STATE_DIR", t.TempDir())
 	t.Cleanup(func() {
 		_, _ = testPool.Exec(context.Background(), `DELETE FROM daemon_token WHERE id IN (SELECT token_id FROM cloud_agent_connection WHERE provider='qoder_cloud' AND workspace_id=$1)`, testWorkspaceID)
 		_, _ = testPool.Exec(context.Background(), `DELETE FROM cloud_agent_connection WHERE provider='qoder_cloud' AND workspace_id=$1`, testWorkspaceID)
@@ -112,7 +111,6 @@ func TestQoderConnectionLimits(t *testing.T) {
 		t.Skip("database not available")
 	}
 	withVCSBox(t)
-	t.Setenv("MULTICA_QODER_STATE_DIR", t.TempDir())
 	t.Cleanup(func() {
 		_, _ = testPool.Exec(context.Background(), `DELETE FROM daemon_token WHERE id IN (SELECT token_id FROM cloud_agent_connection WHERE provider='qoder_cloud' AND workspace_id=$1)`, testWorkspaceID)
 		_, _ = testPool.Exec(context.Background(), `DELETE FROM cloud_agent_connection WHERE provider='qoder_cloud' AND workspace_id=$1`, testWorkspaceID)
@@ -167,7 +165,6 @@ func TestQoderSaveKeepsPausedConnectionPaused(t *testing.T) {
 		t.Skip("database not available")
 	}
 	withVCSBox(t)
-	t.Setenv("MULTICA_QODER_STATE_DIR", t.TempDir())
 	t.Cleanup(func() {
 		_, _ = testPool.Exec(context.Background(), `DELETE FROM daemon_token WHERE id IN (SELECT token_id FROM cloud_agent_connection WHERE provider='qoder_cloud' AND workspace_id=$1)`, testWorkspaceID)
 		_, _ = testPool.Exec(context.Background(), `DELETE FROM cloud_agent_connection WHERE provider='qoder_cloud' AND workspace_id=$1`, testWorkspaceID)
@@ -198,7 +195,6 @@ func TestQoderSaveKeepsPausedConnectionPaused(t *testing.T) {
 
 func TestQoderManagedRegistrationAndRevocation(t *testing.T) {
 	withVCSBox(t)
-	t.Setenv("MULTICA_QODER_STATE_DIR", t.TempDir())
 	t.Cleanup(func() {
 		_, _ = testPool.Exec(context.Background(), `DELETE FROM daemon_token WHERE id IN (SELECT token_id FROM cloud_agent_connection WHERE provider='qoder_cloud' AND workspace_id=$1)`, testWorkspaceID)
 		_, _ = testPool.Exec(context.Background(), `DELETE FROM cloud_agent_connection WHERE provider='qoder_cloud' AND workspace_id=$1`, testWorkspaceID)
@@ -265,7 +261,6 @@ func TestQoderRetirementCancelsRemoteAndClearsPrompt(t *testing.T) {
 
 func TestQoderStepLeaseReleasesDatabaseConnection(t *testing.T) {
 	withVCSBox(t)
-	t.Setenv("MULTICA_QODER_STATE_DIR", t.TempDir())
 	ctx := context.Background()
 	t.Cleanup(func() {
 		_, _ = testPool.Exec(ctx, `DELETE FROM daemon_token WHERE id IN (SELECT token_id FROM cloud_agent_connection WHERE provider='qoder_cloud' AND workspace_id=$1)`, testWorkspaceID)

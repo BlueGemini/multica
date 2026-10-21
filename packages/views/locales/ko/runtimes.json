@@ -512,7 +512,7 @@
     "title": "QCA runtime",
     "description": "Connect Qoder Cloud Agent. Multica manages execution and stores credentials encrypted. Workspace administrators can change this configuration.",
     "loading": "Loading…",
-    "unavailable": "Server setup is required: configure MULTICA_VCS_SECRET_KEY and a persistent MULTICA_QODER_STATE_DIR.",
+    "unavailable": "서버 설정이 필요합니다: MULTICA_VCS_SECRET_KEY를 설정하세요.",
     "online": "Online",
     "error": "Connection error",
     "starting": "Starting",

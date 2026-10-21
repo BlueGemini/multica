@@ -2,7 +2,6 @@ package handler
 
 import (
 	"context"
-	"crypto/sha256"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -10,8 +9,6 @@ import (
 	"log/slog"
 	"net/http"
 	"net/url"
-	"os"
-	"path/filepath"
 	"sort"
 	"strings"
 	"time"
@@ -91,7 +88,7 @@ func (h *Handler) GetQoderConnection(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	view := qoderSettingsView{Available: h.VCSSecretBox != nil && os.Getenv("MULTICA_QODER_STATE_DIR") != "", Repositories: []string{}}
+	view := qoderSettingsView{Available: h.VCSSecretBox != nil, Repositories: []string{}}
 	if !view.Available {
 		writeJSON(w, 200, view)
 		return
@@ -130,8 +127,8 @@ func (h *Handler) GetQoderConnection(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) qoderInput(w http.ResponseWriter, r *http.Request, ws string) (qoderSettings, bool) {
 	var cfg qoderSettings
-	if h.VCSSecretBox == nil || os.Getenv("MULTICA_QODER_STATE_DIR") == "" {
-		writeError(w, 503, "QCA requires MULTICA_VCS_SECRET_KEY and MULTICA_QODER_STATE_DIR on the server")
+	if h.VCSSecretBox == nil {
+		writeError(w, 503, "QCA requires MULTICA_VCS_SECRET_KEY on the server")
 		return cfg, false
 	}
 	var req struct {
@@ -366,9 +363,10 @@ func (h *Handler) saveQoderConnection(w http.ResponseWriter, r *http.Request, re
 }
 
 // RunQoderConnections owns managed bridges for this server. A database advisory
-// lock elects one supervisor; its journal directory must survive server restarts.
-func (h *Handler) RunQoderConnections(ctx context.Context, pool *pgxpool.Pool, serverURL, stateDir string) {
-	if h.VCSSecretBox == nil || stateDir == "" {
+// lock elects one supervisor, and each bridge journal lives encrypted in
+// cloud_agent_connection, so a restart or another replica resumes it.
+func (h *Handler) RunQoderConnections(ctx context.Context, pool *pgxpool.Pool, serverURL string) {
+	if h.VCSSecretBox == nil {
 		return
 	}
 	for ctx.Err() == nil {
@@ -388,7 +386,7 @@ func (h *Handler) RunQoderConnections(ctx context.Context, pool *pgxpool.Pool, s
 		var locked bool
 		err = conn.QueryRow(ctx, `SELECT pg_try_advisory_lock(71243, 8191)`).Scan(&locked)
 		if err == nil && locked {
-			h.runQoderSupervisor(ctx, conn, serverURL, stateDir)
+			h.runQoderSupervisor(ctx, conn, serverURL)
 		}
 		if locked {
 			_, _ = conn.Exec(context.Background(), `SELECT pg_advisory_unlock(71243,8191)`)
@@ -408,7 +406,7 @@ type managedQoderRun struct {
 	done     chan error
 }
 
-func (h *Handler) runQoderSupervisor(ctx context.Context, conn *pgxpool.Conn, serverURL, stateDir string) {
+func (h *Handler) runQoderSupervisor(ctx context.Context, conn *pgxpool.Conn, serverURL string) {
 	runs := map[string]managedQoderRun{}
 	retryAt := map[string]time.Time{}
 	failures := map[string]int{}
@@ -486,7 +484,7 @@ func (h *Handler) runQoderSupervisor(ctx context.Context, conn *pgxpool.Conn, se
 			if err != nil {
 				continue
 			}
-			bridge, err := qoderruntime.New(qoderruntime.Config{DaemonID: "qoder-managed-" + ws, MulticaURL: serverURL, MulticaToken: cfg.MulticaToken, WorkspaceID: ws, QoderURL: cfg.BaseURL, QoderToken: cfg.QoderToken, EnvironmentID: cfg.EnvironmentID, Name: cfg.Name, MaxConcurrency: cfg.MaxConcurrency, RunTimeout: time.Duration(cfg.RunTimeoutMinutes) * time.Minute, StateDir: filepath.Join(stateDir, ws, fmt.Sprintf("%x", sha256.Sum256([]byte(cfg.BaseURL+cfg.EnvironmentID)))), GitHubTokens: cfg.GitHubTokens,
+			bridge, err := qoderruntime.New(qoderruntime.Config{DaemonID: "qoder-managed-" + ws, MulticaURL: serverURL, MulticaToken: cfg.MulticaToken, WorkspaceID: ws, QoderURL: cfg.BaseURL, QoderToken: cfg.QoderToken, EnvironmentID: cfg.EnvironmentID, Name: cfg.Name, MaxConcurrency: cfg.MaxConcurrency, RunTimeout: time.Duration(cfg.RunTimeoutMinutes) * time.Minute, GitHubTokens: cfg.GitHubTokens,
 				LoadState: func(loadCtx context.Context) ([]byte, error) {
 					var encrypted string
 					if err := h.DB.QueryRow(loadCtx, `SELECT journal_encrypted FROM cloud_agent_connection WHERE provider='qoder_cloud' AND workspace_id=$1`, ws).Scan(&encrypted); err != nil {

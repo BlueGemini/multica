@@ -11,7 +11,6 @@ import (
 
 func TestQoderDisconnectRemovesConnectionAndUnbindsAgents(t *testing.T) {
 	withVCSBox(t)
-	t.Setenv("MULTICA_QODER_STATE_DIR", t.TempDir())
 	ctx := context.Background()
 	t.Cleanup(func() {
 		_, _ = testPool.Exec(ctx, `DELETE FROM daemon_token WHERE id IN (SELECT token_id FROM cloud_agent_connection WHERE provider='qoder_cloud' AND workspace_id=$1)`, testWorkspaceID)

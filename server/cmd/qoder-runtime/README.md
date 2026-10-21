@@ -194,8 +194,8 @@ offers Qoder's official regions, `https://api.qoder.com/api/v1/cloud` (Global) a
 that issued it. Custom endpoints remain available to the standalone bridge only.
 
 Server setup requires `MULTICA_VCS_SECRET_KEY` (a base64-encoded 32-byte encryption
-key) and `MULTICA_QODER_STATE_DIR` (a persistent writable directory). Keep the key
-stable across restarts. Credentials are encrypted in `qoder_connection`, and API
+key). Keep the key stable across restarts. Credentials and the run journal are
+encrypted in `cloud_agent_connection`, so no local state directory is needed, and API
 responses return only presence flags and repository names. Empty password fields
 keep saved credentials; removing a repository removes its credential. Saving
 creates an encrypted workspace/daemon-scoped credential with a one-hour lifetime.

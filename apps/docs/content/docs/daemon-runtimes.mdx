@@ -11,7 +11,7 @@ Multica records and coordinates the work; connected computers execute it. The **
 
 Qoder Cloud Agent runs assigned issues through remote QCA sessions. The Multica server supervises a bridge that uses the existing daemon task protocol; no user-operated local daemon is needed for this runtime.
 
-For self-hosted installations, set `MULTICA_VCS_SECRET_KEY` and a persistent `MULTICA_QODER_STATE_DIR` on the server. In **Runtimes → Add remote runtime**, choose Qoder Cloud Agent and configure a QCA PAT. Available environments are loaded from Qoder; a single environment is selected automatically. Save and start the connection, then add a Multica agent linked to an existing QCA Agent.
+For self-hosted installations, set `MULTICA_VCS_SECRET_KEY` on the server. In **Runtimes → Add remote runtime**, choose Qoder Cloud Agent and configure a QCA PAT. Available environments are loaded from Qoder; a single environment is selected automatically. Save and start the connection, then add a Multica agent linked to an existing QCA Agent.
 
 Connection credentials are encrypted and shared within the workspace. Administrators manage the connection; members can select accessible QCA agents. GitHub credentials are bound to repository URLs, while projects choose the repository and starting branch. Repository credentials are passed to QCA when creating a coding session. PAT values are never returned to the browser after saving.
 
