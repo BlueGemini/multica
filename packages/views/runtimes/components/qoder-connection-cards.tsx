@@ -35,6 +35,8 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@multica/ui/components/ui/alert-dialog";
+import { DeferredTooltip } from "@multica/ui/components/common/deferred-tooltip";
+import { IconButton } from "@multica/ui/components/common/icon-button";
 import { Button } from "@multica/ui/components/ui/button";
 import {
   Dialog,
@@ -482,11 +484,11 @@ function EditConnectionDialog({
                   ))}
                 </SelectContent>
               </Select>
-              <Button
+              <IconButton
                 type="button"
                 size="icon"
                 variant="outline"
-                aria-label={t(($) => $.qoder.refresh_catalog)}
+                label={t(($) => $.qoder.refresh_catalog)}
                 disabled={busy || !canLoad || environments.isPending}
                 onClick={() => load()}
               >
@@ -494,7 +496,7 @@ function EditConnectionDialog({
                   aria-hidden="true"
                   className={cn(environments.isPending && "animate-spin")}
                 />
-              </Button>
+              </IconButton>
             </div>
             {!canLoad ? (
               <p className="text-caption text-muted-foreground">
@@ -594,18 +596,25 @@ export function QoderRepositoriesCard({
               </div>
               {canManage && (
                 <DropdownMenu>
-                  <DropdownMenuTrigger
-                    render={
-                      <Button
-                        size="icon-sm"
-                        variant="ghost"
-                        aria-label={t(($) => $.qoder.page.repo_actions, {
-                          repo: repositoryLabel(url),
-                        })}
-                        className="text-muted-foreground"
-                      >
-                        <MoreHorizontal aria-hidden="true" />
-                      </Button>
+                  <DeferredTooltip
+                    content={t(($) => $.qoder.page.repo_actions, {
+                      repo: repositoryLabel(url),
+                    })}
+                    trigger={
+                      <DropdownMenuTrigger
+                        render={
+                          <Button
+                            size="icon-sm"
+                            variant="ghost"
+                            aria-label={t(($) => $.qoder.page.repo_actions, {
+                              repo: repositoryLabel(url),
+                            })}
+                            className="text-muted-foreground"
+                          >
+                            <MoreHorizontal aria-hidden="true" />
+                          </Button>
+                        }
+                      />
                     }
                   />
                   <DropdownMenuContent align="end" className="w-44">
@@ -859,15 +868,13 @@ export function QoderLimitsCard({
       title={t(($) => $.qoder.execution)}
       actions={
         canManage ? (
-          <Button
-            size="icon-sm"
-            variant="ghost"
-            aria-label={t(($) => $.qoder.page.edit_limits)}
+          <IconButton
+            label={t(($) => $.qoder.page.edit_limits)}
             className="text-muted-foreground"
             onClick={() => setEditing(true)}
           >
             <Pencil aria-hidden="true" />
-          </Button>
+          </IconButton>
         ) : null
       }
     >
