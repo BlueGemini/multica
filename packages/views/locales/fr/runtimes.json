@@ -4,7 +4,7 @@
     "tagline": "Les machines et services cloud sur lesquels vos agents exécutent leurs tâches.",
     "learn_more": "En savoir plus →",
     "connect_remote": "Ajouter une machine",
-    "search_placeholder": "Rechercher une machine ou un service cloud…",
+    "search_placeholder": "Rechercher…",
     "scope_mine": "Les miens",
     "scope_all": "Tous",
     "live": "En direct",
@@ -48,12 +48,10 @@
     },
     "groups": {
       "machines": {
-        "title": "Machines",
-        "description": "Exécute avec les CLI installées sur chaque machine ; la machine doit être en ligne"
+        "title": "Machines"
       },
       "cloud": {
         "title": "Services cloud",
-        "description": "Exécute dans des sandboxes hébergées ; aucun appareil n’a besoin d’être en ligne",
         "coming_soon": "Bientôt disponible"
       }
     },
@@ -64,10 +62,7 @@
       "add_machine_title": "Ajouter une autre machine ou un serveur",
       "add_machine_hint": "Exécutez deux commandes sur cette machine pour que les agents utilisent ses CLI",
       "view_commands": "Voir les commandes",
-      "offline_since": "Hors ligne · {{time}}",
       "owner_you": "Vous",
-      "qoder_subtitle": "Qoder · connexion partagée de l’espace",
-      "qoder_unconnected_subtitle": "Sandboxes Qoder · une connexion pour tout l’espace",
       "connect": "Connecter",
       "manage": "Gérer la connexion",
       "not_connected": "Non connecté",

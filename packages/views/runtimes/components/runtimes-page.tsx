@@ -297,8 +297,7 @@ export function RuntimesPage({
       : [];
   const showThisComputerRow =
     !filtering && !isDesktop && machineList.length === 0;
-  const showAddMachineRow =
-    !filtering && machineList.every((machine) => machine.isCurrent);
+  const showAddMachineRow = !filtering && machineList.length === 0;
   const nothingMatches =
     filtering &&
     visibleMachines.length === 0 &&
@@ -382,7 +381,6 @@ export function RuntimesPage({
                   <GroupHeader
                     title={t(($) => $.page.groups.machines.title)}
                     count={machineList.length}
-                    description={t(($) => $.page.groups.machines.description)}
                   />
                   {visibleMachines.map((machine) => (
                     <MachineRow
@@ -436,7 +434,6 @@ export function RuntimesPage({
                   <GroupHeader
                     title={t(($) => $.page.groups.cloud.title)}
                     count={configuredCloudCount}
-                    description={t(($) => $.page.groups.cloud.description)}
                   />
                   {showQoderRow && qoder && (
                     <QoderRow
@@ -689,15 +686,7 @@ function RuntimesToolbar({
   );
 }
 
-function GroupHeader({
-  title,
-  count,
-  description,
-}: {
-  title: string;
-  count: number;
-  description: string;
-}) {
+function GroupHeader({ title, count }: { title: string; count: number }) {
   return (
     <div
       role="row"
@@ -705,9 +694,6 @@ function GroupHeader({
     >
       <span className="font-semibold text-foreground">{title}</span>
       <span className="font-mono tabular-nums text-muted-foreground">{count}</span>
-      <span className="hidden min-w-0 truncate text-muted-foreground sm:inline">
-        · {description}
-      </span>
     </div>
   );
 }
@@ -875,15 +861,11 @@ function MachineRow({
     ownerId && ownerId === currentUserId
       ? t(($) => $.page.rows.owner_you)
       : (members.find((member) => member.user_id === ownerId)?.name ?? null);
-  const subtitle = [
-    machine.subtitle ??
-      (machine.section === "cloud"
-        ? t(($) => $.machine.metrics.cloud_worker)
-        : t(($) => $.machine.metrics.local_daemon)),
-    owner,
-  ]
-    .filter(Boolean)
-    .join(" · ");
+  const subtitle =
+    [machine.deviceSummary, owner].filter(Boolean).join(" · ") ||
+    (machine.section === "cloud"
+      ? t(($) => $.machine.metrics.cloud_worker)
+      : t(($) => $.machine.metrics.local_daemon));
   const starting =
     machine.isCurrent && bootstrapping && machine.runtimes.length === 0;
   const online = machine.health === "online";
@@ -973,6 +955,7 @@ function QoderRow({
   const rowLink = useRowLink();
   const title = t(($) => $.qoder.cloud_title);
   const logo = <ProviderLogo provider="qoder_cloud" className="size-4" />;
+  const byQoder = t(($) => $.page.rows.provided_by, { vendor: "Qoder" });
 
   if (!connection.configured) {
     return (
@@ -988,11 +971,9 @@ function QoderRow({
             </RowTile>
           }
           title={title}
-          subtitle={t(($) => $.page.rows.qoder_unconnected_subtitle)}
+          subtitle={byQoder}
         />
-        <ListGridCell className={OPTIONAL_CELL}>
-          <ProviderIconStack providers={["qoder_cloud"]} />
-        </ListGridCell>
+        <EmptyCell />
         <EmptyCell />
         <EmptyCell />
         <ListGridCell>
@@ -1027,9 +1008,7 @@ function QoderRow({
           ? "bg-warning"
           : "bg-muted-foreground/40";
   const subtitle =
-    status === "error" && connection.lastError
-      ? connection.lastError
-      : t(($) => $.page.rows.qoder_subtitle);
+    status === "error" && connection.lastError ? connection.lastError : byQoder;
 
   return (
     <ListGridRow
@@ -1055,9 +1034,7 @@ function QoderRow({
         href={detailHref}
         subtitle={subtitle}
       />
-      <ListGridCell className={OPTIONAL_CELL}>
-        <ProviderIconStack providers={["qoder_cloud"]} />
-      </ListGridCell>
+      <EmptyCell />
       <ListGridCell className={cn(OPTIONAL_CELL, "text-body tabular-nums")}>
         {agentCount}
       </ListGridCell>

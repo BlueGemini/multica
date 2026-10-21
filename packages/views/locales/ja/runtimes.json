@@ -4,7 +4,7 @@
     "tagline": "エージェントがタスクを実行するマシンとクラウドサービス。",
     "learn_more": "詳しく見る →",
     "connect_remote": "マシンを追加",
-    "search_placeholder": "マシンやクラウドサービスを検索…",
+    "search_placeholder": "検索…",
     "scope_mine": "自分のもの",
     "scope_all": "すべて",
     "live": "ライブ",
@@ -48,12 +48,10 @@
     },
     "groups": {
       "machines": {
-        "title": "マシン",
-        "description": "各マシンにインストールされた CLI で実行します。マシンがオンラインである必要があります"
+        "title": "マシン"
       },
       "cloud": {
         "title": "クラウドサービス",
-        "description": "ホスト型サンドボックスで実行します。デバイスをオンラインにしておく必要はありません",
         "coming_soon": "近日公開"
       }
     },
@@ -64,10 +62,7 @@
       "add_machine_title": "他のマシンやサーバーを追加",
       "add_machine_hint": "そのマシンで 2 つのコマンドを実行すると、エージェントがそこにインストールされた CLI を使えます",
       "view_commands": "コマンドを表示",
-      "offline_since": "オフライン · {{time}}",
       "owner_you": "あなた",
-      "qoder_subtitle": "Qoder · ワークスペース共有接続",
-      "qoder_unconnected_subtitle": "Qoder のサンドボックス · 一度接続すればワークスペース全体で利用可能",
       "connect": "接続",
       "manage": "接続を管理",
       "not_connected": "未接続",

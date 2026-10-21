@@ -4,7 +4,7 @@
     "tagline": "智能体在这些机器和云服务上执行任务。",
     "learn_more": "了解更多 →",
     "connect_remote": "添加机器",
-    "search_placeholder": "搜索机器或云服务...",
+    "search_placeholder": "搜索...",
     "scope_mine": "我的",
     "scope_all": "全部",
     "live": "实时",
@@ -48,12 +48,10 @@
     },
     "groups": {
       "machines": {
-        "title": "机器",
-        "description": "用机器上装好的 CLI 执行，需要机器在线"
+        "title": "机器"
       },
       "cloud": {
         "title": "云服务",
-        "description": "在托管沙箱里执行，不需要任何设备在线",
         "coming_soon": "即将推出"
       }
     },
@@ -64,10 +62,7 @@
       "add_machine_title": "添加其他机器或服务器",
       "add_machine_hint": "在那台机器上运行两条命令，智能体就能用它上面装好的 CLI 执行任务",
       "view_commands": "查看命令",
-      "offline_since": "离线 · {{time}}",
       "owner_you": "你",
-      "qoder_subtitle": "Qoder · 工作区共享连接",
-      "qoder_unconnected_subtitle": "Qoder 托管沙箱 · 连接一次，全工作区可用",
       "connect": "连接",
       "manage": "管理连接",
       "not_connected": "未连接",

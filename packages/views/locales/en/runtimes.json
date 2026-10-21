@@ -4,7 +4,7 @@
     "tagline": "Machines and cloud services your agents run tasks on.",
     "learn_more": "Learn more →",
     "connect_remote": "Add a machine",
-    "search_placeholder": "Search machines or cloud services…",
+    "search_placeholder": "Search…",
     "scope_mine": "Mine",
     "scope_all": "All",
     "live": "Live",
@@ -48,12 +48,10 @@
     },
     "groups": {
       "machines": {
-        "title": "Machines",
-        "description": "Run with the CLIs installed on each machine; the machine must be online"
+        "title": "Machines"
       },
       "cloud": {
         "title": "Cloud services",
-        "description": "Run in hosted sandboxes; no device needs to be online",
         "coming_soon": "Coming soon"
       }
     },
@@ -64,10 +62,7 @@
       "add_machine_title": "Add another machine or server",
       "add_machine_hint": "Run two commands on that machine so agents can use the CLIs installed there",
       "view_commands": "View commands",
-      "offline_since": "Offline · {{time}}",
       "owner_you": "You",
-      "qoder_subtitle": "Qoder · shared workspace connection",
-      "qoder_unconnected_subtitle": "Qoder-hosted sandboxes · connect once for the whole workspace",
       "connect": "Connect",
       "manage": "Manage connection",
       "not_connected": "Not connected",

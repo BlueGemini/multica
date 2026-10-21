@@ -4,7 +4,7 @@
     "tagline": "에이전트가 작업을 실행하는 머신과 클라우드 서비스입니다.",
     "learn_more": "자세히 보기 →",
     "connect_remote": "머신 추가",
-    "search_placeholder": "머신 또는 클라우드 서비스 검색…",
+    "search_placeholder": "검색…",
     "scope_mine": "내 것",
     "scope_all": "전체",
     "live": "실시간",
@@ -48,12 +48,10 @@
     },
     "groups": {
       "machines": {
-        "title": "머신",
-        "description": "각 머신에 설치된 CLI로 실행하며 머신이 온라인이어야 합니다"
+        "title": "머신"
       },
       "cloud": {
         "title": "클라우드 서비스",
-        "description": "호스팅 샌드박스에서 실행하며 기기가 온라인일 필요가 없습니다",
         "coming_soon": "출시 예정"
       }
     },
@@ -64,10 +62,7 @@
       "add_machine_title": "다른 머신 또는 서버 추가",
       "add_machine_hint": "해당 머신에서 명령 두 개를 실행하면 에이전트가 그 머신의 CLI를 사용할 수 있습니다",
       "view_commands": "명령 보기",
-      "offline_since": "오프라인 · {{time}}",
       "owner_you": "나",
-      "qoder_subtitle": "Qoder · 워크스페이스 공유 연결",
-      "qoder_unconnected_subtitle": "Qoder 호스팅 샌드박스 · 한 번 연결하면 워크스페이스 전체에서 사용",
       "connect": "연결",
       "manage": "연결 관리",
       "not_connected": "연결 안 됨",
