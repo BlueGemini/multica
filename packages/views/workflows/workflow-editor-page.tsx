@@ -248,16 +248,14 @@ export function WorkflowEditorPage({
   const targetKeys = columns.flatMap((c) => ("status_key" in c ? [c.status_key] : []));
   // Next and back can only name statuses that exist before the save.
   const flow = { steps: targetKeys.map((status_key) => ({ status_key, ...NO_HANDOFF })) };
-  // The flow as one column sees it: the statuses that exist before the save,
-  // plus the column itself when it is new, so its default next is right.
-  const flowFor = (column: DraftColumn) =>
-    "status_key" in column
-      ? flow
-      : {
-          steps: columns
-            .filter((c) => "status_key" in c || c.id === column.id)
-            .map((c) => ({ status_key: columnKey(c), ...NO_HANDOFF })),
-        };
+  // The default next follows the whole draft, unsaved columns included —
+  // the order the server resolves it in once the draft is saved.
+  const draftFlow = { steps: columns.map((c) => ({ status_key: columnKey(c), ...NO_HANDOFF })) };
+  const columnLabel = (key: string) => {
+    if (!key) return "";
+    const column = draft.middle.find((c) => c.id === key && "new_name" in c);
+    return column && "new_name" in column ? column.new_name : labelOf(key);
+  };
   const selectedId = selected ?? "todo";
   const selectedColumn = columns.find((c) => c.id === selectedId && "status_key" in c && statusAcceptsHandoff(c.status_key));
   const selectedStep: IssueWorkflowStep | null =
@@ -362,7 +360,7 @@ export function WorkflowEditorPage({
   ];
   const current = listed.find((c) => c.id === selectedId) ?? listed[1]!;
   const nextOf = (column: DraftColumn, h: Handoff | undefined) =>
-    h?.next_status_key ?? workflowNextStatus(flowFor(column), columnKey(column));
+    h?.next_status_key ?? workflowNextStatus(draftFlow, columnKey(column));
   const card = (column: DraftColumn) => {
     const key = "status_key" in column ? column.status_key : null;
     const optional = key === "backlog" || key === "blocked";
@@ -372,7 +370,7 @@ export function WorkflowEditorPage({
       off,
       start: key === "todo",
       handoff: off ? undefined : draft.handoffs[column.id],
-      next: off ? undefined : nextOf(column, draft.handoffs[column.id]) || undefined,
+      nextLabel: off ? undefined : columnLabel(nextOf(column, draft.handoffs[column.id])) || undefined,
       selected: current.id === column.id,
       onSelect: () => setSelected(column.id),
       toggle: optional
@@ -563,7 +561,8 @@ export function WorkflowEditorPage({
           column={current}
           off={isOff(current)}
           handoff={draft.handoffs[current.id]}
-          flow={flowFor(current)}
+          flow={flow}
+          defaultNextLabel={columnLabel(workflowNextStatus(draftFlow, columnKey(current)))}
           canEdit={canEdit}
           statusOptions={middleIds.has(current.id) ? addable : null}
           onReplaceStatus={(key) => replaceStatus(current, key)}
@@ -624,8 +623,8 @@ interface StepCardProps {
   /** The step new issues start on. */
   start: boolean;
   handoff: Handoff | undefined;
-  /** Where the handler is told to move the issue next. */
-  next: string | undefined;
+  /** Where the handler is told to move the issue next, by label. */
+  nextLabel: string | undefined;
   selected: boolean;
   onSelect: () => void;
   toggle?: { checked: boolean; disabled: boolean; onChange: (on: boolean) => void };
@@ -658,7 +657,7 @@ function StepCard({
   off,
   start,
   handoff,
-  next,
+  nextLabel,
   selected,
   onSelect,
   toggle,
@@ -736,8 +735,8 @@ function StepCard({
               <span className="shrink-0">{t(($) => $.workflows.editor.card_hand_to)}</span>
               {actor && <ActorAvatar actorType={actor.type} actorId={actor.id} size="xs" profileLink={false} />}
               <span className="min-w-0 truncate text-foreground">{actor ? getActorName(actor.type, actor.id) : who}</span>
-              {handoff?.handler.type === "agent" && next && (
-                <span className="shrink-0 truncate">· {t(($) => $.workflows.editor.card_then, { status: labelOf(next) })}</span>
+              {handoff?.handler.type === "agent" && nextLabel && (
+                <span className="shrink-0 truncate">· {t(($) => $.workflows.editor.card_then, { status: nextLabel })}</span>
               )}
             </>
           ) : (
@@ -780,6 +779,7 @@ function StepDetail({
   onRemove,
   onPatch,
   onPreview,
+  defaultNextLabel,
 }: {
   column: DraftColumn;
   off: boolean;
@@ -792,6 +792,8 @@ function StepDetail({
   onRemove?: () => void;
   onPatch: (patch: Partial<Handoff>) => void;
   onPreview?: () => void;
+  /** The default next status's label, resolved over the whole draft. */
+  defaultNextLabel: string;
 }) {
   const { t } = useT("issues");
   const wsId = useWorkspaceId();
@@ -883,6 +885,7 @@ function StepDetail({
               canEdit={canEdit}
               onPatch={onPatch}
               onPreview={onPreview}
+              defaultNextLabel={defaultNextLabel}
             />
           ) : (
             <p className="text-caption leading-5 text-muted-foreground">{t(($) => $.workflows.editor.no_handoff_step)}</p>

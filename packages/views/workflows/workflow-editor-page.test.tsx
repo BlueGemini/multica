@@ -74,4 +74,40 @@ describe("WorkflowEditorPage", () => {
       instructions: "",
     });
   });
+
+  it("resolves a default next over the unsaved steps, as the save will", async () => {
+    renderEditor();
+    await addNewStatus("QA");
+    await addNewStatus("Deploy");
+
+    // QA is followed by Deploy on the board, so that is where its agent goes
+    // next — not Done, the next status that exists before the save.
+    fireEvent.click(stepCard("QA"));
+    fireEvent.click(screen.getByRole("radio", { name: /Hand to an agent/ }));
+    fireEvent.click(screen.getByRole("button", { name: "Choose an agent" }));
+    fireEvent.click(await screen.findByText("Builder"));
+
+    expect(screen.getByRole("combobox", { name: "When done, move to" }).textContent).toContain("Next column (Deploy)");
+    expect(stepCard("QA").textContent).toContain("then → Deploy");
+    // The explicit choices still list only statuses that exist before the save.
+    fireEvent.click(screen.getByRole("combobox", { name: "When done, move to" }));
+    expect(screen.queryByRole("option", { name: "Deploy" })).toBeNull();
+  });
 });
+
+/** A step in the list (the detail panel's status picker shares its name). */
+function stepCard(name: string) {
+  const card = screen
+    .getAllByRole("button", { name: new RegExp(`^${name}`) })
+    .find((b) => b.hasAttribute("aria-pressed"));
+  if (!card) throw new Error(`no step card ${name}`);
+  return card;
+}
+
+async function addNewStatus(name: string) {
+  fireEvent.click(screen.getByRole("button", { name: /Add step/ }));
+  fireEvent.click(await screen.findByRole("menuitem", { name: /New status/ }));
+  const input = screen.getByPlaceholderText("Status name");
+  fireEvent.change(input, { target: { value: name } });
+  fireEvent.keyDown(input, { key: "Enter" });
+}
