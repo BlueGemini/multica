@@ -33,7 +33,10 @@ func assertMediaTempFileClosed(t *testing.T, f *os.File) {
 	if f == nil {
 		t.Fatal("streaming upload did not receive a plaintext file")
 	}
-	if _, err := f.Stat(); !errors.Is(err, os.ErrClosed) {
+	// Stat can return ERROR_INVALID_HANDLE after Close on Windows.
+	// Read checks Go's closed-file state consistently across platforms.
+	var buf [1]byte
+	if _, err := f.Read(buf[:]); !errors.Is(err, os.ErrClosed) {
 		t.Fatalf("plaintext file is still open: %v", err)
 	}
 }
