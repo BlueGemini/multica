@@ -124,7 +124,7 @@ const COMING_SOON_SERVICES = [
 // string so Tailwind sees the arbitrary template.
 const GRID_COLS =
   "grid-cols-[0.5rem_minmax(160px,1fr)_112px_5.5rem_0.5rem] " +
-  "@2xl:grid-cols-[0.5rem_minmax(220px,1fr)_152px_64px_140px_136px_5.5rem_0.5rem]";
+  "@2xl:grid-cols-[0.5rem_minmax(120px,1fr)_128px_64px_112px_136px_5.5rem_0.5rem]";
 
 const OPTIONAL_CELL = "hidden @2xl:flex";
 
