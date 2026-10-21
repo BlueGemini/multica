@@ -106,6 +106,7 @@ import {
 import { formatBytes } from "../format-bytes";
 import "../../editor/styles/code.css";
 import "./task-transcript.css";
+import { TooltipHint } from "@multica/ui/components/common/tooltip-hint";
 
 // The run surface, read in four layers: what happened (header), what it
 // produced (outcome), where the time went (timeline), and the evidence (steps).
@@ -244,22 +245,23 @@ function RunDetailRow({
   const valueClass = cn("min-w-0 select-text break-all text-foreground", mono && "font-mono");
   if (onCopy) {
     return (
-      <button
-        type="button"
-        onClick={onCopy}
-        title={copyTitle}
-        className="group -mx-1 grid w-[calc(100%+0.5rem)] grid-cols-[4.5rem_minmax(0,1fr)] items-start gap-3 rounded-xs px-1 py-0.5 text-left transition-colors hover:bg-accent/60"
-      >
-        <span className="text-muted-foreground">{label}</span>
-        <span className="flex min-w-0 items-start gap-1.5">
-          <span className={cn(valueClass, "flex-1")}>{value}</span>
-          {copied ? (
-            <Check className="mt-0.5 h-3 w-3 shrink-0 text-success" />
-          ) : (
-            <Copy className="mt-0.5 h-3 w-3 shrink-0 opacity-0 transition-opacity group-hover:opacity-100" />
-          )}
-        </span>
-      </button>
+      <TooltipHint label={copyTitle}>
+        <button
+          type="button"
+          onClick={onCopy}
+          className="group -mx-1 grid w-[calc(100%+0.5rem)] grid-cols-[4.5rem_minmax(0,1fr)] items-start gap-3 rounded-xs px-1 py-0.5 text-left transition-colors hover:bg-accent/60"
+        >
+          <span className="text-muted-foreground">{label}</span>
+          <span className="flex min-w-0 items-start gap-1.5">
+            <span className={cn(valueClass, "flex-1")}>{value}</span>
+            {copied ? (
+              <Check className="mt-0.5 h-3 w-3 shrink-0 text-success" />
+            ) : (
+              <Copy className="mt-0.5 h-3 w-3 shrink-0 opacity-0 transition-opacity group-hover:opacity-100" />
+            )}
+          </span>
+        </button>
+      </TooltipHint>
     );
   }
   return (

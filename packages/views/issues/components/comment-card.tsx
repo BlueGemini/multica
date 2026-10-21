@@ -740,16 +740,21 @@ function CommentRow({
             className={buttonVariants({ variant: "ghost", size: "icon-sm", className: commentActionClassName })}
           />}
           <DropdownMenu>
-            <DropdownMenuTrigger
-              render={
-                <Button
-                  variant="ghost"
-                  size="icon-sm"
-                  className={commentActionClassName}
-                  aria-label={t(($) => $.comment.more_actions)}
-                >
-                  <MoreHorizontal className="h-4 w-4" aria-hidden />
-                </Button>
+            <DeferredTooltip
+              content={t(($) => $.comment.more_actions)}
+              trigger={
+                <DropdownMenuTrigger
+                  render={
+                    <Button
+                      variant="ghost"
+                      size="icon-sm"
+                      className={commentActionClassName}
+                      aria-label={t(($) => $.comment.more_actions)}
+                    >
+                      <MoreHorizontal className="h-4 w-4" aria-hidden />
+                    </Button>
+                  }
+                />
               }
             />
             <DropdownMenuContent align="end">
@@ -1272,16 +1277,21 @@ function CommentCardImpl({
                     className={buttonVariants({ variant: "ghost", size: "icon-sm", className: commentActionClassName })}
                   />}
                   <DropdownMenu>
-                    <DropdownMenuTrigger
-                      render={
-                        <Button
-                          variant="ghost"
-                          size="icon-sm"
-                          className={commentActionClassName}
-                          aria-label={t(($) => $.comment.more_actions)}
-                        >
-                          <MoreHorizontal className="h-4 w-4" aria-hidden />
-                        </Button>
+                    <DeferredTooltip
+                      content={t(($) => $.comment.more_actions)}
+                      trigger={
+                        <DropdownMenuTrigger
+                          render={
+                            <Button
+                              variant="ghost"
+                              size="icon-sm"
+                              className={commentActionClassName}
+                              aria-label={t(($) => $.comment.more_actions)}
+                            >
+                              <MoreHorizontal className="h-4 w-4" aria-hidden />
+                            </Button>
+                          }
+                        />
                       }
                     />
                     <DropdownMenuContent align="end">

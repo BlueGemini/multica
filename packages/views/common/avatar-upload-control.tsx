@@ -18,6 +18,7 @@ import {
 } from "@multica/ui/components/ui/popover";
 import { Separator } from "@multica/ui/components/ui/separator";
 import { TooltipHint } from "@multica/ui/components/common/tooltip-hint";
+import { DeferredTooltip } from "@multica/ui/components/common/deferred-tooltip";
 import { cn } from "@multica/ui/lib/utils";
 import { useT } from "../i18n";
 import { AvatarCropDialog } from "./avatar-crop-dialog";
@@ -213,6 +214,8 @@ export function AvatarUploadControl({
   //
   // No success toast on purpose: the avatar swaps to the chosen emoji in place,
   // so the change is already visible.
+  const changeLabel = ariaLabel ?? t(($) => $.avatar_upload.change);
+
   const handleEmojiSelected = async (picked: string) => {
     closePicker();
     setPreviewError(false);
@@ -234,7 +237,7 @@ export function AvatarUploadControl({
       // file dialog, which is this control's original single-purpose shape.
       onClick={emojiEnabled ? undefined : openFileDialog}
       disabled={disabled || busy}
-      aria-label={ariaLabel ?? t(($) => $.avatar_upload.change)}
+      aria-label={changeLabel}
       className={cn(
         "group relative h-full w-full overflow-hidden bg-muted text-muted-foreground outline-none",
         "flex items-center justify-center",
@@ -281,7 +284,10 @@ export function AvatarUploadControl({
     <div className="relative shrink-0" style={{ width: size, height: size }}>
       {emojiEnabled ? (
         <Popover open={pickerOpen} onOpenChange={handlePickerOpenChange}>
-          <PopoverTrigger render={avatarButton} />
+          <DeferredTooltip
+            content={changeLabel}
+            trigger={<PopoverTrigger render={avatarButton} />}
+          />
           <PopoverContent
             align="start"
             // The emoji-mart picker sizes itself; only the suggestion grid is
@@ -349,7 +355,7 @@ export function AvatarUploadControl({
           </PopoverContent>
         </Popover>
       ) : (
-        avatarButton
+        <DeferredTooltip content={changeLabel} trigger={avatarButton} />
       )}
 
       {onClear && hasAvatar && !busy && !disabled && (

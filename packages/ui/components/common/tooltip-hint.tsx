@@ -8,9 +8,11 @@ import {
 } from "@multica/ui/components/ui/tooltip";
 
 /**
- * Tooltip for an icon-only control that keeps its own element and styling
- * (a raw `<button>`, a link, a toggle). The child must carry its own
- * accessible name; prefer `IconButton` for a plain icon `Button`.
+ * Tooltip for a control that keeps its own element and styling (a raw
+ * `<button>`, a link, a menu trigger, a text button that needs a longer
+ * explanation). The child must carry its own accessible name; prefer
+ * `IconButton` for a plain icon `Button`. A `null`/`undefined` label renders
+ * the child alone, for hints that only apply in some states.
  */
 function TooltipHint({
   label,
@@ -24,6 +26,7 @@ function TooltipHint({
   side?: ComponentProps<typeof TooltipContent>["side"];
   children: ReactElement;
 }) {
+  if (label == null || label === false || label === "") return children;
   return (
     <Tooltip>
       <TooltipTrigger render={children} />

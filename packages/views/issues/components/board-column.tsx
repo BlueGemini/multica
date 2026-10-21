@@ -230,6 +230,7 @@ export const BoardColumn = memo(function BoardColumn({
           {status && (
             <DeferredPopup
               ariaHasPopup="menu"
+              tooltip={tCommon(($) => $.more_actions)}
               triggerRender={
                 <Button
                   variant="ghost"
@@ -243,16 +244,21 @@ export const BoardColumn = memo(function BoardColumn({
             >
               {(open, onOpenChange) => (
                 <DropdownMenu open={open} onOpenChange={onOpenChange}>
-                  <DropdownMenuTrigger
-                    render={
-                      <Button
-                        variant="ghost"
-                        size="icon-sm"
-                        className="rounded-full text-muted-foreground"
-                        aria-label={tCommon(($) => $.more_actions)}
-                      >
-                        <MoreHorizontal className="size-3.5" />
-                      </Button>
+                  <DeferredTooltip
+                    content={tCommon(($) => $.more_actions)}
+                    trigger={
+                      <DropdownMenuTrigger
+                        render={
+                          <Button
+                            variant="ghost"
+                            size="icon-sm"
+                            className="rounded-full text-muted-foreground"
+                            aria-label={tCommon(($) => $.more_actions)}
+                          >
+                            <MoreHorizontal className="size-3.5" />
+                          </Button>
+                        }
+                      />
                     }
                   />
                   <DropdownMenuContent align="end">

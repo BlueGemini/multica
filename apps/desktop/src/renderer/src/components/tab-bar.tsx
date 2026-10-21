@@ -294,7 +294,6 @@ function SortableTabItem({
       aria-label={tabName}
       data-tab-active={isActive ? "true" : undefined}
       data-tab-entering={isEntering ? "true" : undefined}
-      title={tab.pinned ? tabName : undefined}
       style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
       className={cn(
         // The 36px frame contains a centered 32px content row and a 4px
@@ -398,7 +397,9 @@ function SortableTabItem({
           />
         )}
         <ContextMenu>
-          <ContextMenuTrigger render={tabButton} />
+          <TooltipHint label={tab.pinned ? tabName : undefined} side="bottom">
+            <ContextMenuTrigger render={tabButton} />
+          </TooltipHint>
           <ContextMenuContent>
             {issueWindowPath && (
               <>

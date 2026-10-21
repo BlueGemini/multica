@@ -1518,15 +1518,12 @@ function SessionDropdown({
                           : "inline-flex size-7 items-center justify-center rounded-xs text-muted-foreground transition-colors hover:bg-accent hover:text-foreground focus-visible:bg-accent focus-visible:text-foreground focus-visible:outline-none"
                       }
                       aria-label={action.label}
-                      title={action.stripText ? action.label : undefined}
                     >
                       {action.icon}
                       {action.stripText}
                     </button>
                   );
-                  return action.stripText ? button : (
-                    <DeferredTooltip key={action.key} content={action.label} trigger={button} />
-                  );
+                  return <DeferredTooltip key={action.key} content={action.label} trigger={button} />;
                 })}
               </div>
             </div>

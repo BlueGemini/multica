@@ -8,6 +8,7 @@ import { IconButton } from "@multica/ui/components/common/icon-button";
 import { cn } from "@multica/ui/lib/utils";
 import { copyText } from "@multica/ui/lib/clipboard";
 import { useT } from "../../i18n";
+import { TooltipHint } from "@multica/ui/components/common/tooltip-hint";
 
 const SIZES = {
   // Trigger row on the detail page — compact, sits inline with the row actions.
@@ -81,15 +82,16 @@ export function WebhookUrlField({ url, size = "sm", actions }: WebhookUrlFieldPr
         // Click-to-reveal lives on the value itself. Once revealed it goes back
         // to plain text so the URL stays selectable — a toggle button there
         // would swallow the drag-select.
-        <button
-          type="button"
-          onClick={() => setRevealedUrl(url)}
-          className={cn(valueClassName, "text-left cursor-pointer transition-colors hover:bg-muted/70")}
-          title={t(($) => $.trigger_row.show_url)}
-          aria-label={t(($) => $.trigger_row.hidden_url_aria)}
-        >
-          {maskAutopilotWebhookUrl(url)}
-        </button>
+        <TooltipHint label={t(($) => $.trigger_row.show_url)}>
+          <button
+            type="button"
+            onClick={() => setRevealedUrl(url)}
+            className={cn(valueClassName, "text-left cursor-pointer transition-colors hover:bg-muted/70")}
+            aria-label={t(($) => $.trigger_row.hidden_url_aria)}
+          >
+            {maskAutopilotWebhookUrl(url)}
+          </button>
+        </TooltipHint>
       )}
       <IconButton
         size="icon"

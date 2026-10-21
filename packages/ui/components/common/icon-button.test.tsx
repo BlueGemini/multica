@@ -3,6 +3,7 @@ import { act, cleanup, fireEvent, render, screen } from "@testing-library/react"
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { IconButton } from "./icon-button";
 import { TooltipHint } from "./tooltip-hint";
+import { DeferredTooltip } from "./deferred-tooltip";
 import { TooltipProvider } from "../ui/tooltip";
 import {
   DropdownMenu,
@@ -133,5 +134,68 @@ describe("TooltipHint", () => {
 
     await hover(button);
     expect(document.querySelector("[data-slot='tooltip-content']")).toHaveTextContent("Copy link");
+  });
+
+  it("renders the child alone when there is no label", () => {
+    renderWithTooltips(
+      <TooltipHint label={undefined}>
+        <button type="button">Save</button>
+      </TooltipHint>,
+    );
+
+    const button = screen.getByRole("button", { name: "Save" });
+    expect(button).not.toHaveAttribute("data-slot", "tooltip-trigger");
+  });
+});
+
+describe("DeferredTooltip", () => {
+  it("wraps a menu trigger and stays hidden while its menu is open", async () => {
+    vi.useFakeTimers();
+    try {
+      renderWithTooltips(
+        <DropdownMenu>
+          <DeferredTooltip
+            content="Row actions"
+            trigger={
+              <DropdownMenuTrigger
+                render={
+                  <button type="button" aria-label="Row actions">
+                    <svg />
+                  </button>
+                }
+              />
+            }
+          />
+          <DropdownMenuContent>
+            <DropdownMenuItem>Rename</DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>,
+      );
+
+      const trigger = screen.getByRole("button", { name: "Row actions" });
+      expect(document.querySelector("[data-slot='tooltip-content']")).toBeNull();
+
+      fireEvent.pointerEnter(trigger, { pointerType: "mouse" });
+      await act(async () => {
+        vi.advanceTimersByTime(250);
+      });
+      expect(document.querySelector("[data-slot='tooltip-content']")).toHaveTextContent("Row actions");
+
+      await act(async () => {
+        fireEvent.click(trigger);
+      });
+      expect(screen.getByRole("menuitem", { name: "Rename" })).toBeInTheDocument();
+      expect(trigger).toHaveAttribute("aria-expanded", "true");
+
+      fireEvent.pointerLeave(trigger, { pointerType: "mouse" });
+      fireEvent.pointerEnter(trigger, { pointerType: "mouse" });
+      await act(async () => {
+        vi.advanceTimersByTime(250);
+      });
+      const popup = document.querySelector("[data-slot='tooltip-content']");
+      expect(popup === null || popup.getAttribute("data-open") === null).toBe(true);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
