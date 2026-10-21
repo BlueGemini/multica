@@ -585,6 +585,21 @@ type ClientUsageDaily struct {
 	UpdatedAt       pgtype.Timestamptz `json:"updated_at"`
 }
 
+type CloudAgentConnection struct {
+	WorkspaceID      pgtype.UUID        `json:"workspace_id"`
+	Provider         string             `json:"provider"`
+	OwnerID          pgtype.UUID        `json:"owner_id"`
+	TokenID          pgtype.UUID        `json:"token_id"`
+	ConfigEncrypted  string             `json:"config_encrypted"`
+	JournalEncrypted string             `json:"journal_encrypted"`
+	Enabled          bool               `json:"enabled"`
+	Revision         int64              `json:"revision"`
+	Status           string             `json:"status"`
+	LastError        string             `json:"last_error"`
+	BusyUntil        pgtype.Timestamptz `json:"busy_until"`
+	UpdatedAt        pgtype.Timestamptz `json:"updated_at"`
+}
+
 type Comment struct {
 	ID                 pgtype.UUID        `json:"id"`
 	IssueID            pgtype.UUID        `json:"issue_id"`
@@ -1360,20 +1375,6 @@ type ProjectResource struct {
 	Position     int32              `json:"position"`
 	CreatedAt    pgtype.Timestamptz `json:"created_at"`
 	CreatedBy    pgtype.UUID        `json:"created_by"`
-}
-
-type QoderConnection struct {
-	WorkspaceID      pgtype.UUID        `json:"workspace_id"`
-	OwnerID          pgtype.UUID        `json:"owner_id"`
-	TokenID          pgtype.UUID        `json:"token_id"`
-	ConfigEncrypted  string             `json:"config_encrypted"`
-	Enabled          bool               `json:"enabled"`
-	Revision         int64              `json:"revision"`
-	Status           string             `json:"status"`
-	LastError        string             `json:"last_error"`
-	UpdatedAt        pgtype.Timestamptz `json:"updated_at"`
-	BusyUntil        pgtype.Timestamptz `json:"busy_until"`
-	JournalEncrypted string             `json:"journal_encrypted"`
 }
 
 type QuickAction struct {
