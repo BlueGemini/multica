@@ -15,7 +15,7 @@ import {
   QODER_REGIONS,
   qoderOptions,
   useDisconnectQoder,
-  useSaveQoder,
+  useResumeQoder,
   useStopQoder,
   type QoderConnection,
 } from "@multica/core/runtimes/qoder";
@@ -316,13 +316,13 @@ function ManageCard({
 }) {
   const { t } = useT("runtimes");
   const stop = useStopQoder(wsId);
-  const save = useSaveQoder(wsId);
+  const resumeConnection = useResumeQoder(wsId);
   const [pauseOpen, setPauseOpen] = useState(false);
   const [disconnectOpen, setDisconnectOpen] = useState(false);
-  const busy = stop.isPending || save.isPending;
+  const busy = stop.isPending || resumeConnection.isPending;
 
   const resume = () =>
-    save.mutate(savedQoderInput(data, t(($) => $.qoder.cloud_title)), {
+    resumeConnection.mutate(savedQoderInput(data, t(($) => $.qoder.cloud_title)), {
       onSuccess: () => toast.success(t(($) => $.qoder.page.resumed)),
       onError: (err) => toast.error(err.message),
     });
@@ -353,7 +353,7 @@ function ManageCard({
               variant="outline"
               size="xs"
               disabled={busy}
-              aria-busy={save.isPending}
+              aria-busy={resumeConnection.isPending}
               onClick={resume}
             >
               {t(($) => $.qoder.page.resume)}

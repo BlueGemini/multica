@@ -254,7 +254,17 @@ func (h *Handler) CheckQoderConnection(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, 200, map[string]bool{"ok": true})
 }
 
+// SaveQoderConnection keeps a paused connection paused; only
+// ResumeQoderConnection (or the first connect) enables execution.
 func (h *Handler) SaveQoderConnection(w http.ResponseWriter, r *http.Request) {
+	h.saveQoderConnection(w, r, false)
+}
+
+func (h *Handler) ResumeQoderConnection(w http.ResponseWriter, r *http.Request) {
+	h.saveQoderConnection(w, r, true)
+}
+
+func (h *Handler) saveQoderConnection(w http.ResponseWriter, r *http.Request, resume bool) {
 	ws, ok := parseUUIDOrBadRequest(w, chi.URLParam(r, "id"), "workspace_id")
 	if !ok {
 		return
@@ -345,7 +355,7 @@ func (h *Handler) SaveQoderConnection(w http.ResponseWriter, r *http.Request) {
 	}
 	_, err = tx.Exec(r.Context(), `DELETE FROM daemon_token WHERE id IN (SELECT token_id FROM cloud_agent_connection WHERE provider='qoder_cloud' AND workspace_id=$1)`, ws)
 	if err == nil {
-		_, err = tx.Exec(r.Context(), `INSERT INTO cloud_agent_connection(workspace_id,provider,owner_id,token_id,config_encrypted) VALUES($1,'qoder_cloud',$2,$3,$4) ON CONFLICT(workspace_id,provider) DO UPDATE SET owner_id=excluded.owner_id,token_id=excluded.token_id,config_encrypted=excluded.config_encrypted,enabled=true,journal_encrypted='',revision=cloud_agent_connection.revision+1,status='starting',last_error='',updated_at=now()`, ws, parseUUID(user), pat.ID, encrypted)
+		_, err = tx.Exec(r.Context(), `INSERT INTO cloud_agent_connection(workspace_id,provider,owner_id,token_id,config_encrypted) VALUES($1,'qoder_cloud',$2,$3,$4) ON CONFLICT(workspace_id,provider) DO UPDATE SET owner_id=excluded.owner_id,token_id=excluded.token_id,config_encrypted=excluded.config_encrypted,enabled=($5 OR cloud_agent_connection.enabled),journal_encrypted='',revision=cloud_agent_connection.revision+1,status=CASE WHEN $5 OR cloud_agent_connection.enabled THEN 'starting' ELSE cloud_agent_connection.status END,last_error='',updated_at=now()`, ws, parseUUID(user), pat.ID, encrypted, resume)
 	}
 	if err != nil || tx.Commit(r.Context()) != nil {
 		writeError(w, 500, "cannot save QCA configuration")

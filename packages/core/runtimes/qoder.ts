@@ -35,6 +35,17 @@ export function useSaveQoder(wsId: string) {
     },
   });
 }
+export function useResumeQoder(wsId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (input: QoderInput) => api.resumeQoderConnection(wsId, input),
+    onSuccess: (data) => {
+      qc.setQueryData(qoderKey(wsId), data);
+      void qc.invalidateQueries({ queryKey: ["qoder", wsId, "agents"] });
+      void qc.invalidateQueries({ queryKey: runtimeKeys.all(wsId) });
+    },
+  });
+}
 export function useCheckQoder(wsId: string) {
   return useMutation({
     mutationFn: (input: QoderInput) => api.checkQoderConnection(wsId, input),

@@ -162,6 +162,40 @@ func TestQoderConnectionLimits(t *testing.T) {
 	testutil.Call(t, testHandler.SaveQoderConnection, vcsHandlerRequest("PUT", "/qoder", body, "")).Want(409)
 }
 
+func TestQoderSaveKeepsPausedConnectionPaused(t *testing.T) {
+	if testHandler == nil {
+		t.Skip("database not available")
+	}
+	withVCSBox(t)
+	t.Setenv("MULTICA_QODER_STATE_DIR", t.TempDir())
+	t.Cleanup(func() {
+		_, _ = testPool.Exec(context.Background(), `DELETE FROM daemon_token WHERE id IN (SELECT token_id FROM cloud_agent_connection WHERE provider='qoder_cloud' AND workspace_id=$1)`, testWorkspaceID)
+		_, _ = testPool.Exec(context.Background(), `DELETE FROM cloud_agent_connection WHERE provider='qoder_cloud' AND workspace_id=$1`, testWorkspaceID)
+	})
+	body := map[string]any{"name": "QCA", "base_url": qoderAPIURL, "environment_id": "env_test", "qoder_token": "fixture-token"}
+	var view qoderSettingsView
+	testutil.Call(t, testHandler.SaveQoderConnection, vcsHandlerRequest("PUT", "/qoder", body, "")).Want(200).JSON(&view)
+	if !view.Enabled {
+		t.Fatal("first connect must enable execution")
+	}
+	testutil.Call(t, testHandler.StopQoderConnection, vcsHandlerRequest("POST", "/qoder/stop", nil, "")).Want(200)
+
+	body["max_concurrency"] = 3
+	body["github_tokens"] = map[string]string{"https://github.com/owner/repo": "github-test-secret"}
+	testutil.Call(t, testHandler.SaveQoderConnection, vcsHandlerRequest("PUT", "/qoder", body, "")).Want(200).JSON(&view)
+	var status string
+	dbfx.QueryRow(t, `SELECT status FROM cloud_agent_connection WHERE provider='qoder_cloud' AND workspace_id=$1`, testWorkspaceID).Scan(&status)
+	if view.Enabled || status != "stopped" || view.MaxConcurrency != 3 {
+		t.Fatalf("saving a paused connection resumed it: enabled=%v status=%s view=%+v", view.Enabled, status, view)
+	}
+
+	testutil.Call(t, testHandler.ResumeQoderConnection, vcsHandlerRequest("POST", "/qoder/resume", body, "")).Want(200).JSON(&view)
+	dbfx.QueryRow(t, `SELECT status FROM cloud_agent_connection WHERE provider='qoder_cloud' AND workspace_id=$1`, testWorkspaceID).Scan(&status)
+	if !view.Enabled || status != "starting" {
+		t.Fatalf("resume did not enable execution: enabled=%v status=%s", view.Enabled, status)
+	}
+}
+
 func TestQoderManagedRegistrationAndRevocation(t *testing.T) {
 	withVCSBox(t)
 	t.Setenv("MULTICA_QODER_STATE_DIR", t.TempDir())

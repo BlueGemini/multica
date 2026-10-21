@@ -32,6 +32,7 @@ const { ApiError, mocks, nav } = vi.hoisted(() => {
       listAgents: vi.fn(),
       stopQoderConnection: vi.fn(),
       saveQoderConnection: vi.fn(),
+      resumeQoderConnection: vi.fn(),
       disconnectQoderConnection: vi.fn(),
       listQoderEnvironments: vi.fn(),
       checkQoderConnection: vi.fn(),
@@ -191,11 +192,12 @@ it("resumes with the saved token and repository bindings", async () => {
     enabled: false,
     status: "offline",
   });
-  mocks.saveQoderConnection.mockResolvedValue(connection);
+  mocks.resumeQoderConnection.mockResolvedValue(connection);
   const client = mount();
   fireEvent.click(await screen.findByRole("button", { name: "Resume" }));
-  await waitFor(() => expect(mocks.saveQoderConnection).toHaveBeenCalledTimes(1));
-  const input = mocks.saveQoderConnection.mock.calls[0]![1];
+  await waitFor(() => expect(mocks.resumeQoderConnection).toHaveBeenCalledTimes(1));
+  expect(mocks.saveQoderConnection).not.toHaveBeenCalled();
+  const input = mocks.resumeQoderConnection.mock.calls[0]![1];
   expect(input).toMatchObject({
     environmentId: "env_one",
     qoderToken: "",
