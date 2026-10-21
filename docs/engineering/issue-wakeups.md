@@ -595,14 +595,19 @@ watched issue's identifier is stored in the condition for display.
 
 `conflicts` reads the GitHub API snapshot (`api_mergeable`) and counts only a
 snapshot fetched for the PR's current head, so a verdict from before a push
-never fires. Its fingerprint is `number@head:conflicting`. GitHub reports
+never fires. Its key is `pr_id@head:conflicting` (PR numbers and heads repeat
+across forks). GitHub reports
 `UNKNOWN` while it recomputes mergeability; on the same head that keeps the
 previous verdict, so a continuous rule is not woken twice for one conflict.
 Self-hosted VCS rows store no mergeability; a rule linked only to them records
-a diagnostic. A base-branch move sends no event for the PR, so the snapshot
+a diagnostic. For every linked-PR condition, a run starts only when a PR key
+appears that the rule has not seen; a PR leaving the set (resolved, closed,
+unlinked) only updates `condition_state`, so it does not wake the agent again
+for the PRs that stayed. A base-branch move sends no event for the PR, so the snapshot
 pipeline keeps watched PRs (linked to an issue with an enabled `conflicts`
 rule) fresh: the 10-minute sweep re-fetches them once their snapshot is older
-than 5 minutes even when decided, and a merged `pull_request` webhook
+than 5 minutes even when decided, rotating an address cursor like the
+undecided sweep so repeatedly failing fetches cannot starve the rest, and a merged `pull_request` webhook
 re-fetches the repository's other watched open PRs after 30 seconds and 3
 minutes. No migration is involved; older clients show the rule without a
 condition label.

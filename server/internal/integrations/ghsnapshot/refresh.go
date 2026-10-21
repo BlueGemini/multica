@@ -88,6 +88,8 @@ type Manager struct {
 	// this cursor and wraps, preventing a fixed first page from starving later
 	// installations when early addresses repeatedly fail.
 	sweepAfter address
+	// The same rotation for the conflict-watch sweep.
+	watchAfter address
 	// Secondary rate limits are scoped to the installation whose token incurred
 	// them. One customer must never pause every other installation.
 	rateUntil map[int64]time.Time
@@ -548,13 +550,27 @@ func (m *Manager) sweepUndecided(ctx context.Context) {
 // fresh. A decided snapshot leaves the undecided sweep, yet a direct push to
 // the base branch can make it conflicting with no event for the PR itself.
 func (m *Manager) sweepConflictWatched(ctx context.Context) {
+	m.mu.Lock()
+	after := m.watchAfter
+	m.mu.Unlock()
+
 	rows, err := m.queries.ListStaleConflictWatchedGitHubPRs(ctx, db.ListStaleConflictWatchedGitHubPRsParams{
-		OlderThan: tsFromTime(m.now().Add(-m.watchTTL)),
-		MaxRows:   m.sweepMaxRows,
+		OlderThan:           tsFromTime(m.now().Add(-m.watchTTL)),
+		AfterInstallationID: after.InstallationID,
+		AfterRepoOwner:      after.Owner,
+		AfterRepoName:       after.Repo,
+		AfterPrNumber:       after.Number,
+		MaxRows:             m.sweepMaxRows,
 	})
 	if err != nil {
 		slog.Warn("ghsnapshot: conflict-watch sweep query failed", "err", err.Error())
 		return
+	}
+	if len(rows) > 0 {
+		last := rows[len(rows)-1]
+		m.mu.Lock()
+		m.watchAfter = address{InstallationID: last.InstallationID, Owner: last.RepoOwner, Repo: last.RepoName, Number: last.PrNumber}
+		m.mu.Unlock()
 	}
 	for _, r := range rows {
 		m.Enqueue(r.InstallationID, r.RepoOwner, r.RepoName, r.PrNumber)

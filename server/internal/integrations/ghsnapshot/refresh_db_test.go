@@ -221,6 +221,73 @@ func TestListStaleUndecidedGitHubPRsExcludesDecidedAndRotatesCursor(t *testing.T
 	}
 }
 
+// watchPR links pr to a new issue carrying a pull_request wakeup rule for
+// event, as a "wake on merge conflict" rule does.
+func watchPR(t *testing.T, pool *pgxpool.Pool, pr db.GithubPullRequest, event string, enabled bool) {
+	t.Helper()
+	ctx := context.Background()
+	var issueID pgtype.UUID
+	if err := pool.QueryRow(ctx, `INSERT INTO issue (workspace_id,title,creator_type,creator_id)
+		VALUES ($1,'watch','member',gen_random_uuid()) RETURNING id`, pr.WorkspaceID).Scan(&issueID); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		_, _ = pool.Exec(context.Background(), `DELETE FROM issue_wakeup WHERE issue_id=$1`, issueID)
+		_, _ = pool.Exec(context.Background(), `DELETE FROM issue_pull_request WHERE issue_id=$1`, issueID)
+		_, _ = pool.Exec(context.Background(), `DELETE FROM issue WHERE id=$1`, issueID)
+	})
+	if _, err := pool.Exec(ctx, `INSERT INTO issue_pull_request(issue_id,pull_request_id) VALUES($1,$2)`, issueID, pr.ID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := pool.Exec(ctx, `INSERT INTO issue_wakeup(id,workspace_id,issue_id,instruction,kind,mode,enabled,condition)
+		VALUES(gen_random_uuid(),$1,$2,'go','event','once',$3,jsonb_build_object('type','pull_request','event',$4::text))`,
+		pr.WorkspaceID, issueID, enabled, event); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// A watched address whose fetches keep failing never gets a newer snapshot.
+// The bounded sweep must still move past it to the others.
+func TestConflictWatchSweepRotatesPastFailingAddresses(t *testing.T) {
+	pool := testDBPool(t)
+	q := db.New(pool)
+	ctx := context.Background()
+	now := time.Now()
+	const installationID int64 = 7_313_000_002
+	repo := "rotate-" + randHex(t)
+	for number := int32(1); number <= 2; number++ {
+		pr := seedPRAt(t, pool, q, installationID, repo, number, "H")
+		t.Cleanup(func() { _, _ = pool.Exec(context.Background(), `DELETE FROM github_pull_request WHERE id=$1`, pr.ID) })
+		if _, err := pool.Exec(ctx, `UPDATE github_pull_request
+			SET snapshot_head_sha=head_sha, snapshot_fetched_at=$2, api_mergeable='MERGEABLE', checks_rollup_state='SUCCESS'
+			WHERE id=$1`, pr.ID, now.Add(time.Duration(number-3)*time.Hour)); err != nil {
+			t.Fatal(err)
+		}
+		watchPR(t, pool, pr, "conflicts", true)
+	}
+
+	m := NewManager(enabledClient(t), q, pool, nil)
+	m.sweepMaxRows = 1
+	seen := map[int32]bool{}
+	// Other packages' fixtures share this database, so allow enough passes
+	// to wrap past them; fetches never run, as if every one failed.
+	for sweep := 0; sweep < 50 && !(seen[1] && seen[2]); sweep++ {
+		m.sweepConflictWatched(ctx)
+		for len(m.queue) > 0 {
+			addr := <-m.queue
+			if addr.InstallationID == installationID && addr.Repo == repo {
+				seen[addr.Number] = true
+			}
+			m.mu.Lock()
+			delete(m.active, addr)
+			m.mu.Unlock()
+		}
+	}
+	if !seen[1] || !seen[2] {
+		t.Fatalf("bounded sweeps visited %v; a failing address starved the rest", seen)
+	}
+}
+
 func TestConflictWatchedGitHubPRQueries(t *testing.T) {
 	pool := testDBPool(t)
 	q := db.New(pool)
@@ -242,24 +309,7 @@ func TestConflictWatchedGitHubPRQueries(t *testing.T) {
 	}
 	watch := func(pr db.GithubPullRequest, event string, enabled bool) {
 		t.Helper()
-		var issueID pgtype.UUID
-		if err := pool.QueryRow(ctx, `INSERT INTO issue (workspace_id,title,creator_type,creator_id)
-			VALUES ($1,'watch','member',gen_random_uuid()) RETURNING id`, pr.WorkspaceID).Scan(&issueID); err != nil {
-			t.Fatal(err)
-		}
-		t.Cleanup(func() {
-			_, _ = pool.Exec(context.Background(), `DELETE FROM issue_wakeup WHERE issue_id=$1`, issueID)
-			_, _ = pool.Exec(context.Background(), `DELETE FROM issue_pull_request WHERE issue_id=$1`, issueID)
-			_, _ = pool.Exec(context.Background(), `DELETE FROM issue WHERE id=$1`, issueID)
-		})
-		if _, err := pool.Exec(ctx, `INSERT INTO issue_pull_request(issue_id,pull_request_id) VALUES($1,$2)`, issueID, pr.ID); err != nil {
-			t.Fatal(err)
-		}
-		if _, err := pool.Exec(ctx, `INSERT INTO issue_wakeup(id,workspace_id,issue_id,instruction,kind,mode,enabled,condition)
-			VALUES(gen_random_uuid(),$1,$2,'go','event','once',$3,jsonb_build_object('type','pull_request','event',$4::text))`,
-			pr.WorkspaceID, issueID, enabled, event); err != nil {
-			t.Fatal(err)
-		}
+		watchPR(t, pool, pr, event, enabled)
 	}
 
 	stale := now.Add(-time.Hour)

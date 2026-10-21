@@ -267,11 +267,8 @@ func (s *IssueWakeupService) evaluateCondition(ctx context.Context, tx pgx.Tx, q
 		// GitHub reports UNKNOWN while it recomputes mergeability (after any
 		// base-branch move). On the same head that keeps the previous verdict,
 		// so a recompute does not read as resolved-then-conflicting again.
-		previous := map[string]bool{}
-		for _, key := range strings.Split(strings.TrimPrefix(w.ConditionState, "pr:"), ",") {
-			previous[key] = true
-		}
-		rows, err := tx.Query(ctx, `SELECT pr.pr_number,pr.state,COALESCE(pr.snapshot_head_sha,''),COALESCE(pr.checks_rollup_state,''),pr.head_sha,COALESCE(pr.api_mergeable,'')
+		previous := prConditionKeys(w.ConditionState)
+		rows, err := tx.Query(ctx, `SELECT pr.pr_number,pr.state,COALESCE(pr.snapshot_head_sha,''),COALESCE(pr.checks_rollup_state,''),pr.head_sha,COALESCE(pr.api_mergeable,''),pr.id::text
 			FROM github_pull_request pr JOIN issue_pull_request ipr ON ipr.pull_request_id=pr.id WHERE ipr.issue_id=$1`, w.IssueID)
 		if err != nil {
 			return false, "", nil, err
@@ -281,8 +278,8 @@ func (s *IssueWakeupService) evaluateCondition(ctx context.Context, tx pgx.Tx, q
 		var prs []map[string]any
 		for rows.Next() {
 			var number int32
-			var state, head, checks, currentHead, mergeable string
-			if err = rows.Scan(&number, &state, &head, &checks, &currentHead, &mergeable); err != nil {
+			var state, head, checks, currentHead, mergeable, id string
+			if err = rows.Scan(&number, &state, &head, &checks, &currentHead, &mergeable, &id); err != nil {
 				rows.Close()
 				return false, "", nil, err
 			}
@@ -311,7 +308,8 @@ func (s *IssueWakeupService) evaluateCondition(ctx context.Context, tx pgx.Tx, q
 					missingSnapshot = true
 					continue
 				}
-				key := fmt.Sprintf("%d@%s:conflicting", number, head)
+				// PR numbers and heads can repeat across repositories (forks).
+				key := fmt.Sprintf("%s@%s:conflicting", id, head)
 				if mergeable == "CONFLICTING" || ((mergeable == "UNKNOWN" || mergeable == "") && previous[key]) {
 					keys = append(keys, key)
 					prs = append(prs, map[string]any{"number": number, "head_sha": head, "mergeable": "conflicting"})
@@ -489,16 +487,46 @@ func (s *IssueWakeupService) pollCondition(ctx context.Context, tx pgx.Tx, q *db
 	// condition_state dedups a satisfied predicate; each new satisfaction
 	// gets its own receipt key.
 	state := w.ConditionState
-	if met && fingerprint != state {
-		if err = recordConditionMet(ctx, q, w, observed, causes, now); err != nil {
-			return w.NextFireAt, err
+	if met {
+		if conditionNewlyMet(state, fingerprint) {
+			if err = recordConditionMet(ctx, q, w, observed, causes, now); err != nil {
+				return w.NextFireAt, err
+			}
 		}
 		state = fingerprint
-	} else if !met {
+	} else {
 		state = ""
 	}
 	next := pgtype.Timestamptz{Time: now.Add(conditionPollInterval), Valid: true}
 	return next, q.SetWakeupConditionState(ctx, db.SetWakeupConditionStateParams{ID: w.ID, ConditionState: state, NextFireAt: next})
+}
+
+// prConditionKeys splits a linked-PR fingerprint into its per-PR keys.
+func prConditionKeys(fingerprint string) map[string]bool {
+	keys := map[string]bool{}
+	if rest, ok := strings.CutPrefix(fingerprint, "pr:"); ok && rest != "" {
+		for _, key := range strings.Split(rest, ",") {
+			keys[key] = true
+		}
+	}
+	return keys
+}
+
+// conditionNewlyMet reports whether a satisfied predicate is news to the rule.
+// A linked-PR fingerprint holds one key per satisfying PR, and only a key the
+// rule has not seen is news: one PR leaving the set (resolved, closed,
+// unlinked) must not wake the agent again for the others.
+func conditionNewlyMet(previous, current string) bool {
+	if !strings.HasPrefix(current, "pr:") {
+		return current != previous
+	}
+	seen := prConditionKeys(previous)
+	for key := range prConditionKeys(current) {
+		if !seen[key] {
+			return true
+		}
+	}
+	return false
 }
 
 // conditionFiresOnChange reports whether facts already true at registration

@@ -250,26 +250,43 @@ func (q *Queries) ListGitHubPRRowsByAddress(ctx context.Context, arg ListGitHubP
 }
 
 const listStaleConflictWatchedGitHubPRs = `-- name: ListStaleConflictWatchedGitHubPRs :many
-SELECT pr.installation_id, pr.repo_owner, pr.repo_name, pr.pr_number
-FROM github_pull_request AS pr
-WHERE pr.state IN ('open', 'draft')
-  AND (pr.snapshot_fetched_at IS NULL OR pr.snapshot_fetched_at < $1)
-  AND pr.id IN (
-      SELECT ipr.pull_request_id
-      FROM issue_wakeup AS w
-      JOIN issue_pull_request AS ipr ON ipr.issue_id = w.issue_id
-      WHERE w.enabled
-        AND w.condition->>'type' = 'pull_request'
-        AND w.condition->>'event' = 'conflicts'
-  )
-GROUP BY pr.installation_id, pr.repo_owner, pr.repo_name, pr.pr_number
-ORDER BY MIN(pr.snapshot_fetched_at) ASC NULLS FIRST
-LIMIT $2
+WITH candidates AS (
+    SELECT pr.installation_id, pr.repo_owner, pr.repo_name, pr.pr_number
+    FROM github_pull_request AS pr
+    WHERE pr.state IN ('open', 'draft')
+      AND (pr.snapshot_fetched_at IS NULL OR pr.snapshot_fetched_at < $6)
+      AND pr.id IN (
+          SELECT ipr.pull_request_id
+          FROM issue_wakeup AS w
+          JOIN issue_pull_request AS ipr ON ipr.issue_id = w.issue_id
+          WHERE w.enabled
+            AND w.condition->>'type' = 'pull_request'
+            AND w.condition->>'event' = 'conflicts'
+      )
+    GROUP BY pr.installation_id, pr.repo_owner, pr.repo_name, pr.pr_number
+)
+SELECT installation_id, repo_owner, repo_name, pr_number
+FROM candidates
+ORDER BY (
+    ROW(installation_id, repo_owner, repo_name, pr_number) >
+    ROW(
+        $1::BIGINT,
+        $2::TEXT,
+        $3::TEXT,
+        $4::INTEGER
+    )
+) DESC,
+installation_id, repo_owner, repo_name, pr_number
+LIMIT $5
 `
 
 type ListStaleConflictWatchedGitHubPRsParams struct {
-	OlderThan pgtype.Timestamptz `json:"older_than"`
-	MaxRows   int32              `json:"max_rows"`
+	AfterInstallationID int64              `json:"after_installation_id"`
+	AfterRepoOwner      string             `json:"after_repo_owner"`
+	AfterRepoName       string             `json:"after_repo_name"`
+	AfterPrNumber       int32              `json:"after_pr_number"`
+	MaxRows             int32              `json:"max_rows"`
+	OlderThan           pgtype.Timestamptz `json:"older_than"`
 }
 
 type ListStaleConflictWatchedGitHubPRsRow struct {
@@ -282,11 +299,19 @@ type ListStaleConflictWatchedGitHubPRsRow struct {
 // Second sweep source: open/draft PRs linked to an issue with an enabled
 // "wake on merge conflict" rule. A decided snapshot leaves the undecided sweep,
 // but a base-branch move can turn it conflicting without any event for this
-// PR, so watched PRs are re-fetched on the TTL regardless. Driven from the
-// enabled rules, whose count is capped, and stalest first so a bounded batch
-// cannot starve later rows.
+// PR, so watched PRs are re-fetched on the TTL regardless. The candidate set
+// comes from the enabled rules, whose count is capped. Like the undecided
+// sweep, an address cursor rotates the bounded batch, so addresses whose
+// fetches keep failing (their snapshot never gets newer) cannot pin it.
 func (q *Queries) ListStaleConflictWatchedGitHubPRs(ctx context.Context, arg ListStaleConflictWatchedGitHubPRsParams) ([]ListStaleConflictWatchedGitHubPRsRow, error) {
-	rows, err := q.db.Query(ctx, listStaleConflictWatchedGitHubPRs, arg.OlderThan, arg.MaxRows)
+	rows, err := q.db.Query(ctx, listStaleConflictWatchedGitHubPRs,
+		arg.AfterInstallationID,
+		arg.AfterRepoOwner,
+		arg.AfterRepoName,
+		arg.AfterPrNumber,
+		arg.MaxRows,
+		arg.OlderThan,
+	)
 	if err != nil {
 		return nil, err
 	}

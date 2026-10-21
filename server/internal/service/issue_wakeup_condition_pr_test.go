@@ -57,11 +57,11 @@ func (tx *prConditionTx) Exec(_ context.Context, sql string, args ...any) (pgcon
 }
 
 func TestWakeupConditionPREvaluation(t *testing.T) {
-	row := func(state, head, checks string) []any { return []any{int32(1), state, head, checks, head, ""} }
+	row := func(state, head, checks string) []any { return []any{int32(1), state, head, checks, head, "", "p1"} }
 	// conflictRow describes a PR whose snapshot was fetched for snapshotHead
 	// while the PR's current head is "head".
 	conflictRow := func(state, snapshotHead, mergeable string) []any {
-		return []any{int32(1), state, snapshotHead, "", "head", mergeable}
+		return []any{int32(1), state, snapshotHead, "", "head", mergeable, "p1"}
 	}
 	for _, tc := range []struct {
 		name, event string
@@ -109,6 +109,28 @@ func TestWakeupConditionPREvaluation(t *testing.T) {
 	}
 }
 
+func TestConditionNewlyMet(t *testing.T) {
+	for _, tc := range []struct {
+		previous, current string
+		want              bool
+	}{
+		{"", "pr:a@1:conflicting", true},
+		{"pr:a@1:conflicting", "pr:a@1:conflicting", false},
+		{"pr:a@1:conflicting,b@1:conflicting", "pr:b@1:conflicting", false},
+		{"pr:b@1:conflicting", "pr:a@1:conflicting,b@1:conflicting", true},
+		{"pr:a@1:conflicting", "pr:a@2:conflicting", true},
+		{"pr:1@h:SUCCESS,2@h:FAILURE", "pr:2@h:FAILURE", false},
+		{"status:todo", "status:in_review", true},
+		{"status:in_review", "status:in_review", false},
+		{`property:{"a":1,"b":2}`, `property:{"a":1,"b":2}`, false},
+		{"children:2", "children:3", true},
+	} {
+		if got := conditionNewlyMet(tc.previous, tc.current); got != tc.want {
+			t.Errorf("conditionNewlyMet(%q, %q) = %t, want %t", tc.previous, tc.current, got, tc.want)
+		}
+	}
+}
+
 func TestWakeupConditionPRConflictsAcrossRecompute(t *testing.T) {
 	ctx := context.Background()
 	s := &IssueWakeupService{Tasks: &TaskService{PRSnapshotsEnabled: true}}
@@ -116,7 +138,7 @@ func TestWakeupConditionPRConflictsAcrossRecompute(t *testing.T) {
 	tx := &prConditionTx{issue: w.IssueID}
 	q := db.New(tx)
 	snapshot := func(head, mergeable string) [][]any {
-		return [][]any{{int32(1), "open", head, "", head, mergeable}}
+		return [][]any{{int32(1), "open", head, "", head, mergeable, "p1"}}
 	}
 	for _, step := range []struct {
 		name, previous string
@@ -124,12 +146,12 @@ func TestWakeupConditionPRConflictsAcrossRecompute(t *testing.T) {
 		wantMet        bool
 		wantState      string
 	}{
-		{"conflict", "", snapshot("a", "CONFLICTING"), true, "pr:1@a:conflicting"},
-		{"recompute on the same head keeps it", "pr:1@a:conflicting", snapshot("a", "UNKNOWN"), true, "pr:1@a:conflicting"},
-		{"resolved", "pr:1@a:conflicting", snapshot("a", "MERGEABLE"), false, ""},
+		{"conflict", "", snapshot("a", "CONFLICTING"), true, "pr:p1@a:conflicting"},
+		{"recompute on the same head keeps it", "pr:p1@a:conflicting", snapshot("a", "UNKNOWN"), true, "pr:p1@a:conflicting"},
+		{"resolved", "pr:p1@a:conflicting", snapshot("a", "MERGEABLE"), false, ""},
 		{"recompute after resolving stays resolved", "", snapshot("a", "UNKNOWN"), false, ""},
-		{"recompute on a new head starts over", "pr:1@a:conflicting", snapshot("b", "UNKNOWN"), false, ""},
-		{"new head still conflicting", "pr:1@a:conflicting", snapshot("b", "CONFLICTING"), true, "pr:1@b:conflicting"},
+		{"recompute on a new head starts over", "pr:p1@a:conflicting", snapshot("b", "UNKNOWN"), false, ""},
+		{"new head still conflicting", "pr:p1@a:conflicting", snapshot("b", "CONFLICTING"), true, "pr:p1@b:conflicting"},
 	} {
 		t.Run(step.name, func(t *testing.T) {
 			tx.prs = step.prs
@@ -163,8 +185,8 @@ func TestWakeupConditionPRDiagnosticPolling(t *testing.T) {
 		want error
 	}{
 		{nil, errPRNotLinked},
-		{[][]any{{int32(1), "open", "", "", "head", ""}}, errPRSnapshotPending},
-		{[][]any{{int32(1), "open", "head", "PENDING", "head", "MERGEABLE"}}, nil},
+		{[][]any{{int32(1), "open", "", "", "head", "", "p1"}}, errPRSnapshotPending},
+		{[][]any{{int32(1), "open", "head", "PENDING", "head", "MERGEABLE", "p1"}}, nil},
 	} {
 		tx.prs = step.prs
 		w.LastError = tx.lastError
