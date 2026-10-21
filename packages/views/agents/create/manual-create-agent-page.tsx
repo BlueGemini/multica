@@ -50,7 +50,11 @@ export function ManualCreateAgentPage() {
   const duplicateId = navigation.searchParams.get("duplicate");
   const squadId = navigation.searchParams.get("squad");
   const runtimeParam = duplicateId ? null : navigation.searchParams.get("runtime");
-  const needsRuntime = !duplicateId && !runtimeParam;
+  // On desktop the location is the tab's URL, and it moves to the done page
+  // while this route is still mounted. Its missing `?runtime=` is not a
+  // skipped step 1; redirecting on it threw the user back there.
+  const onThisRoute = navigation.pathname === paths.newAgentManual();
+  const needsRuntime = onThisRoute && !duplicateId && !runtimeParam;
 
   useEffect(() => {
     if (needsRuntime) {
