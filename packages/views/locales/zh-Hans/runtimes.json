@@ -35,7 +35,6 @@
       "other_machine": "其他机器或服务器",
       "other_machine_hint": "在那台机器上运行两条命令",
       "cloud_services": "云服务",
-      "qoder_connect_hint": "用 PAT 连接一次，全工作区可用",
       "qoder_manage_hint": "已连接 · 管理连接",
       "cloud_runtime_hint": "创建一台 Multica 托管的云节点"
     },

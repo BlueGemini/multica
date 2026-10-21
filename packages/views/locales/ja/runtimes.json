@@ -35,7 +35,6 @@
       "other_machine": "他のマシンまたはサーバー",
       "other_machine_hint": "そのマシンで 2 つのコマンドを実行",
       "cloud_services": "クラウドサービス",
-      "qoder_connect_hint": "PAT で一度接続すればワークスペース全体で使えます",
       "qoder_manage_hint": "接続済み · 接続を管理",
       "cloud_runtime_hint": "Multica がホストするクラウドノードを作成"
     },

@@ -35,7 +35,6 @@
       "other_machine": "Autre machine ou serveur",
       "other_machine_hint": "Exécutez deux commandes sur cette machine",
       "cloud_services": "Services cloud",
-      "qoder_connect_hint": "Connectez-vous une fois avec un PAT pour tout l’espace de travail",
       "qoder_manage_hint": "Connecté · gérer la connexion",
       "cloud_runtime_hint": "Créer un nœud cloud hébergé par Multica"
     },

@@ -565,7 +565,12 @@ function AddRuntimeMenu({
               description={
                 qoder.configured
                   ? t(($) => $.page.add_menu.qoder_manage_hint)
-                  : t(($) => $.page.add_menu.qoder_connect_hint)
+                  : t(($) => $.page.rows.provided_by, { vendor: "Qoder" })
+              }
+              trailing={
+                qoder.configured ? (
+                  <Check className="size-4 text-muted-foreground" />
+                ) : undefined
               }
               onClick={onQoder}
             />

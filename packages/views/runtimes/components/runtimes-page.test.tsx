@@ -163,6 +163,7 @@ describe("RuntimesPage", () => {
     expect(within(menu).getByText("Connected · Jiayuan's MacBook")).toBeInTheDocument();
     expect(within(menu).getByText("Other machine or server")).toBeInTheDocument();
     expect(within(menu).getByText("Qoder Cloud Agent")).toBeInTheDocument();
+    expect(within(menu).getByText("By Qoder")).toBeInTheDocument();
   });
 
   it("filters rows by search and status", async () => {
