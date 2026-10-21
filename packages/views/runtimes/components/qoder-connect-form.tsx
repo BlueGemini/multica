@@ -35,11 +35,52 @@ import { useT } from "../../i18n";
 
 const DEFAULT_NAME = "Qoder Cloud Agent";
 
-function regionOf(baseUrl: string): QoderRegion {
+export function regionOf(baseUrl: string): QoderRegion {
   return (
     (Object.keys(QODER_REGIONS) as QoderRegion[]).find(
       (key) => QODER_REGIONS[key] === baseUrl,
     ) ?? "global"
+  );
+}
+
+export function RegionToggle({
+  value,
+  onChange,
+  disabled,
+  labelledBy,
+}: {
+  value: QoderRegion;
+  onChange: (region: QoderRegion) => void;
+  disabled?: boolean;
+  labelledBy: string;
+}) {
+  const { t } = useT("runtimes");
+  return (
+    <div
+      role="radiogroup"
+      aria-labelledby={labelledBy}
+      className="grid grid-cols-2 gap-0.5 rounded-lg bg-muted p-0.5"
+    >
+      {(["global", "cn"] as const).map((region) => (
+        <button
+          key={region}
+          type="button"
+          role="radio"
+          aria-checked={value === region}
+          disabled={disabled}
+          onClick={() => onChange(region)}
+          className={cn(
+            "truncate rounded-md px-2 py-1.5 text-caption text-muted-foreground transition-colors",
+            "hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+            value === region && "bg-background font-medium text-foreground shadow-sm",
+          )}
+        >
+          {region === "global"
+            ? t(($) => $.qoder.region_global)
+            : t(($) => $.qoder.region_cn)}
+        </button>
+      ))}
+    </div>
   );
 }
 
@@ -153,32 +194,12 @@ export function QoderConnectForm({
         <p id="qoder-connect-region" className="text-caption font-medium">
           {t(($) => $.qoder.region)}
         </p>
-        <div
-          role="radiogroup"
-          aria-labelledby="qoder-connect-region"
-          className="grid grid-cols-2 gap-0.5 rounded-lg bg-muted p-0.5"
-        >
-          {(["global", "cn"] as const).map((value) => (
-            <button
-              key={value}
-              type="button"
-              role="radio"
-              aria-checked={region === value}
-              disabled={save.isPending}
-              onClick={() => setRegion(value)}
-              className={cn(
-                "truncate rounded-md px-2 py-1.5 text-caption text-muted-foreground transition-colors",
-                "hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-                region === value &&
-                  "bg-background font-medium text-foreground shadow-sm",
-              )}
-            >
-              {value === "global"
-                ? t(($) => $.qoder.region_global)
-                : t(($) => $.qoder.region_cn)}
-            </button>
-          ))}
-        </div>
+        <RegionToggle
+          value={region}
+          onChange={setRegion}
+          disabled={save.isPending}
+          labelledBy="qoder-connect-region"
+        />
         <p className="text-caption text-muted-foreground">
           {t(($) => $.qoder.region_hint)}
         </p>

@@ -68,72 +68,13 @@ function mount(onConnected?: () => void) {
   );
   return client;
 }
-it("selects the only environment, hides saved PATs and reports connection success", async () => {
-  mocks.listQoderEnvironments.mockResolvedValue([
-    { id: "env_one", name: "Web environment" },
-  ]);
-  const client = mount();
-  const check = await screen.findByRole("button", { name: "Test connection" });
-  await waitFor(() => expect(check).toBeEnabled());
-  expect(
-    screen.getByRole("combobox", { name: "Environment" }),
-  ).toHaveTextContent("Web environment");
-  expect(screen.queryByText("QCA Agent ID")).not.toBeInTheDocument();
-  expect(screen.getByPlaceholderText("Saved, never displayed")).toBeDisabled();
-  expect(screen.getByText("What Multica sends to Qoder")).toBeInTheDocument();
-  fireEvent.change(screen.getByLabelText(/Concurrent runs/), {
-    target: { value: "5" },
-  });
-  fireEvent.click(check);
-  await screen.findByText("Connection successful");
-  expect(mocks.checkQoderConnection).toHaveBeenCalledWith(
-    "ws-test",
-    expect.objectContaining({
-      environmentId: "env_one",
-      qoderToken: "",
-      maxConcurrency: 5,
-      runTimeoutMinutes: 60,
-    }),
-  );
-  client.clear();
-});
-it("loads environments from the saved region", async () => {
-  mocks.getQoderConnection.mockResolvedValue({
-    ...(await mocks.getQoderConnection()),
-    baseUrl: "https://api.qoder.com.cn/api/v1/cloud",
-  });
-  mocks.listQoderEnvironments.mockResolvedValue([
-    { id: "env_cn", name: "CN environment" },
-  ]);
+it("points an existing connection to its runtime page", async () => {
   const client = mount();
   expect(
-    await screen.findByRole("combobox", { name: "Region" }),
-  ).toHaveTextContent("China (qoder.com.cn)");
-  await waitFor(() =>
-    expect(mocks.listQoderEnvironments).toHaveBeenCalledWith(
-      "ws-test",
-      "",
-      "https://api.qoder.com.cn/api/v1/cloud",
-      expect.anything(),
-    ),
-  );
-  client.clear();
-});
-it("requires an explicit choice when several environments are available", async () => {
-  mocks.listQoderEnvironments.mockResolvedValue([
-    { id: "env_one", name: "Web" },
-    { id: "env_two", name: "Build" },
-  ]);
-  const client = mount();
-  await waitFor(() =>
-    expect(screen.getByRole("combobox", { name: "Environment" })).toBeEnabled(),
-  );
-  expect(
-    screen.getByRole("combobox", { name: "Environment" }),
-  ).toHaveTextContent("Select an environment");
-  expect(
-    screen.getByRole("button", { name: "Test connection" }),
-  ).toBeDisabled();
+    await screen.findByText("Qoder connected. It will be ready in a few seconds."),
+  ).toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: "Connect" })).not.toBeInTheDocument();
+  expect(mocks.listQoderEnvironments).not.toHaveBeenCalled();
   client.clear();
 });
 it("connects a first-time workspace with the short form", async () => {

@@ -33,6 +33,8 @@ const { ApiError, mocks, nav } = vi.hoisted(() => {
       stopQoderConnection: vi.fn(),
       saveQoderConnection: vi.fn(),
       disconnectQoderConnection: vi.fn(),
+      listQoderEnvironments: vi.fn(),
+      checkQoderConnection: vi.fn(),
     },
     nav: { push: vi.fn(), replace: vi.fn() },
   };
@@ -65,6 +67,7 @@ vi.mock("../../navigation", () => ({
   ),
 }));
 vi.mock("sonner", () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
+vi.mock("../../platform", () => ({ openExternal: vi.fn() }));
 vi.mock("./qoder-configuration", () => ({
   QoderConfiguration: () => <div>configuration form</div>,
 }));
@@ -106,6 +109,12 @@ beforeEach(() => {
     { id: "a1", name: "Reviewer", runtime_id: "rt_qoder", archived_at: null },
     { id: "a2", name: "Local helper", runtime_id: "rt_local", archived_at: null },
   ]);
+  mocks.listQoderEnvironments.mockResolvedValue([
+    { id: "env_one", name: "Web environment" },
+    { id: "env_two", name: "Build environment" },
+  ]);
+  mocks.checkQoderConnection.mockResolvedValue(undefined);
+  mocks.saveQoderConnection.mockResolvedValue(connection);
 });
 afterEach(() => {
   cleanup();
@@ -145,7 +154,9 @@ it("shows the connection with its agents and no machine-level controls", async (
   expect(
     await screen.findByRole("heading", { name: "Qoder Cloud Agent" }),
   ).toBeInTheDocument();
-  expect(await screen.findByText("configuration form")).toBeInTheDocument();
+  expect(await screen.findByText("Web environment")).toBeInTheDocument();
+  expect(screen.getByText("acme/web")).toBeInTheDocument();
+  expect(screen.queryByText("configuration form")).not.toBeInTheDocument();
   const serving = await screen.findByRole("list", { name: "serving agents" });
   expect(within(serving).getByText("Reviewer")).toBeInTheDocument();
   expect(within(serving).queryByText("Local helper")).not.toBeInTheDocument();
@@ -233,12 +244,157 @@ it("disconnects after confirming the latest agents to unbind", async () => {
   client.clear();
 });
 
-it("keeps lifecycle actions away from members", async () => {
+it("shows members the connection read-only", async () => {
   mocks.listMembers.mockResolvedValue([{ user_id: "owner", role: "member" }]);
   const client = mount();
-  expect(await screen.findByText("configuration form")).toBeInTheDocument();
+  expect(await screen.findByText("acme/web")).toBeInTheDocument();
   await waitFor(() => expect(mocks.listMembers).toHaveBeenCalled());
-  expect(screen.queryByRole("button", { name: "Disconnect" })).not.toBeInTheDocument();
-  expect(screen.queryByRole("button", { name: "Pause" })).not.toBeInTheDocument();
+  expect(screen.getByText("env_one")).toBeInTheDocument();
+  expect(mocks.listQoderEnvironments).not.toHaveBeenCalled();
+  for (const name of ["Disconnect", "Pause", "Edit", "Test connection", "Add repository"]) {
+    expect(screen.queryByRole("button", { name })).not.toBeInTheDocument();
+  }
+  expect(
+    screen.queryByRole("button", { name: "Actions for acme/web" }),
+  ).not.toBeInTheDocument();
+  client.clear();
+});
+
+it("connects through the form while Qoder is not configured", async () => {
+  mocks.getQoderConnection.mockResolvedValue({
+    ...connection,
+    configured: false,
+    hasToken: false,
+    repositories: [],
+  });
+  const client = mount();
+  expect(await screen.findByText("configuration form")).toBeInTheDocument();
+  expect(screen.queryByText("Connection")).not.toBeInTheDocument();
+  client.clear();
+});
+
+it("tests the saved connection without sending secrets", async () => {
+  const client = mount();
+  fireEvent.click(await screen.findByRole("button", { name: "Test connection" }));
+  await waitFor(() => expect(mocks.checkQoderConnection).toHaveBeenCalledTimes(1));
+  const input = mocks.checkQoderConnection.mock.calls[0]![1];
+  expect(input).toMatchObject({ environmentId: "env_one", qoderToken: "" });
+  expect(input).not.toHaveProperty("githubTokens");
+  client.clear();
+});
+
+it("tests an edited connection before saving it", async () => {
+  const client = mount();
+  fireEvent.click(await screen.findByRole("button", { name: "Edit" }));
+  const dialog = await screen.findByRole("dialog");
+  const environment = within(dialog).getByRole("combobox", { name: "Environment" });
+  await waitFor(() => expect(environment).toHaveTextContent("Web environment"));
+  fireEvent.click(within(dialog).getByRole("button", { name: "Test and save" }));
+  await waitFor(() => expect(mocks.saveQoderConnection).toHaveBeenCalledTimes(1));
+  expect(mocks.checkQoderConnection).toHaveBeenCalledTimes(1);
+  const input = mocks.saveQoderConnection.mock.calls[0]![1];
+  expect(input).toMatchObject({
+    name: "QCA",
+    baseUrl: "https://api.qoder.com/api/v1/cloud",
+    environmentId: "env_one",
+    qoderToken: "",
+  });
+  expect(input).not.toHaveProperty("githubTokens");
+  await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+  client.clear();
+});
+
+it("asks for a new token when the region changes", async () => {
+  const client = mount();
+  fireEvent.click(await screen.findByRole("button", { name: "Edit" }));
+  const dialog = await screen.findByRole("dialog");
+  await waitFor(() =>
+    expect(
+      within(dialog).getByRole("combobox", { name: "Environment" }),
+    ).toHaveTextContent("Web environment"),
+  );
+  fireEvent.click(within(dialog).getByRole("radio", { name: "China (qoder.com.cn)" }));
+  expect(
+    within(dialog).getByText("Environments load once the token is verified"),
+  ).toBeInTheDocument();
+  expect(within(dialog).getByRole("button", { name: "Test and save" })).toBeDisabled();
+  client.clear();
+});
+
+it("adds a repository and keeps the saved tokens", async () => {
+  const client = mount();
+  fireEvent.click(await screen.findByRole("button", { name: "Add repository" }));
+  const dialog = await screen.findByRole("dialog");
+  fireEvent.change(within(dialog).getByLabelText("GitHub URL"), {
+    target: { value: "https://github.com/acme/api" },
+  });
+  fireEvent.change(within(dialog).getByLabelText("GitHub token"), {
+    target: { value: "ghp_new" },
+  });
+  fireEvent.click(within(dialog).getByRole("button", { name: "Save" }));
+  await waitFor(() => expect(mocks.saveQoderConnection).toHaveBeenCalledTimes(1));
+  expect(mocks.saveQoderConnection.mock.calls[0]![1]).toMatchObject({
+    qoderToken: "",
+    githubTokens: {
+      "https://github.com/acme/web": "",
+      "https://github.com/acme/api": "ghp_new",
+    },
+  });
+  client.clear();
+});
+
+it("replaces the token of a saved repository", async () => {
+  const client = mount();
+  fireEvent.click(
+    await screen.findByRole("button", { name: "Actions for acme/web" }),
+  );
+  fireEvent.click(await screen.findByText("Replace token"));
+  const dialog = await screen.findByRole("dialog");
+  expect(within(dialog).queryByLabelText("GitHub URL")).not.toBeInTheDocument();
+  fireEvent.change(within(dialog).getByLabelText("GitHub token"), {
+    target: { value: "ghp_rotated" },
+  });
+  fireEvent.click(within(dialog).getByRole("button", { name: "Save" }));
+  await waitFor(() => expect(mocks.saveQoderConnection).toHaveBeenCalledTimes(1));
+  expect(mocks.saveQoderConnection.mock.calls[0]![1].githubTokens).toEqual({
+    "https://github.com/acme/web": "ghp_rotated",
+  });
+  client.clear();
+});
+
+it("removes a repository after confirming", async () => {
+  mocks.getQoderConnection.mockResolvedValue({
+    ...connection,
+    repositories: ["https://github.com/acme/api", "https://github.com/acme/web"],
+  });
+  const client = mount();
+  fireEvent.click(
+    await screen.findByRole("button", { name: "Actions for acme/web" }),
+  );
+  fireEvent.click(await screen.findByText("Remove"));
+  const dialog = await screen.findByRole("alertdialog");
+  expect(within(dialog).getByText("Remove acme/web?")).toBeInTheDocument();
+  fireEvent.click(within(dialog).getByRole("button", { name: "Remove" }));
+  await waitFor(() => expect(mocks.saveQoderConnection).toHaveBeenCalledTimes(1));
+  expect(mocks.saveQoderConnection.mock.calls[0]![1].githubTokens).toEqual({
+    "https://github.com/acme/api": "",
+  });
+  client.clear();
+});
+
+it("edits the execution limits", async () => {
+  const client = mount();
+  fireEvent.click(
+    await screen.findByRole("button", { name: "Edit execution settings" }),
+  );
+  const dialog = await screen.findByRole("dialog");
+  fireEvent.change(within(dialog).getByLabelText(/Concurrent runs/), {
+    target: { value: "5" },
+  });
+  fireEvent.click(within(dialog).getByRole("button", { name: "Save" }));
+  await waitFor(() => expect(mocks.saveQoderConnection).toHaveBeenCalledTimes(1));
+  const input = mocks.saveQoderConnection.mock.calls[0]![1];
+  expect(input).toMatchObject({ maxConcurrency: 5, runTimeoutMinutes: 60, qoderToken: "" });
+  expect(input).not.toHaveProperty("githubTokens");
   client.clear();
 });

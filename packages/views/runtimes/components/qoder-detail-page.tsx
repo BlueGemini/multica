@@ -42,6 +42,13 @@ import { createPathWithParams } from "../../agents/create/squad-param";
 import { useT } from "../../i18n";
 import { ProviderLogo } from "./provider-logo";
 import { QoderConfiguration } from "./qoder-configuration";
+import {
+  QoderConnectionCard,
+  QoderLimitsCard,
+  QoderRepositoriesCard,
+  QoderSection,
+  savedQoderInput,
+} from "./qoder-connection-cards";
 import { QoderStatusBadge } from "./qoder-status-badge";
 import { ServingAgentsCard } from "./runtime-detail";
 import { UsageSection } from "./usage-section";
@@ -158,31 +165,49 @@ export function QoderDetailPage() {
             "grid grid-cols-1 gap-4 py-4 sm:py-6 lg:grid-cols-[minmax(0,1fr)_320px]",
           )}
         >
-          <div className="min-w-0 space-y-5">
+          <div className="min-w-0 space-y-4">
+            {data.configured ? (
+              <>
+                <QoderConnectionCard wsId={wsId} data={data} canManage={isAdmin} />
+                <QoderRepositoriesCard
+                  wsId={wsId}
+                  data={data}
+                  canManage={isAdmin}
+                />
+              </>
+            ) : (
+              <QoderSection title={t(($) => $.qoder.page.configuration)}>
+                <div className="p-4">
+                  {isAdmin ? (
+                    <QoderConfiguration />
+                  ) : (
+                    <div className="py-6 text-center">
+                      <p className="text-body font-medium">
+                        {t(($) => $.qoder.page.not_connected_title)}
+                      </p>
+                      <p className="mt-1 text-caption text-muted-foreground">
+                        {t(($) => $.qoder.page.not_connected_hint)}
+                      </p>
+                    </div>
+                  )}
+                </div>
+              </QoderSection>
+            )}
             {runtime && isRuntimeUsableForUser(runtime, userId) && (
               <UsageSection runtime={runtime} />
             )}
-            <section className="rounded-lg border bg-card">
-              <h2 className="border-b px-4 py-2.5 text-caption font-semibold">
-                {t(($) => $.qoder.page.configuration)}
-              </h2>
-              <div className="p-4">
-                {data.configured || isAdmin ? (
-                  <QoderConfiguration />
-                ) : (
-                  <div className="py-6 text-center">
-                    <p className="text-body font-medium">
-                      {t(($) => $.qoder.page.not_connected_title)}
-                    </p>
-                    <p className="mt-1 text-caption text-muted-foreground">
-                      {t(($) => $.qoder.page.not_connected_hint)}
-                    </p>
-                  </div>
-                )}
-              </div>
-            </section>
+          </div>
+          <div className="space-y-4">
+            <ServingAgentsCard
+              agents={boundAgents}
+              presenceMap={presenceMap}
+              agentHref={(id) => paths.agentDetail(id)}
+            />
+            {data.configured && (
+              <QoderLimitsCard wsId={wsId} data={data} canManage={isAdmin} />
+            )}
             {isAdmin && data.configured && (
-              <DangerZone
+              <ManageCard
                 wsId={wsId}
                 data={data}
                 boundAgents={boundAgents}
@@ -192,13 +217,6 @@ export function QoderDetailPage() {
                 }}
               />
             )}
-          </div>
-          <div className="space-y-4">
-            <ServingAgentsCard
-              agents={boundAgents}
-              presenceMap={presenceMap}
-              agentHref={(id) => paths.agentDetail(id)}
-            />
           </div>
         </div>
       </div>
@@ -248,23 +266,19 @@ function QoderHeader({
                 </h1>
                 <QoderStatusBadge connection={data} />
               </div>
-              <p
-                role={failing ? "alert" : undefined}
-                className={cn(
-                  "mt-1 text-body",
-                  failing ? "text-destructive" : "text-muted-foreground",
-                )}
-              >
-                {failing
-                  ? data.lastError
-                  : t(($) => $.page.rows.provided_by, { vendor: "Qoder" })}
-              </p>
-              {data.configured && (
-                <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-2 text-caption text-muted-foreground">
+              {failing && (
+                <p role="alert" className="mt-1 text-body text-destructive">
+                  {data.lastError}
+                </p>
+              )}
+              {data.configured ? (
+                <div className="mt-1.5 flex flex-wrap items-center gap-x-1.5 gap-y-1 text-caption text-muted-foreground">
                   <span>{region}</span>
+                  <span aria-hidden="true">·</span>
                   <span>
                     {t(($) => $.qoder.agent_count, { count: agentCount })}
                   </span>
+                  <span aria-hidden="true">·</span>
                   <span className="tabular-nums">
                     {data.enabled && data.status === "online"
                       ? t(($) => $.qoder.usage, {
@@ -275,7 +289,7 @@ function QoderHeader({
                       : t(($) => $.qoder.page.workload_idle)}
                   </span>
                 </div>
-              )}
+              ) : null}
             </div>
           </div>
           {action && (
@@ -289,7 +303,7 @@ function QoderHeader({
   );
 }
 
-function DangerZone({
+function ManageCard({
   wsId,
   data,
   boundAgents,
@@ -308,70 +322,58 @@ function DangerZone({
   const busy = stop.isPending || save.isPending;
 
   const resume = () =>
-    save.mutate(
-      {
-        name: data.name || t(($) => $.qoder.cloud_title),
-        baseUrl: data.baseUrl || QODER_REGIONS.global,
-        environmentId: data.environmentId,
-        qoderToken: "",
-        maxConcurrency: data.maxConcurrency,
-        runTimeoutMinutes: data.runTimeoutMinutes,
-      },
-      {
-        onSuccess: () => toast.success(t(($) => $.qoder.page.resumed)),
-        onError: (err) => toast.error(err.message),
-      },
-    );
+    save.mutate(savedQoderInput(data, t(($) => $.qoder.cloud_title)), {
+      onSuccess: () => toast.success(t(($) => $.qoder.page.resumed)),
+      onError: (err) => toast.error(err.message),
+    });
 
   return (
-    <section className="rounded-lg border border-destructive/30 bg-card">
-      <h2 className="border-b border-destructive/20 px-4 py-2.5 text-caption font-semibold text-destructive">
-        {t(($) => $.qoder.page.danger_title)}
-      </h2>
+    <QoderSection title={t(($) => $.qoder.page.manage_title)}>
       <div className="divide-y">
         {data.enabled ? (
-          <DangerRow
+          <ManageRow
             title={t(($) => $.qoder.page.pause_title)}
             hint={t(($) => $.qoder.page.pause_hint)}
           >
             <Button
               variant="outline"
-              size="sm"
+              size="xs"
               disabled={busy}
               onClick={() => setPauseOpen(true)}
             >
               {t(($) => $.qoder.stop)}
             </Button>
-          </DangerRow>
+          </ManageRow>
         ) : (
-          <DangerRow
+          <ManageRow
             title={t(($) => $.qoder.page.resume_title)}
             hint={t(($) => $.qoder.page.resume_hint)}
           >
             <Button
               variant="outline"
-              size="sm"
+              size="xs"
               disabled={busy}
               aria-busy={save.isPending}
               onClick={resume}
             >
               {t(($) => $.qoder.page.resume)}
             </Button>
-          </DangerRow>
+          </ManageRow>
         )}
-        <DangerRow
+        <ManageRow
           title={t(($) => $.qoder.page.disconnect_title)}
           hint={t(($) => $.qoder.page.disconnect_hint)}
+          destructive
         >
           <Button
             variant="destructive"
-            size="sm"
+            size="xs"
             disabled={busy}
             onClick={() => setDisconnectOpen(true)}
           >
             {t(($) => $.qoder.page.disconnect)}
           </Button>
-        </DangerRow>
+        </ManageRow>
       </div>
 
       <AlertDialog
@@ -420,28 +422,35 @@ function DangerZone({
           onDisconnected={onDisconnected}
         />
       )}
-    </section>
+    </QoderSection>
   );
 }
 
-function DangerRow({
+function ManageRow({
   title,
   hint,
+  destructive,
   children,
 }: {
   title: string;
   hint: string;
+  destructive?: boolean;
   children: React.ReactNode;
 }) {
   return (
-    <div className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between">
-      <div className="min-w-0">
-        <p className="text-body font-medium">{title}</p>
-        <p className="mt-0.5 text-pretty text-caption text-muted-foreground">
-          {hint}
+    <div className="space-y-1 px-4 py-3">
+      <div className="flex items-center justify-between gap-3">
+        <p
+          className={cn(
+            "min-w-0 text-body font-medium",
+            destructive && "text-destructive",
+          )}
+        >
+          {title}
         </p>
+        <div className="shrink-0">{children}</div>
       </div>
-      <div className="shrink-0">{children}</div>
+      <p className="text-pretty text-caption text-muted-foreground">{hint}</p>
     </div>
   );
 }
