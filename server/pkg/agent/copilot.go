@@ -15,8 +15,9 @@ import (
 // copilotBackend implements Backend by spawning the GitHub Copilot CLI
 // with --output-format json and parsing its JSONL event stream.
 //
-// The v1 integration uses the -p (pipe) mode which is the stable
-// automation/CI channel. The prompt is passed as a CLI argument (not stdin).
+// The integration runs Copilot non-interactively with the prompt piped on
+// stdin and no -p, never as a CLI argument: an argv prompt dies at fork/exec
+// once it clears the OS argument size limit (#9362; see buildCopilotArgs).
 // Events arrive as newline-delimited JSON on stdout in the Copilot CLI's
 // own envelope format: { "type": "dotted.event.name", "data": {...}, ... }
 type copilotBackend struct {
