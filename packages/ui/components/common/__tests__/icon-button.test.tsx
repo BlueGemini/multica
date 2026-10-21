@@ -1,16 +1,16 @@
 import type { ReactNode } from "react";
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { IconButton } from "./icon-button";
-import { TooltipHint } from "./tooltip-hint";
-import { DeferredTooltip } from "./deferred-tooltip";
-import { TooltipProvider } from "../ui/tooltip";
+import { IconButton } from "../icon-button";
+import { TooltipHint } from "../tooltip-hint";
+import { DeferredTooltip } from "../deferred-tooltip";
+import { TooltipProvider } from "../../ui/tooltip";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
-} from "../ui/dropdown-menu";
+} from "../../ui/dropdown-menu";
 
 afterEach(cleanup);
 
