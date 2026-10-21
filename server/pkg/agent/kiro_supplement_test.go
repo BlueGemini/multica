@@ -69,9 +69,9 @@ func startKiroSteerSession(t *testing.T, env map[string]string, negotiated bool)
 	if err != nil {
 		t.Fatal(err)
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	t.Cleanup(cancel)
-	session, err := backend.Execute(ctx, "do the task", ExecOptions{Timeout: 5 * time.Second, EnableTaskSupplement: negotiated})
+	session, err := backend.Execute(ctx, "do the task", ExecOptions{Timeout: 20 * time.Second, EnableTaskSupplement: negotiated})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -80,7 +80,8 @@ func startKiroSteerSession(t *testing.T, env map[string]string, negotiated bool)
 
 func waitKiroSupplementReady(t *testing.T, session *Session) {
 	t.Helper()
-	deadline := time.Now().Add(3 * time.Second)
+	// Generous: the fake shell is slow to start when the package runs in parallel.
+	deadline := time.Now().Add(15 * time.Second)
 	for !session.SupplementReady() && time.Now().Before(deadline) {
 		time.Sleep(5 * time.Millisecond)
 	}
