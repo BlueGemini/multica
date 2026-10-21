@@ -26,6 +26,7 @@ import {
   useWorkspaceAgentAvailability,
 } from "@multica/core/agents";
 import { ActorAvatar } from "../../common/actor-avatar";
+import { ActionShortcutKeycaps } from "../../common/shortcut-keycaps";
 import { useAppForeground } from "../../common/use-app-foreground";
 import {
   RowActionsMenu,
@@ -874,7 +875,10 @@ export function ChatWindow() {
             >
               <Minus />
             </TooltipTrigger>
-            <TooltipContent side="top">{t(($) => $.window.minimize_tooltip)}</TooltipContent>
+            <TooltipContent side="top">
+              {t(($) => $.window.minimize_tooltip)}
+              <ActionShortcutKeycaps action="toggleChat" />
+            </TooltipContent>
           </Tooltip>
         </div>
       </div>

@@ -138,6 +138,7 @@ export const BoardColumn = memo(function BoardColumn({
   const viewBaseline = useViewBaseline();
   const statusFixedByView = !!status && viewBaseline?.status.has(status) === true;
   const { t } = useT("issues");
+  const { t: tCommon } = useT("common");
 
   // Resolve IDs to Issue objects, preserving parent-provided order
   const resolvedIssues = useMemo(
@@ -230,7 +231,12 @@ export const BoardColumn = memo(function BoardColumn({
             <DeferredPopup
               ariaHasPopup="menu"
               triggerRender={
-                <Button variant="ghost" size="icon-sm" className="rounded-full text-muted-foreground">
+                <Button
+                  variant="ghost"
+                  size="icon-sm"
+                  className="rounded-full text-muted-foreground"
+                  aria-label={tCommon(($) => $.more_actions)}
+                >
                   <MoreHorizontal className="size-3.5" />
                 </Button>
               }
@@ -239,7 +245,12 @@ export const BoardColumn = memo(function BoardColumn({
                 <DropdownMenu open={open} onOpenChange={onOpenChange}>
                   <DropdownMenuTrigger
                     render={
-                      <Button variant="ghost" size="icon-sm" className="rounded-full text-muted-foreground">
+                      <Button
+                        variant="ghost"
+                        size="icon-sm"
+                        className="rounded-full text-muted-foreground"
+                        aria-label={tCommon(($) => $.more_actions)}
+                      >
                         <MoreHorizontal className="size-3.5" />
                       </Button>
                     }
