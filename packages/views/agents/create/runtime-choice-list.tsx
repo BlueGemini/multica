@@ -626,6 +626,12 @@ export function RuntimeChoiceList({
           ) : null}
           {matchedDevices.map((device) => {
             const id = device.machine.id;
+            const ownerId = device.harnesses[0]?.runtime.owner_id ?? null;
+            const owner = device.machine.isCurrent
+              ? null
+              : ownerId && ownerId === currentUserId
+                ? t(($) => $.creation_studio.runtime_step.owner_you)
+                : ownerName(ownerId);
             return (
               <MachineBlock
                 key={id}
@@ -640,11 +646,7 @@ export function RuntimeChoiceList({
                 onShowAll={() => setShowAllIds((current) => new Set(current).add(id))}
                 starting={device.machine.isCurrent && localStarting}
                 query={query}
-                owner={
-                  device.machine.isCurrent
-                    ? null
-                    : ownerName(device.harnesses[0]?.runtime.owner_id ?? null)
-                }
+                owner={owner}
                 selectedRuntimeId={selectedRuntimeId}
                 selectedNotice={noticeFor(device)}
                 onSelect={onSelect}

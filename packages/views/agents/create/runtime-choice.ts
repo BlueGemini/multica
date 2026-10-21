@@ -38,13 +38,21 @@ export interface RuntimeChoiceGroups {
   qoderRuntime: RuntimeDevice | null;
 }
 
+/**
+ * The version number out of a CLI's `--version` output, which comes in many
+ * shapes ("codex-cli 0.161.0", "kimi, version 1.37.0", "2.1.300 (Claude Code)").
+ */
+export function shortVersion(raw: string): string {
+  return raw.match(/\d+(?:\.\d+)+(?:-[\w.]+)?/)?.[0] ?? raw;
+}
+
 export function harnessOption(
   runtime: RuntimeDevice,
   machineTitle: string,
 ): HarnessOption {
   const version =
     typeof runtime.metadata?.version === "string" && runtime.metadata.version
-      ? runtime.metadata.version
+      ? shortVersion(runtime.metadata.version)
       : null;
   return {
     runtime,

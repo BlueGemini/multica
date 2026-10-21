@@ -397,6 +397,7 @@
         "cloud": "云服务"
       },
       "this_machine": "本机",
+      "owner_you": "你",
       "custom_badge": "自定义",
       "web_local_title": "在桌面端可以使用这台电脑上的 harness",
       "download_desktop": "下载桌面端",

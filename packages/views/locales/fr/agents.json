@@ -407,6 +407,7 @@
         "cloud": "Services cloud"
       },
       "this_machine": "Cette machine",
+      "owner_you": "Vous",
       "custom_badge": "Personnalisé",
       "web_local_title": "Utilisez les harness de cet ordinateur avec l'application de bureau",
       "download_desktop": "Télécharger l'application de bureau",

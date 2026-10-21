@@ -989,6 +989,7 @@
         "cloud": "클라우드 서비스"
       },
       "this_machine": "이 머신",
+      "owner_you": "나",
       "custom_badge": "사용자 지정",
       "web_local_title": "데스크톱 앱에서 이 컴퓨터의 하네스를 사용할 수 있습니다",
       "download_desktop": "데스크톱 앱 다운로드",

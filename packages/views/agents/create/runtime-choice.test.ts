@@ -8,6 +8,7 @@ import {
   filterDevice,
   harnessOption,
   previewOptions,
+  shortVersion,
 } from "./runtime-choice";
 
 const NOW = new Date("2026-10-18T12:00:00Z").getTime();
@@ -118,6 +119,16 @@ describe("harness helpers", () => {
     expect(shown).toHaveLength(7);
     expect(shown.at(-1)?.runtime.id).toBe("rt-9");
     expect(hiddenCount).toBe(3);
+  });
+
+  it("reduces CLI version output to the version number", () => {
+    expect(shortVersion("codex-cli 0.161.0")).toBe("0.161.0");
+    expect(shortVersion("kimi, version 1.37.0")).toBe("1.37.0");
+    expect(shortVersion("2.1.300 (Claude Code)")).toBe("2.1.300");
+    expect(shortVersion("grok 1.0.52 (0920c8169e27)")).toBe("1.0.52");
+    expect(shortVersion("2026.10.19-6bbf2c4")).toBe("2026.10.19-6bbf2c4");
+    expect(shortVersion("0.1.0-rc.6")).toBe("0.1.0-rc.6");
+    expect(shortVersion("nightly")).toBe("nightly");
   });
 
   it("shows a single leftover harness instead of folding it", () => {
