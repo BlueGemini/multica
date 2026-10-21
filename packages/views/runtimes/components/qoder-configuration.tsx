@@ -8,20 +8,14 @@ import {
   Loader2,
   KeyRound,
   Pencil,
-  Plus,
   ShieldCheck,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Badge } from "@multica/ui/components/ui/badge";
 import { useQuery } from "@tanstack/react-query";
 import { useAuthStore } from "@multica/core/auth";
-import {
-  agentListOptions,
-  memberListOptions,
-} from "@multica/core/workspace/queries";
+import { memberListOptions } from "@multica/core/workspace/queries";
 import { useWorkspaceId } from "@multica/core/hooks";
-import { useWorkspacePaths } from "@multica/core/paths";
-import { runtimeListOptions } from "@multica/core/runtimes/queries";
 import {
   MAX_CONCURRENCY,
   MAX_RUN_TIMEOUT,
@@ -29,7 +23,6 @@ import {
   QODER_REGIONS,
   qoderOptions,
   useQoderEnvironments,
-  useStopQoder,
   useCheckQoder,
   useSaveQoder,
   type QoderConnection,
@@ -45,20 +38,7 @@ import {
   SelectItem,
 } from "@multica/ui/components/ui/select";
 import { Input } from "@multica/ui/components/ui/input";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@multica/ui/components/ui/alert-dialog";
-import { createPathWithParams } from "../../agents/create/squad-param";
-import { useNavigation } from "../../navigation";
 import { QoderConnectForm } from "./qoder-connect-form";
-import { QoderStatusBadge } from "./qoder-status-badge";
 import { useT } from "../../i18n";
 
 export function QoderConfiguration({
@@ -104,22 +84,6 @@ function QoderForm({
   data: QoderConnection;
 }) {
   const { t } = useT("runtimes");
-  const paths = useWorkspacePaths();
-  const navigation = useNavigation();
-  const { data: runtimes = [] } = useQuery(runtimeListOptions(wsId));
-  const { data: agents = [] } = useQuery(agentListOptions(wsId));
-  const qoderRuntimes = runtimes.filter(
-    (runtime) => runtime.provider === "qoder_cloud",
-  );
-  const onlineQoderRuntime = qoderRuntimes.find(
-    (runtime) => runtime.status === "online",
-  );
-  const boundAgents = agents.filter(
-    (agent) =>
-      !agent.archived_at &&
-      qoderRuntimes.some((runtime) => runtime.id === agent.runtime_id),
-  );
-  const [confirmStop, setConfirmStop] = useState(false);
   const [input, setInput] = useState<QoderInput>(() => ({
     name: data.name || "Qoder Cloud Agent",
     baseUrl: data.baseUrl || QODER_REGIONS.global,
@@ -140,7 +104,6 @@ function QoderForm({
   const { data: members = [] } = useQuery(memberListOptions(wsId));
   const member = members.find((m) => m.user_id === user?.id);
   const canManage = member?.role === "owner" || member?.role === "admin";
-  const stop = useStopQoder(wsId);
   const save = useSaveQoder(wsId);
   const check = useCheckQoder(wsId);
   const environments = useQoderEnvironments(wsId);
@@ -196,17 +159,6 @@ function QoderForm({
     environments.data?.some((item) => item.id === input.environmentId) === true;
 
   const [saved, setSaved] = useState(false);
-  const hasUnsavedChanges =
-    input.name !== (data.name || "Qoder Cloud Agent") ||
-    input.environmentId !== data.environmentId ||
-    input.baseUrl !== (data.baseUrl || QODER_REGIONS.global) ||
-    input.qoderToken !== "" ||
-    input.maxConcurrency !== data.maxConcurrency ||
-    input.runTimeoutMinutes !== data.runTimeoutMinutes ||
-    repos.length !== data.repositories.length ||
-    repos.some(
-      (row) => row.token !== "" || !data.repositories.includes(row.url),
-    );
 
   const payload = () => ({
     ...input,
@@ -214,8 +166,7 @@ function QoderForm({
       repos.map((row) => [row.url.trim(), row.token]),
     ),
   });
-  const busy =
-    !canManage || save.isPending || check.isPending || stop.isPending;
+  const busy = !canManage || save.isPending || check.isPending;
   const edit = (
     key: "name" | "baseUrl" | "environmentId" | "qoderToken",
     value: string,
@@ -257,24 +208,16 @@ function QoderForm({
       }}
     >
       <section className="space-y-4">
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <h3 className="flex items-center gap-2 text-body font-medium">
-            <KeyRound
-              aria-hidden="true"
-              className="size-4 text-muted-foreground"
-            />
-            {t(($) => $.qoder.connection_credentials)}
-          </h3>
-          <QoderStatusBadge connection={data} />
-        </div>
+        <h3 className="flex items-center gap-2 text-body font-medium">
+          <KeyRound
+            aria-hidden="true"
+            className="size-4 text-muted-foreground"
+          />
+          {t(($) => $.qoder.connection_credentials)}
+        </h3>
         <p className="text-caption leading-relaxed text-muted-foreground">
           {t(($) => $.qoder.shared_credentials_hint)}
         </p>
-        {data.lastError && (
-          <p role="alert" className="text-caption text-destructive">
-            {data.lastError}
-          </p>
-        )}
         <div className="space-y-2">
           <p id="qoder-region-label" className="text-caption">
             {t(($) => $.qoder.region)}
@@ -587,9 +530,9 @@ function QoderForm({
           </div>
         </div>
       </fieldset>
-      {(save.error || stop.error) && (
+      {save.error && (
         <p role="alert" className="text-caption text-destructive">
-          {(save.error || stop.error)?.message}
+          {save.error.message}
         </p>
       )}
       <div aria-live="polite" aria-atomic="true">
@@ -639,17 +582,6 @@ function QoderForm({
         </p>
       )}
       <div className="flex flex-wrap justify-end gap-2">
-        {data.configured && data.enabled && (
-          <Button
-            type="button"
-            variant="ghost"
-            disabled={busy}
-            aria-busy={stop.isPending}
-            onClick={() => setConfirmStop(true)}
-          >
-            {t(($) => $.qoder.stop)}
-          </Button>
-        )}
         <Button
           type="button"
           variant="outline"
@@ -674,72 +606,6 @@ function QoderForm({
           {save.isPending ? t(($) => $.qoder.working) : t(($) => $.qoder.save)}
         </Button>
       </div>
-      <div className="border-t pt-4">
-        <Button
-          type="button"
-          variant="outline"
-          className="w-full"
-          disabled={
-            !onlineQoderRuntime ||
-            busy ||
-            !data.enabled ||
-            data.status !== "online" ||
-            hasUnsavedChanges
-          }
-          onClick={() =>
-            onlineQoderRuntime &&
-            navigation.push(
-              createPathWithParams(paths.newAgentManual(), {
-                runtime: onlineQoderRuntime.id,
-              }),
-            )
-          }
-        >
-          <Plus aria-hidden="true" className="size-4" />
-          {t(($) => $.qoder.add_agent)}
-        </Button>
-      </div>
-      <AlertDialog
-        open={confirmStop}
-        onOpenChange={(open) => {
-          if (!open && !stop.isPending) setConfirmStop(false);
-        }}
-      >
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>{t(($) => $.qoder.stop_confirm.title)}</AlertDialogTitle>
-            <AlertDialogDescription>
-              {boundAgents.length > 0
-                ? t(($) => $.qoder.stop_confirm.description_agents, {
-                    count: boundAgents.length,
-                  })
-                : t(($) => $.qoder.stop_confirm.description)}
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          {boundAgents.length > 0 ? (
-            <ul className="max-h-40 space-y-1 overflow-y-auto rounded-md bg-muted/60 px-3 py-2 text-caption">
-              {boundAgents.map((agent) => (
-                <li key={agent.id} className="truncate">
-                  {agent.name}
-                </li>
-              ))}
-            </ul>
-          ) : null}
-          <AlertDialogFooter>
-            <AlertDialogCancel disabled={stop.isPending}>
-              {t(($) => $.qoder.stop_confirm.cancel)}
-            </AlertDialogCancel>
-            <AlertDialogAction
-              disabled={stop.isPending}
-              onClick={() =>
-                stop.mutate(undefined, { onSettled: () => setConfirmStop(false) })
-              }
-            >
-              {t(($) => $.qoder.stop)}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
     </form>
   );
 }

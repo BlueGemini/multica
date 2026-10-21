@@ -63,7 +63,6 @@
       "view_commands": "View commands",
       "owner_you": "You",
       "connect": "Connect",
-      "manage": "Manage connection",
       "not_connected": "Not connected",
       "provided_by": "By {{vendor}}",
       "no_matches": "No machines or cloud services match"
@@ -551,8 +550,8 @@
     "check": "Test connection",
     "working": "Working…",
     "save": "Save and start",
-    "stop": "Stop runtime",
-    "stopped": "Stopped",
+    "stop": "Pause",
+    "stopped": "Paused",
     "offline": "Offline; reconnecting",
     "checking": "Testing connection...",
     "check_passed": "Connection successful",
@@ -579,8 +578,6 @@
     "add_agent_description": "Create a Multica agent linked to an existing QCA Agent. It will use the environment and credentials configured for Qoder Cloud.",
     "agent_name": "Agent name",
     "cancel": "Cancel",
-    "credentials_title": "Qoder Cloud credentials",
-    "credentials_description": "Manage the QCA connection and GitHub repository credentials shared by agents using this workspace’s remote runtime.",
     "connection_credentials": "Qoder Cloud Agent credentials",
     "shared_credentials_hint": "Credentials are shared within this workspace. PATs are encrypted and never displayed after saving.",
     "secret_saved": "Saved, never displayed",
@@ -621,13 +618,41 @@
       "execution_summary": "Up to {{concurrency}} at once · {{timeout}} min timeout"
     },
     "stop_confirm": {
-      "title": "Stop Qoder Cloud Agent?",
-      "description": "New tasks will not be sent to Qoder until it is started again.",
-      "description_agents_one": "This agent keeps its instructions and history but cannot take new tasks until Qoder is started again or it moves to another runtime.",
-      "description_agents_other": "These {{count}} agents keep their instructions and history but cannot take new tasks until Qoder is started again or they move to another runtime.",
-      "cancel": "Cancel"
+      "title": "Pause Qoder Cloud Agent?",
+      "description": "New tasks will not be sent to Qoder until it is resumed.",
+      "cancel": "Cancel",
+      "description_agents_one": "This agent keeps its instructions and history but cannot take new tasks until Qoder is resumed or it moves to another runtime.",
+      "description_agents_other": "These {{count}} agents keep their instructions and history but cannot take new tasks until Qoder is resumed or they move to another runtime."
     },
     "connect_title": "Connect Qoder Cloud Agent",
-    "connect_description": "Connect once with a Qoder PAT. Multica runs tasks in Qoder's sandboxes and stores credentials encrypted."
+    "connect_description": "Connect once with a Qoder PAT. Multica runs tasks in Qoder's sandboxes and stores credentials encrypted.",
+    "page": {
+      "configuration": "Configuration",
+      "agents_title": "Agents",
+      "danger_title": "Danger zone",
+      "pause_title": "Pause Qoder",
+      "pause_hint": "Stop sending new tasks to Qoder. Credentials and agents stay, and you can resume anytime.",
+      "resume_title": "Resume Qoder",
+      "resume_hint": "Start taking tasks again with the saved configuration.",
+      "resume": "Resume",
+      "resumed": "Qoder is starting.",
+      "disconnect_title": "Disconnect Qoder",
+      "disconnect_hint": "Delete the saved PAT and repository tokens and remove this runtime. Agents using it are unbound and keep their history.",
+      "disconnect": "Disconnect",
+      "not_connected_title": "Qoder isn't connected",
+      "not_connected_hint": "Ask a workspace admin to connect Qoder Cloud Agent.",
+      "workload_idle": "Idle"
+    },
+    "disconnect_confirm": {
+      "title": "Disconnect Qoder Cloud Agent?",
+      "description": "The saved PAT and repository tokens are deleted and the Qoder runtime is removed. To use Qoder again, connect it from scratch.",
+      "description_agents_one": "This agent will be unbound. It keeps its instructions and history and can move to another runtime.",
+      "description_agents_other": "These {{count}} agents will be unbound. They keep their instructions and history and can move to another runtime.",
+      "plan_changed": "The agents on Qoder changed. Review the list and confirm again.",
+      "confirm": "Disconnect",
+      "working": "Disconnecting…",
+      "cancel": "Cancel",
+      "done": "Qoder disconnected"
+    }
   }
 }

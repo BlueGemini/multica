@@ -13,7 +13,6 @@ import {
   Plus,
   Search,
   Server,
-  Settings2,
   SquareTerminal,
 } from "lucide-react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -85,7 +84,7 @@ import {
 } from "../../navigation";
 import { getMikaOnboarding, pickContentLang } from "../../onboarding/templates";
 import { qoderOptions } from "@multica/core/runtimes/qoder";
-import { isRuntimeUsableForUser } from "@multica/core/runtimes";
+import { QODER_RUNTIME_LOCATOR } from "./qoder-detail-page";
 import { RemoteRuntimeDialog } from "./remote-runtime-dialog";
 import { ConnectRemoteDialog } from "./connect-remote-dialog";
 import { CloudRuntimeDialog } from "./cloud-runtime-dialog";
@@ -159,9 +158,8 @@ export function RuntimesPage({
   const qc = useQueryClient();
   const paths = useWorkspacePaths();
   const { data: qoderConnection } = useQuery(qoderOptions(wsId));
-  const [qoderDialog, setQoderDialog] = useState<"connect" | "manage" | null>(
-    null,
-  );
+  const navigation = useNavigation();
+  const [qoderDialogOpen, setQoderDialogOpen] = useState(false);
   const [showConnectDialog, setShowConnectDialog] = useState(false);
   const [showCloudRuntimeDialog, setShowCloudRuntimeDialog] = useState(false);
   const [query, setQuery] = useState("");
@@ -241,15 +239,7 @@ export function RuntimesPage({
 
   const isDesktop = hasLocalMachine === true;
   const qoder = qoderConnection?.available === true ? qoderConnection : null;
-  const qoderRuntime = runtimes.find(
-    (runtime) =>
-      runtime.provider === "qoder_cloud" &&
-      runtime.status === "online" &&
-      isRuntimeUsableForUser(runtime, currentUserId ?? null),
-  );
-  const qoderMachine = machines.find((machine) =>
-    machine.runtimes.some((runtime) => runtime.id === qoderRuntime?.id),
-  );
+  const qoderHref = paths.runtimeDetail(QODER_RUNTIME_LOCATOR);
   // Qoder's runtime registers like a machine, but it is listed once, as a
   // cloud service.
   const machineList = qoder
@@ -315,8 +305,8 @@ export function RuntimesPage({
     offline: totalCount - onlineCount,
   };
 
-  const openQoderDialog = () =>
-    setQoderDialog(qoderConfigured ? "manage" : "connect");
+  const openQoder = () =>
+    qoderConfigured ? navigation.push(qoderHref) : setQoderDialogOpen(true);
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
@@ -336,7 +326,7 @@ export function RuntimesPage({
             qoder={qoder}
             cloudRuntimeEnabled={cloudRuntimeEnabled}
             onAddMachine={() => setShowConnectDialog(true)}
-            onQoder={openQoderDialog}
+            onQoder={openQoder}
             onCloudRuntime={() => setShowCloudRuntimeDialog(true)}
           />
         }
@@ -439,12 +429,8 @@ export function RuntimesPage({
                     <QoderRow
                       connection={qoder}
                       agentCount={qoderAgentCount}
-                      detailHref={
-                        qoderMachine
-                          ? paths.runtimeDetail(qoderMachine.id)
-                          : undefined
-                      }
-                      onConnect={openQoderDialog}
+                      detailHref={qoderHref}
+                      onConnect={() => setQoderDialogOpen(true)}
                     />
                   )}
                   {visibleComingSoon.map((service) => (
@@ -478,11 +464,8 @@ export function RuntimesPage({
         </div>
       </div>
 
-      {qoderDialog && (
-        <RemoteRuntimeDialog
-          configure={qoderDialog === "manage"}
-          onClose={() => setQoderDialog(null)}
-        />
+      {qoderDialogOpen && (
+        <RemoteRuntimeDialog onClose={() => setQoderDialogOpen(false)} />
       )}
       {showConnectDialog && (
         <ConnectRemoteDialog onClose={() => setShowConnectDialog(false)} />
@@ -953,7 +936,7 @@ function QoderRow({
 }: {
   connection: QoderConnection;
   agentCount: number;
-  detailHref?: string;
+  detailHref: string;
   onConnect: () => void;
 }) {
   const { t } = useT("runtimes");
@@ -1017,8 +1000,8 @@ function QoderRow({
 
   return (
     <ListGridRow
-      className={cn("h-auto min-h-14 border-b", detailHref && "cursor-pointer")}
-      {...(detailHref ? rowLink(detailHref, title) : {})}
+      className="h-auto min-h-14 cursor-pointer border-b"
+      {...rowLink(detailHref, title)}
     >
       <NameCell
         tile={
@@ -1065,27 +1048,7 @@ function QoderRow({
           {t(($) => $.qoder[status])}
         </span>
       </ListGridCell>
-      <ListGridCell className="justify-end gap-1">
-        <Button
-          variant="ghost"
-          size="icon-sm"
-          aria-label={t(($) => $.page.rows.manage)}
-          title={t(($) => $.page.rows.manage)}
-          onClick={(e) => {
-            e.stopPropagation();
-            onConnect();
-          }}
-          onAuxClick={rowLinkInteractiveProps.onAuxClick}
-        >
-          <Settings2 aria-hidden="true" className="size-4 text-muted-foreground" />
-        </Button>
-        {detailHref && (
-          <ChevronRight
-            aria-hidden="true"
-            className="size-4 text-faint-foreground transition-transform group-hover/row:translate-x-0.5 group-hover/row:text-muted-foreground"
-          />
-        )}
-      </ListGridCell>
+      <RowChevron />
     </ListGridRow>
   );
 }

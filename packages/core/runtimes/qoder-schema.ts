@@ -53,7 +53,9 @@ export type QoderInput = {
   baseUrl: string;
   environmentId: string;
   qoderToken: string;
-  githubTokens: Record<string, string>;
+  // Omitted keeps the stored repository bindings, as an empty qoderToken
+  // keeps the stored token.
+  githubTokens?: Record<string, string>;
   maxConcurrency: number;
   runTimeoutMinutes: number;
 };

@@ -17,6 +17,7 @@ import { useBackOrReplace, useNavigation } from "../../navigation";
 import { useT } from "../../i18n";
 import { ConnectRemoteDialog } from "../../runtimes/components/connect-remote-dialog";
 import { RemoteRuntimeDialog } from "../../runtimes/components/remote-runtime-dialog";
+import { QODER_RUNTIME_LOCATOR } from "../../runtimes/components/qoder-detail-page";
 import { buildRuntimeMachines } from "../../runtimes/components/runtime-machines";
 import { AgentCreateShell } from "./create-shell";
 import { buildRuntimeChoiceGroups, type HarnessOption } from "./runtime-choice";
@@ -96,7 +97,7 @@ export function ChooseRuntimePage({
   const [selection, setSelection] = useState<Selection>(null);
   const [query, setQuery] = useState("");
   const [showConnectRemote, setShowConnectRemote] = useState(false);
-  const [qoderDialog, setQoderDialog] = useState<"connect" | "configure" | null>(null);
+  const [qoderDialogOpen, setQoderDialogOpen] = useState(false);
   const [selectQoderWhenReady, setSelectQoderWhenReady] = useState(false);
   const searchRef = useRef<HTMLInputElement>(null);
 
@@ -263,8 +264,10 @@ export function ChooseRuntimePage({
               onSelectQoder={() =>
                 setSelection((current) => (current?.kind === "qoder" ? null : { kind: "qoder" }))
               }
-              onConnectQoder={() => setQoderDialog("connect")}
-              onManageQoder={() => setQoderDialog("configure")}
+              onConnectQoder={() => setQoderDialogOpen(true)}
+              onManageQoder={() =>
+                navigation.push(paths.runtimeDetail(QODER_RUNTIME_LOCATOR))
+              }
               onAddRemote={() => setShowConnectRemote(true)}
             />
           </div>
@@ -292,11 +295,10 @@ export function ChooseRuntimePage({
       {showConnectRemote ? (
         <ConnectRemoteDialog onClose={() => setShowConnectRemote(false)} />
       ) : null}
-      {qoderDialog ? (
+      {qoderDialogOpen ? (
         <RemoteRuntimeDialog
-          configure={qoderDialog === "configure"}
           onConnected={() => setSelectQoderWhenReady(true)}
-          onClose={() => setQoderDialog(null)}
+          onClose={() => setQoderDialogOpen(false)}
         />
       ) : null}
     </AgentCreateShell>

@@ -5,6 +5,8 @@ import {
 } from "@tanstack/react-query";
 import { api } from "../api";
 import { runtimeKeys } from "./queries";
+import { workspaceKeys } from "../workspace/queries";
+import { agentTaskSnapshotKeys } from "../agents/queries";
 import type { QoderInput } from "./qoder-schema";
 export type { QoderInput, QoderConnection, QoderRegion } from "./qoder-schema";
 export {
@@ -47,6 +49,23 @@ export function useStopQoder(wsId: string) {
       qc.setQueryData(qoderKey(wsId), data);
       void qc.invalidateQueries({ queryKey: ["qoder", wsId, "agents"] });
       void qc.invalidateQueries({ queryKey: runtimeKeys.all(wsId) });
+    },
+  });
+}
+
+export function useDisconnectQoder(wsId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (expectedActiveAgentIds: string[]) =>
+      api.disconnectQoderConnection(wsId, expectedActiveAgentIds),
+    onSuccess: (data) => {
+      qc.setQueryData(qoderKey(wsId), data);
+    },
+    onSettled: () => {
+      void qc.invalidateQueries({ queryKey: qoderKey(wsId) });
+      void qc.invalidateQueries({ queryKey: runtimeKeys.all(wsId) });
+      void qc.invalidateQueries({ queryKey: workspaceKeys.agents(wsId) });
+      void qc.invalidateQueries({ queryKey: agentTaskSnapshotKeys.all(wsId) });
     },
   });
 }

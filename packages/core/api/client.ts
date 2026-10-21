@@ -2026,6 +2026,11 @@ export class ApiClient {
   async stopQoderConnection(wsId: string) {
     return parseQoderConnection(await this.fetch(`/api/workspaces/${wsId}/qoder/stop`, { method: "POST" }));
   }
+  // Refuses with 409 `runtime_delete_plan_changed` and the current
+  // `active_agents` when the confirmed list no longer matches.
+  async disconnectQoderConnection(wsId: string, expectedActiveAgentIds: string[]) {
+    return parseQoderConnection(await this.fetch(`/api/workspaces/${wsId}/qoder`, { method: "DELETE", body: JSON.stringify({ expected_active_agent_ids: expectedActiveAgentIds }) }));
+  }
   async getQoderConnection(wsId: string) {
     return parseQoderConnection(await this.fetch(`/api/workspaces/${wsId}/qoder`));
   }

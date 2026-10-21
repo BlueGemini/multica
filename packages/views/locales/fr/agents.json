@@ -430,7 +430,7 @@
         "starting": "Démarrage",
         "ready": "Connecté",
         "error": "Erreur",
-        "stopped": "Arrêté"
+        "stopped": "En pause"
       },
       "connect": "Connecter",
       "settings": "Paramètres",

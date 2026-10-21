@@ -10,17 +10,17 @@ import {
 import { useT } from "../../i18n";
 import { QoderConfiguration } from "./qoder-configuration";
 
-/** Connects or manages the workspace's Qoder Cloud Agent connection. */
+/**
+ * Connects the workspace's Qoder Cloud Agent. An existing connection is
+ * managed on its runtime page instead.
+ */
 export function RemoteRuntimeDialog({
   onClose,
   onConnected,
-  configure = false,
 }: {
   onClose: () => void;
   /** Called after a first-time connection succeeds, before the dialog closes. */
   onConnected?: () => void;
-  /** The connection already exists; title the dialog as managing it. */
-  configure?: boolean;
 }) {
   const { t } = useT("runtimes");
   return (
@@ -32,15 +32,9 @@ export function RemoteRuntimeDialog({
     >
       <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-2xl">
         <DialogHeader>
-          <DialogTitle>
-            {configure
-              ? t(($) => $.qoder.credentials_title)
-              : t(($) => $.qoder.connect_title)}
-          </DialogTitle>
+          <DialogTitle>{t(($) => $.qoder.connect_title)}</DialogTitle>
           <DialogDescription>
-            {configure
-              ? t(($) => $.qoder.credentials_description)
-              : t(($) => $.qoder.connect_description)}
+            {t(($) => $.qoder.connect_description)}
           </DialogDescription>
         </DialogHeader>
         <QoderConfiguration

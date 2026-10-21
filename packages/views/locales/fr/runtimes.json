@@ -63,7 +63,6 @@
       "view_commands": "Voir les commandes",
       "owner_you": "Vous",
       "connect": "Connecter",
-      "manage": "Gérer la connexion",
       "not_connected": "Non connecté",
       "provided_by": "Par {{vendor}}",
       "no_matches": "Aucune machine ni aucun service cloud ne correspond"
@@ -551,8 +550,8 @@
     "check": "Tester la connexion",
     "working": "En cours…",
     "save": "Enregistrer et démarrer",
-    "stop": "Arrêter l’environnement",
-    "stopped": "Arrêté",
+    "stop": "Mettre en pause",
+    "stopped": "En pause",
     "offline": "Hors ligne ; reconnexion en cours",
     "checking": "Test de connexion...",
     "check_passed": "Connexion réussie",
@@ -579,8 +578,6 @@
     "add_agent_description": "Créez un agent Multica associé à un agent QCA existant. Il utilisera l’environnement et les identifiants configurés pour Qoder Cloud.",
     "agent_name": "Nom de l’agent",
     "cancel": "Annuler",
-    "credentials_title": "Identifiants Qoder Cloud",
-    "credentials_description": "Gérez la connexion QCA et les identifiants des dépôts GitHub partagés par les agents utilisant l’environnement distant de cet espace de travail.",
     "connection_credentials": "Identifiants Qoder Cloud Agent",
     "shared_credentials_hint": "Les identifiants sont partagés dans cet espace de travail. Les PAT sont chiffrés et ne sont plus affichés après l’enregistrement.",
     "secret_saved": "Enregistré, non affiché",
@@ -621,13 +618,41 @@
       "execution_summary": "Jusqu'à {{concurrency}} à la fois · délai de {{timeout}} min"
     },
     "stop_confirm": {
-      "title": "Arrêter Qoder Cloud Agent ?",
-      "description": "Aucune nouvelle tâche ne sera envoyée à Qoder tant qu'il n'est pas redémarré.",
-      "description_agents_one": "Cet agent conserve ses instructions et son historique, mais ne peut plus recevoir de tâches tant que Qoder n'est pas redémarré ou qu'il ne change pas de runtime.",
-      "description_agents_other": "Ces {{count}} agents conservent leurs instructions et leur historique, mais ne peuvent plus recevoir de tâches tant que Qoder n'est pas redémarré ou qu'ils ne changent pas de runtime.",
-      "cancel": "Annuler"
+      "title": "Mettre Qoder Cloud Agent en pause ?",
+      "description": "Aucune nouvelle tâche ne sera envoyée à Qoder tant qu'il n'est pas relancé.",
+      "cancel": "Annuler",
+      "description_agents_one": "Cet agent garde ses instructions et son historique, mais ne peut plus prendre de tâches tant que Qoder n'est pas relancé ou qu'il n'est pas déplacé vers un autre environnement.",
+      "description_agents_other": "Ces {{count}} agents gardent leurs instructions et leur historique, mais ne peuvent plus prendre de tâches tant que Qoder n'est pas relancé ou qu'ils ne sont pas déplacés vers un autre environnement."
     },
     "connect_title": "Connecter Qoder Cloud Agent",
-    "connect_description": "Connectez-vous une fois avec un PAT Qoder. Multica exécute les tâches dans les sandboxes Qoder et chiffre les identifiants."
+    "connect_description": "Connectez-vous une fois avec un PAT Qoder. Multica exécute les tâches dans les sandboxes Qoder et chiffre les identifiants.",
+    "page": {
+      "configuration": "Configuration",
+      "agents_title": "Agents",
+      "danger_title": "Zone de danger",
+      "pause_title": "Mettre Qoder en pause",
+      "pause_hint": "Plus aucune nouvelle tâche n'est envoyée à Qoder. Les identifiants et les agents sont conservés, et vous pouvez relancer à tout moment.",
+      "resume_title": "Relancer Qoder",
+      "resume_hint": "Reprendre les tâches avec la configuration enregistrée.",
+      "resume": "Relancer",
+      "resumed": "Qoder démarre.",
+      "disconnect_title": "Déconnecter Qoder",
+      "disconnect_hint": "Supprime le PAT et les jetons de dépôt enregistrés, et retire cet environnement. Les agents qui l'utilisent sont détachés et gardent leur historique.",
+      "disconnect": "Déconnecter",
+      "not_connected_title": "Qoder n'est pas connecté",
+      "not_connected_hint": "Demandez à un administrateur de l'espace de travail de connecter Qoder Cloud Agent.",
+      "workload_idle": "Inactif"
+    },
+    "disconnect_confirm": {
+      "title": "Déconnecter Qoder Cloud Agent ?",
+      "description": "Le PAT et les jetons de dépôt enregistrés sont supprimés et l'environnement Qoder est retiré. Pour réutiliser Qoder, il faudra le reconnecter depuis le début.",
+      "description_agents_one": "Cet agent sera détaché. Il garde ses instructions et son historique et peut passer à un autre environnement.",
+      "description_agents_other": "Ces {{count}} agents seront détachés. Ils gardent leurs instructions et leur historique et peuvent passer à un autre environnement.",
+      "plan_changed": "Les agents sur Qoder ont changé. Vérifiez la liste et confirmez à nouveau.",
+      "confirm": "Déconnecter",
+      "working": "Déconnexion…",
+      "cancel": "Annuler",
+      "done": "Qoder déconnecté"
+    }
   }
 }

@@ -1009,7 +1009,7 @@
         "starting": "시작 중",
         "ready": "연결됨",
         "error": "오류",
-        "stopped": "중지됨"
+        "stopped": "일시 중지됨"
       },
       "connect": "연결",
       "settings": "설정",
