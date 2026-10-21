@@ -44,6 +44,8 @@ export function classifyAgentCreateError(
 export function useCreateAgentSubmit(options: {
   draft: AgentDraft;
   runtimeId: string | null;
+  /** Provider of `runtimeId`, so settings it cannot run are not submitted. */
+  runtimeProvider?: string;
   squadId: string | null;
   /** Creation-source attribution for the `agent_created` analytics event. */
   template?: string;
@@ -61,8 +63,15 @@ export function useCreateAgentSubmit(options: {
   const [nameError, setNameError] = useState<string | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
 
-  const { draft, runtimeId, squadId, template, duplicateSource, onCreated } =
-    options;
+  const {
+    draft,
+    runtimeId,
+    runtimeProvider,
+    squadId,
+    template,
+    duplicateSource,
+    onCreated,
+  } = options;
 
   const create = async () => {
     if (!runtimeId || creating) return;
@@ -74,6 +83,7 @@ export function useCreateAgentSubmit(options: {
         buildCreateAgentRequest({
           draft,
           runtimeId,
+          runtimeProvider,
           template,
           duplicateSource,
         }),

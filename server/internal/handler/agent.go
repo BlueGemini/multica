@@ -1477,6 +1477,11 @@ func (h *Handler) CreateAgent(w http.ResponseWriter, r *http.Request) {
 			writeError(w, 400, err.Error())
 			return
 		}
+		overrides := qoderOverrides{skills: len(req.SkillIDs), customEnv: len(req.CustomEnv), customArgs: len(req.CustomArgs), mcpConfig: req.McpConfig, model: req.Model, thinkingLevel: req.ThinkingLevel, serviceTier: req.ServiceTier}
+		if err := overrides.validate(); err != nil {
+			writeError(w, 400, err.Error())
+			return
+		}
 	}
 	// thinking_level validation: fixed-enum providers reject unknown literals;
 	// dynamic-catalog providers (Codex/OpenCode) reject malformed tokens here.
@@ -2059,6 +2064,26 @@ func (h *Handler) UpdateAgent(w http.ResponseWriter, r *http.Request) {
 				raw, _ = json.Marshal(req.RuntimeConfig)
 			}
 			if err := validateQoderAgentConfig(raw); err != nil {
+				writeError(w, 400, err.Error())
+				return
+			}
+			var overrides qoderOverrides
+			if req.CustomArgs != nil {
+				overrides.customArgs = len(*req.CustomArgs)
+			}
+			if req.McpConfig != nil {
+				overrides.mcpConfig = *req.McpConfig
+			}
+			if req.Model != nil {
+				overrides.model = *req.Model
+			}
+			if req.ThinkingLevel != nil {
+				overrides.thinkingLevel = *req.ThinkingLevel
+			}
+			if req.ServiceTier != nil {
+				overrides.serviceTier = *req.ServiceTier
+			}
+			if err := overrides.validate(); err != nil {
 				writeError(w, 400, err.Error())
 				return
 			}

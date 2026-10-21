@@ -321,3 +321,29 @@ it("persists a per-agent QCA binding and clears it on runtime change", () => {
   expect(buildCreateAgentRequest({ draft: current, runtimeId: current.runtimeId }).runtime_config).toEqual({ qoder_agent_id: "agent_qca" });
   expect(applyDraftRuntimeChange(current, "another-runtime").qoderAgentId).toBe("");
 });
+
+it("drops settings a Qoder runtime cannot run from a draft started elsewhere", () => {
+  const current: AgentDraft = {
+    ...draft(),
+    qoderAgentId: "agent_qca",
+    thinkingLevel: "high",
+    serviceTier: "priority",
+    conversationStarters: [{ label: "Plan", prompt: "Plan it" }],
+  };
+  const request = buildCreateAgentRequest({
+    draft: current,
+    runtimeId: "rt-qoder",
+    runtimeProvider: "qoder_cloud",
+    duplicateSource: sourceAgent(),
+  });
+  expect(request).toMatchObject({ runtime_config: { qoder_agent_id: "agent_qca" }, skill_ids: [] });
+  expect(request.model).toBeUndefined();
+  expect(request.thinking_level).toBeUndefined();
+  expect(request.service_tier).toBeUndefined();
+  expect(request).not.toHaveProperty("conversation_starters");
+  expect(request).not.toHaveProperty("custom_args");
+
+  const local = buildCreateAgentRequest({ draft: current, runtimeId: "runtime-1", runtimeProvider: "codex" });
+  expect(local).not.toHaveProperty("runtime_config");
+  expect(local.skill_ids).toEqual(["skill-1"]);
+});

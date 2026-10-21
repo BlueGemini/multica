@@ -195,6 +195,23 @@ func (h *Handler) ListQoderEnvironments(w http.ResponseWriter, r *http.Request) 
 	writeJSON(w, 200, map[string]any{"items": items})
 }
 
+// qoderOverrides lists per-agent execution settings the Qoder bridge refuses
+// at run time (see qoderruntime.prepare); saving them would create an agent
+// that fails every task.
+type qoderOverrides struct {
+	skills, customEnv, customArgs     int
+	mcpConfig                         json.RawMessage
+	model, thinkingLevel, serviceTier string
+}
+
+func (o qoderOverrides) validate() error {
+	mcp := strings.TrimSpace(string(o.mcpConfig))
+	if o.skills > 0 || o.customEnv > 0 || o.customArgs > 0 || (mcp != "" && mcp != "null" && mcp != "{}") || o.model != "" || o.thinkingLevel != "" || o.serviceTier != "" {
+		return fmt.Errorf("Qoder agents take skills, tools, credentials and model from the Qoder Agent; remove them from this agent")
+	}
+	return nil
+}
+
 func validateQoderAgentConfig(raw []byte) error {
 	if _, err := qoderruntime.ParseAgentConfig(raw); err != nil {
 		if strings.HasPrefix(err.Error(), "default repository") {

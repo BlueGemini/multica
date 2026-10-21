@@ -54,3 +54,22 @@ func TestQoderCatalogRejectsMalformedAndRedactsErrors(t *testing.T) {
 		t.Fatal("provider error was not redacted")
 	}
 }
+
+func TestQoderOverridesRejectedAtSave(t *testing.T) {
+	if err := (qoderOverrides{mcpConfig: json.RawMessage(`{}`)}).validate(); err != nil {
+		t.Fatalf("empty overrides rejected: %v", err)
+	}
+	for name, o := range map[string]qoderOverrides{
+		"skills":         {skills: 1},
+		"custom env":     {customEnv: 1},
+		"custom args":    {customArgs: 1},
+		"mcp config":     {mcpConfig: json.RawMessage(`{"mcpServers":{}}`)},
+		"model":          {model: "gpt"},
+		"thinking level": {thinkingLevel: "high"},
+		"service tier":   {serviceTier: "priority"},
+	} {
+		if err := o.validate(); err == nil {
+			t.Errorf("%s accepted for a Qoder agent", name)
+		}
+	}
+}

@@ -18,6 +18,8 @@ import {
 // without types/ having to import from agents/.
 export type { AgentPermissionScope };
 
+const QODER_PROVIDER = "qoder_cloud";
+
 /**
  * The in-progress configuration of an agent being created. Shared by every
  * creation surface (manual, duplicate, AI builder) so the same field set is
@@ -216,11 +218,28 @@ export function buildDuplicateDraft(
 export function buildCreateAgentRequest(options: {
   draft: AgentDraft;
   runtimeId: string;
+  /** Provider of `runtimeId`; drafts outlive runtime switches, so fields the target runtime cannot run are dropped here. */
+  runtimeProvider?: string;
   /** Creation-source attribution for the `agent_created` analytics event. */
   template?: string;
   duplicateSource?: Agent | null;
 }): CreateAgentRequest {
-  const { draft, runtimeId, template, duplicateSource } = options;
+  const { runtimeId, runtimeProvider, template, duplicateSource } = options;
+  const qoder = runtimeProvider === QODER_PROVIDER;
+  // The Qoder bridge refuses skills and execution overrides, and the form
+  // hides them (plus conversation starters) once Qoder is chosen.
+  const draft: AgentDraft = qoder
+    ? {
+        ...options.draft,
+        conversationStarters: [],
+        model: "",
+        thinkingLevel: "",
+        serviceTier: "",
+        skillIds: new Set(),
+      }
+    : runtimeProvider
+      ? { ...options.draft, qoderAgentId: "" }
+      : options.draft;
   const request: CreateAgentRequest = {
     name: draft.name.trim(),
     description: draft.description.trim(),
@@ -246,7 +265,7 @@ export function buildCreateAgentRequest(options: {
     template,
   };
   if (duplicateSource) {
-    if (duplicateSource.custom_args.length > 0) {
+    if (!qoder && duplicateSource.custom_args.length > 0) {
       request.custom_args = duplicateSource.custom_args;
     }
     const sourceConcurrency = duplicateSource.max_concurrent_tasks;
