@@ -464,6 +464,7 @@ export function AgentOverviewPane({
                       agent={agent}
                       onSave={(updates) => onUpdate(agent.id, updates)}
                       onDirtyChange={setActiveDirty}
+                      showConversationStarters={!qoderRuntime}
                     />
                   )}
                   {effectiveView === "skills" && (
