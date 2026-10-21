@@ -277,6 +277,7 @@ export const BoardColumn = memo(function BoardColumn({
                   variant="ghost"
                   size="icon-sm"
                   className="rounded-full text-muted-foreground"
+                  aria-label={t(($) => $.board.add_issue_tooltip)}
                   onClick={() => {
                     const data = {
                       ...(group.createData ?? {}),

@@ -33,6 +33,7 @@ import {
   ContextMenuSeparator,
   ContextMenuTrigger,
 } from "@multica/ui/components/ui/context-menu";
+import { TooltipHint } from "@multica/ui/components/common/tooltip-hint";
 import { useScrollFade } from "@multica/ui/hooks/use-scroll-fade";
 import { SIDEBAR_WRAPPER_FILL_CLASS } from "@multica/ui/components/ui/sidebar";
 import { cn } from "@multica/ui/lib/utils";
@@ -535,16 +536,17 @@ function NewTabButton() {
   };
 
   return (
-    <button
-      type="button"
-      onClick={handleClick}
-      aria-label={newTabLabel}
-      title={newTabLabel}
-      style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
-      className="flex size-7 shrink-0 items-center justify-center self-center rounded-md text-faint-foreground transition-colors hover:bg-muted/50 hover:text-muted-foreground"
-    >
-      <Plus className="size-3.5" />
-    </button>
+    <TooltipHint label={newTabLabel} side="bottom">
+      <button
+        type="button"
+        onClick={handleClick}
+        aria-label={newTabLabel}
+        style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
+        className="flex size-7 shrink-0 items-center justify-center self-center rounded-md text-faint-foreground transition-colors hover:bg-muted/50 hover:text-muted-foreground"
+      >
+        <Plus className="size-3.5" />
+      </button>
+    </TooltipHint>
   );
 }
 

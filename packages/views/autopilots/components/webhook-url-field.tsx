@@ -4,7 +4,7 @@ import { useState, type ReactNode } from "react";
 import { Check, Copy, Eye, EyeOff } from "lucide-react";
 import { toast } from "sonner";
 import { maskAutopilotWebhookUrl } from "@multica/core/autopilots";
-import { Button } from "@multica/ui/components/ui/button";
+import { IconButton } from "@multica/ui/components/common/icon-button";
 import { cn } from "@multica/ui/lib/utils";
 import { copyText } from "@multica/ui/lib/clipboard";
 import { useT } from "../../i18n";
@@ -91,34 +91,32 @@ export function WebhookUrlField({ url, size = "sm", actions }: WebhookUrlFieldPr
           {maskAutopilotWebhookUrl(url)}
         </button>
       )}
-      <Button
+      <IconButton
         size="icon"
         variant={s.buttonVariant}
         className={cn("shrink-0", s.button)}
         onClick={() => setRevealedUrl(revealed ? null : url)}
-        title={revealed ? t(($) => $.trigger_row.hide_url) : t(($) => $.trigger_row.show_url)}
-        aria-label={revealed ? t(($) => $.trigger_row.hide_url) : t(($) => $.trigger_row.show_url)}
+        label={revealed ? t(($) => $.trigger_row.hide_url) : t(($) => $.trigger_row.show_url)}
       >
         {revealed ? (
           <EyeOff className={cn(s.icon, "text-muted-foreground")} />
         ) : (
           <Eye className={cn(s.icon, "text-muted-foreground")} />
         )}
-      </Button>
-      <Button
+      </IconButton>
+      <IconButton
         size="icon"
         variant={s.buttonVariant}
         className={cn("shrink-0", s.button)}
         onClick={handleCopy}
-        title={t(($) => $.trigger_row.copy_url)}
-        aria-label={t(($) => $.trigger_row.copy_url)}
+        label={t(($) => $.trigger_row.copy_url)}
       >
         {copied ? (
           <Check className={cn(s.icon, "text-emerald-500")} />
         ) : (
           <Copy className={cn(s.icon, "text-muted-foreground")} />
         )}
-      </Button>
+      </IconButton>
       {actions}
     </div>
   );

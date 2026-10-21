@@ -114,7 +114,7 @@ describe("WindowToolbar history controls", () => {
   it("keeps the controls clear of the traffic lights after toggling the sidebar", () => {
     const { rerender } = render(<WindowToolbar />, { wrapper: I18nWrapper });
     sidebarState.state = "collapsed";
-    rerender(<WindowToolbar />, { wrapper: I18nWrapper });
+    rerender(<WindowToolbar />);
 
     const toolbar = document.querySelector('[data-slot="window-toolbar"]');
     expect(WINDOW_TOOLBAR_CLEARANCE).toBe(200);

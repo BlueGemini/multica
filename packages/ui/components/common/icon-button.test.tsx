@@ -2,6 +2,7 @@ import type { ReactNode } from "react";
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { IconButton } from "./icon-button";
+import { TooltipHint } from "./tooltip-hint";
 import { TooltipProvider } from "../ui/tooltip";
 import {
   DropdownMenu,
@@ -111,5 +112,26 @@ describe("IconButton", () => {
       fireEvent.click(trigger);
     });
     expect(await screen.findByRole("menuitem", { name: "Rename" })).toBeInTheDocument();
+  });
+});
+
+describe("TooltipHint", () => {
+  it("keeps the child's element and name and shows the label on hover", async () => {
+    const onClick = vi.fn();
+    renderWithTooltips(
+      <TooltipHint label="Copy link">
+        <button type="button" aria-label="Copy link" className="custom" onClick={onClick}>
+          <svg />
+        </button>
+      </TooltipHint>,
+    );
+
+    const button = screen.getByRole("button", { name: "Copy link" });
+    expect(button).toHaveClass("custom");
+    fireEvent.click(button);
+    expect(onClick).toHaveBeenCalledOnce();
+
+    await hover(button);
+    expect(document.querySelector("[data-slot='tooltip-content']")).toHaveTextContent("Copy link");
   });
 });

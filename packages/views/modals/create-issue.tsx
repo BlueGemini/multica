@@ -49,6 +49,7 @@ import {
   DropdownMenuTrigger,
 } from "@multica/ui/components/ui/dropdown-menu";
 import { Tooltip, TooltipTrigger, TooltipContent, TooltipProvider } from "@multica/ui/components/ui/tooltip";
+import { TooltipHint } from "@multica/ui/components/common/tooltip-hint";
 import { Button } from "@multica/ui/components/ui/button";
 import { Switch } from "@multica/ui/components/ui/switch";
 import { ContentEditor, type ContentEditorRef, TitleEditor, type TitleEditorRef, useFileDropZone, FileDropOverlay, useUploadGate, useComposerSubmit } from "../editor";
@@ -1220,14 +1221,16 @@ export function ManualCreatePanel({
                       {t(($) => $.create_issue.subissue_of, { identifier: parentIssue.identifier })}
                     </span>
                   </button>
-                  <button
-                    type="button"
-                    onClick={() => setParentIssueId(undefined)}
-                    className="p-1 pr-2 text-muted-foreground hover:text-foreground cursor-pointer"
-                    aria-label={t(($) => $.create_issue.remove_parent_aria)}
-                  >
-                    <XIcon className="size-3" />
-                  </button>
+                  <TooltipHint label={t(($) => $.create_issue.remove_parent_aria)}>
+                    <button
+                      type="button"
+                      onClick={() => setParentIssueId(undefined)}
+                      className="p-1 pr-2 text-muted-foreground hover:text-foreground cursor-pointer"
+                      aria-label={t(($) => $.create_issue.remove_parent_aria)}
+                    >
+                      <XIcon className="size-3" />
+                    </button>
+                  </TooltipHint>
                 </div>
               ) : null}
 
@@ -1242,16 +1245,18 @@ export function ManualCreatePanel({
                     <ArrowDown className="size-3 text-muted-foreground" />
                     <span>{t(($) => $.create_issue.subissue_chip, { identifier: c.identifier })}</span>
                   </div>
-                  <button
-                    type="button"
-                    onClick={() =>
-                      setChildIssues((prev) => prev.filter((x) => x.id !== c.id))
-                    }
-                    className="p-1 pr-2 text-muted-foreground hover:text-foreground cursor-pointer"
-                    aria-label={t(($) => $.create_issue.remove_subissue_aria, { identifier: c.identifier })}
-                  >
-                    <XIcon className="size-3" />
-                  </button>
+                  <TooltipHint label={t(($) => $.create_issue.remove_subissue_aria, { identifier: c.identifier })}>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setChildIssues((prev) => prev.filter((x) => x.id !== c.id))
+                      }
+                      className="p-1 pr-2 text-muted-foreground hover:text-foreground cursor-pointer"
+                      aria-label={t(($) => $.create_issue.remove_subissue_aria, { identifier: c.identifier })}
+                    >
+                      <XIcon className="size-3" />
+                    </button>
+                  </TooltipHint>
                 </div>
               ))}
 

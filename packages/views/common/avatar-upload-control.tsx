@@ -17,6 +17,7 @@ import {
   PopoverTrigger,
 } from "@multica/ui/components/ui/popover";
 import { Separator } from "@multica/ui/components/ui/separator";
+import { TooltipHint } from "@multica/ui/components/common/tooltip-hint";
 import { cn } from "@multica/ui/lib/utils";
 import { useT } from "../i18n";
 import { AvatarCropDialog } from "./avatar-crop-dialog";
@@ -352,18 +353,20 @@ export function AvatarUploadControl({
       )}
 
       {onClear && hasAvatar && !busy && !disabled && (
-        <button
-          type="button"
-          onClick={(e) => {
-            e.stopPropagation();
-            setPreviewError(false);
-            onClear();
-          }}
-          className="absolute -right-1.5 -top-1.5 flex h-5 w-5 items-center justify-center rounded-full border bg-background text-muted-foreground shadow-sm transition-colors hover:bg-muted hover:text-foreground"
-          aria-label={t(($) => $.avatar_upload.remove)}
-        >
-          <X className="h-3 w-3" />
-        </button>
+        <TooltipHint label={t(($) => $.avatar_upload.remove)}>
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              setPreviewError(false);
+              onClear();
+            }}
+            className="absolute -right-1.5 -top-1.5 flex h-5 w-5 items-center justify-center rounded-full border bg-background text-muted-foreground shadow-sm transition-colors hover:bg-muted hover:text-foreground"
+            aria-label={t(($) => $.avatar_upload.remove)}
+          >
+            <X className="h-3 w-3" />
+          </button>
+        </TooltipHint>
       )}
 
       <input

@@ -36,6 +36,7 @@ import { IssueSurface } from "../../issues/surface/issue-surface";
 import { Skeleton } from "@multica/ui/components/ui/skeleton";
 import { Button } from "@multica/ui/components/ui/button";
 import { IconButton } from "@multica/ui/components/common/icon-button";
+import { TooltipHint } from "@multica/ui/components/common/tooltip-hint";
 import { ResizablePanelGroup, ResizablePanel, ResizableHandle } from "@multica/ui/components/ui/resizable";
 import { Sheet, SheetContent } from "@multica/ui/components/ui/sheet";
 import { useIsMobile } from "@multica/ui/hooks/use-mobile";
@@ -262,17 +263,19 @@ export function ProjectDetail({ projectId }: { projectId: string }) {
       {/* Icon + Title */}
       <div>
         <Popover open={iconPickerOpen} onOpenChange={setIconPickerOpen}>
-          <PopoverTrigger
-            render={
-              <button
-                type="button"
-                className="text-display-sm cursor-pointer rounded-lg p-1 -ml-1 hover:bg-accent/60 transition-colors"
-                title={t(($) => $.detail.icon_tooltip)}
-              >
-                {project.icon || "📁"}
-              </button>
-            }
-          />
+          <TooltipHint label={t(($) => $.detail.icon_tooltip)}>
+            <PopoverTrigger
+              render={
+                <button
+                  type="button"
+                  className="text-display-sm cursor-pointer rounded-lg p-1 -ml-1 hover:bg-accent/60 transition-colors"
+                  aria-label={t(($) => $.detail.icon_tooltip)}
+                >
+                  {project.icon || "📁"}
+                </button>
+              }
+            />
+          </TooltipHint>
           <PopoverContent align="start" className="w-auto p-0">
             <EmojiPicker
               onSelect={(emoji) => {

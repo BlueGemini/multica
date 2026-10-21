@@ -38,6 +38,7 @@ import {
 } from "@multica/core/squads/stores";
 import type { Agent, MemberWithUser, Squad } from "@multica/core/types";
 import { Button } from "@multica/ui/components/ui/button";
+import { IconButton } from "@multica/ui/components/common/icon-button";
 import {
   Dialog,
   DialogContent,
@@ -711,7 +712,7 @@ function SquadListToolbar({
                   </DropdownMenuRadioGroup>
                 </DropdownMenuContent>
               </DropdownMenu>
-              <Button
+              <IconButton
                 variant="outline"
                 size="icon-sm"
                 onClick={() =>
@@ -719,7 +720,7 @@ function SquadListToolbar({
                     sortDirection === "asc" ? "desc" : "asc",
                   )
                 }
-                title={
+                label={
                   sortDirection === "asc"
                     ? t(($) => $.toolbar.direction_asc)
                     : t(($) => $.toolbar.direction_desc)
@@ -730,7 +731,7 @@ function SquadListToolbar({
                 ) : (
                   <ArrowDown className="size-3.5" />
                 )}
-              </Button>
+              </IconButton>
             </div>
           </div>
           <div className="px-3 py-2.5">

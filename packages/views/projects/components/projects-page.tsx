@@ -91,6 +91,8 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@multica/ui/components/ui/tooltip";
+import { IconButton } from "@multica/ui/components/common/icon-button";
+import { TooltipHint } from "@multica/ui/components/common/tooltip-hint";
 import type {
   MemberWithUser,
   Project,
@@ -716,14 +718,16 @@ function ProjectBatchToolbar({
           <span className="text-body font-medium">
             {t(($) => $.page.selected, { count: rows.length })}
           </span>
-          <button
-            type="button"
-            aria-label={t(($) => $.page.clear_selection)}
-            onClick={onClear}
-            className="rounded-xs p-0.5 transition-colors hover:bg-accent"
-          >
-            <X className="size-3.5 text-muted-foreground" />
-          </button>
+          <TooltipHint label={t(($) => $.page.clear_selection)}>
+            <button
+              type="button"
+              aria-label={t(($) => $.page.clear_selection)}
+              onClick={onClear}
+              className="rounded-xs p-0.5 transition-colors hover:bg-accent"
+            >
+              <X className="size-3.5 text-muted-foreground" />
+            </button>
+          </TooltipHint>
         </div>
         {anyUnpinned && (
           <Button
@@ -1138,14 +1142,14 @@ export function ProjectsPage() {
                             </DropdownMenuRadioGroup>
                           </DropdownMenuContent>
                         </DropdownMenu>
-                        <Button
+                        <IconButton
                           variant="outline"
                           size="icon-sm"
                           onClick={() => setSortDirection(sortDirection === "asc" ? "desc" : "asc")}
-                          title={sortDirection === "asc" ? t(($) => $.toolbar.direction_asc) : t(($) => $.toolbar.direction_desc)}
+                          label={sortDirection === "asc" ? t(($) => $.toolbar.direction_asc) : t(($) => $.toolbar.direction_desc)}
                         >
                           {sortDirection === "asc" ? <ArrowUp className="size-3.5" /> : <ArrowDown className="size-3.5" />}
-                        </Button>
+                        </IconButton>
                       </div>
                     </div>
                     {isCompact && (
