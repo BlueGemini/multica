@@ -14,6 +14,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/jackc/pgx/v5"
 	"github.com/multica-ai/multica/server/internal/qoderruntime"
+	db "github.com/multica-ai/multica/server/pkg/db/generated"
 )
 
 const qoderAPIURL = "https://api.qoder.com/api/v1/cloud"
@@ -210,6 +211,35 @@ func (o qoderOverrides) validate() error {
 		return fmt.Errorf("Qoder agents take skills, tools, credentials and model from the Qoder Agent; remove them from this agent")
 	}
 	return nil
+}
+
+// storedQoderOverrides reads an agent's saved execution settings. Skills live
+// in their own table and are counted by the caller when they matter.
+func storedQoderOverrides(agent db.Agent) qoderOverrides {
+	var args []string
+	_ = json.Unmarshal(agent.CustomArgs, &args)
+	return qoderOverrides{
+		customEnv:     len(unmarshalCustomEnv(agent)),
+		customArgs:    len(args),
+		mcpConfig:     agent.McpConfig,
+		model:         agent.Model.String,
+		thinkingLevel: agent.ThinkingLevel.String,
+		serviceTier:   agent.ServiceTier.String,
+	}
+}
+
+// rejectQoderOverrides writes a 400 and reports true when the agent runs on
+// Qoder and o would leave it with settings the bridge refuses at run time.
+func (h *Handler) rejectQoderOverrides(w http.ResponseWriter, r *http.Request, agent db.Agent, o qoderOverrides) bool {
+	provider, ok := h.resolveAgentProvider(r, agent.WorkspaceID, agent.RuntimeID)
+	if !ok || provider != "qoder_cloud" {
+		return false
+	}
+	if err := o.validate(); err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return true
+	}
+	return false
 }
 
 func validateQoderAgentConfig(raw []byte) error {

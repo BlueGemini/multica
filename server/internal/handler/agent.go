@@ -2048,7 +2048,11 @@ func (h *Handler) UpdateAgent(w http.ResponseWriter, r *http.Request) {
 		targetRuntimeID = runtime.ID
 		targetProvider = runtime.Provider
 	}
-	if req.RuntimeConfig != nil || req.RuntimeID != nil {
+	// Validate the settings the agent will have after this update, not only the
+	// fields in the request: a Qoder agent must never be left with settings the
+	// bridge refuses at run time.
+	runtimeChange := req.RuntimeConfig != nil || req.RuntimeID != nil
+	if runtimeChange || req.CustomArgs != nil || req.McpConfig != nil || req.Model != nil || req.ThinkingLevel != nil || req.ServiceTier != nil {
 		provider := targetProvider
 		if provider == "" {
 			var ok bool
@@ -2059,15 +2063,25 @@ func (h *Handler) UpdateAgent(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 		if provider == "qoder_cloud" {
-			raw := existing.RuntimeConfig
-			if req.RuntimeConfig != nil {
-				raw, _ = json.Marshal(req.RuntimeConfig)
+			if runtimeChange {
+				raw := existing.RuntimeConfig
+				if req.RuntimeConfig != nil {
+					raw, _ = json.Marshal(req.RuntimeConfig)
+				}
+				if err := validateQoderAgentConfig(raw); err != nil {
+					writeError(w, 400, err.Error())
+					return
+				}
 			}
-			if err := validateQoderAgentConfig(raw); err != nil {
-				writeError(w, 400, err.Error())
-				return
+			overrides := storedQoderOverrides(existing)
+			if req.RuntimeID != nil {
+				skills, err := h.Queries.ListAgentSkills(r.Context(), existing.ID)
+				if err != nil {
+					writeError(w, http.StatusInternalServerError, "failed to load agent skills")
+					return
+				}
+				overrides.skills = len(skills)
 			}
-			var overrides qoderOverrides
 			if req.CustomArgs != nil {
 				overrides.customArgs = len(*req.CustomArgs)
 			}
