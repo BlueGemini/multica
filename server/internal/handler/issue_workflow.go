@@ -26,11 +26,13 @@ import (
 
 // Project workflow API (MUL-7420).
 //
-// Reading workflows is open to any member: every client needs them to render
-// a project's board and to filter status choices. Creating, editing and
-// deleting workflows, handoffs included, is owner/admin only: a workflow's
-// handoffs apply to every project using it. Which workflow a project uses is
-// open to owners/admins and to the project's lead.
+// Reading and creating workflows is open to any member: every client needs
+// them to render a project's board, and a new workflow affects no project
+// until someone switches one to it. Editing and deleting a workflow, handoffs
+// included, is open to its owner (the member who created it) and to workspace
+// owners/admins (MUL-8120). The Default workflow has no owner, so only
+// owners/admins change it. Which workflow a project uses is open to
+// owners/admins and to the project's lead.
 
 // requireProjectWorkflowsV1 gates adopting workflows behind the
 // project_workflows_v1 flag. Reads, edits of existing workflows and switching
@@ -46,6 +48,15 @@ func (h *Handler) requireProjectWorkflowsV1(w http.ResponseWriter, r *http.Reque
 
 func isWorkspaceAdmin(member db.Member) bool {
 	return roleAllowed(member.Role, "owner", "admin")
+}
+
+// canEditIssueWorkflow reports whether member may edit or delete workflow:
+// workspace owners and admins, and the member who owns it.
+func canEditIssueWorkflow(member db.Member, workflow db.IssueWorkflow) bool {
+	if isWorkspaceAdmin(member) {
+		return true
+	}
+	return workflow.OwnerID.Valid && workflow.OwnerID == member.UserID
 }
 
 // canManageProjectWorkflow reports whether member may change a project's own
@@ -73,15 +84,17 @@ type IssueWorkflowStepPayload struct {
 }
 
 type IssueWorkflowResponse struct {
-	ID          string                     `json:"id"`
-	WorkspaceID string                     `json:"workspace_id"`
-	Name        string                     `json:"name"`
-	Description string                     `json:"description"`
-	IsDefault   bool                       `json:"is_default"`
-	Steps       []IssueWorkflowStepPayload `json:"steps"`
-	ProjectIDs  []string                   `json:"project_ids"`
-	CreatedAt   string                     `json:"created_at"`
-	UpdatedAt   string                     `json:"updated_at"`
+	ID          string `json:"id"`
+	WorkspaceID string `json:"workspace_id"`
+	Name        string `json:"name"`
+	Description string `json:"description"`
+	IsDefault   bool   `json:"is_default"`
+	// OwnerID is the member who owns the workflow; null for Default.
+	OwnerID    *string                    `json:"owner_id"`
+	Steps      []IssueWorkflowStepPayload `json:"steps"`
+	ProjectIDs []string                   `json:"project_ids"`
+	CreatedAt  string                     `json:"created_at"`
+	UpdatedAt  string                     `json:"updated_at"`
 }
 
 // StatusMappingRequirement names a status some issues are on that the target
@@ -140,6 +153,7 @@ func issueWorkflowToResponse(row db.IssueWorkflow, def issueworkflow.Definition,
 		Name:        row.Name,
 		Description: row.Description,
 		IsDefault:   row.IsDefault,
+		OwnerID:     uuidToPtr(row.OwnerID),
 		Steps:       steps,
 		ProjectIDs:  projectIDs,
 		CreatedAt:   timestampToString(row.CreatedAt),
@@ -456,10 +470,6 @@ func (h *Handler) CreateIssueWorkflow(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "invalid request body")
 		return
 	}
-	if !isWorkspaceAdmin(member) {
-		writeError(w, http.StatusForbidden, "insufficient permissions")
-		return
-	}
 	var name, description string
 	if req.Name != nil {
 		name = *req.Name
@@ -525,6 +535,7 @@ func (h *Handler) CreateIssueWorkflow(w http.ResponseWriter, r *http.Request) {
 		Description:      description,
 		InitialStatusKey: issueworkflow.StartStatus,
 		Steps:            raw,
+		OwnerID:          member.UserID,
 	})
 	if err != nil {
 		if isUniqueViolation(err) {
@@ -625,7 +636,7 @@ func (h *Handler) UpdateIssueWorkflow(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	member, ok := h.requireWorkspaceRole(w, r, workspaceID, "workspace not found", "owner", "admin")
+	member, ok := h.requireWorkspaceMember(w, r, workspaceID, "workspace not found")
 	if !ok {
 		return
 	}
@@ -657,6 +668,10 @@ func (h *Handler) UpdateIssueWorkflow(w http.ResponseWriter, r *http.Request) {
 	current, err := qtx.GetIssueWorkflow(ctx, db.GetIssueWorkflowParams{ID: idUUID, WorkspaceID: wsUUID})
 	if err != nil {
 		writeError(w, http.StatusNotFound, "workflow not found")
+		return
+	}
+	if !canEditIssueWorkflow(member, current) {
+		writeError(w, http.StatusForbidden, "only the workflow owner and workspace admins can change this workflow")
 		return
 	}
 	var projects []db.Project
@@ -787,7 +802,7 @@ func (h *Handler) DeleteIssueWorkflow(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	member, ok := h.requireWorkspaceRole(w, r, workspaceID, "workspace not found", "owner", "admin")
+	member, ok := h.requireWorkspaceMember(w, r, workspaceID, "workspace not found")
 	if !ok {
 		return
 	}
@@ -810,6 +825,10 @@ func (h *Handler) DeleteIssueWorkflow(w http.ResponseWriter, r *http.Request) {
 	row, err := qtx.GetIssueWorkflow(ctx, db.GetIssueWorkflowParams{ID: idUUID, WorkspaceID: wsUUID})
 	if err != nil {
 		writeError(w, http.StatusNotFound, "workflow not found")
+		return
+	}
+	if !canEditIssueWorkflow(member, row) {
+		writeError(w, http.StatusForbidden, "only the workflow owner and workspace admins can change this workflow")
 		return
 	}
 	if row.IsDefault {
@@ -1052,7 +1071,7 @@ func (h *Handler) SetIssueWorkflowHandoff(w http.ResponseWriter, r *http.Request
 	if !ok {
 		return
 	}
-	member, ok := h.requireWorkspaceRole(w, r, workspaceID, "workspace not found", "owner", "admin")
+	member, ok := h.requireWorkspaceMember(w, r, workspaceID, "workspace not found")
 	if !ok {
 		return
 	}
@@ -1091,6 +1110,10 @@ func (h *Handler) SetIssueWorkflowHandoff(w http.ResponseWriter, r *http.Request
 	current, err := qtx.GetIssueWorkflow(ctx, db.GetIssueWorkflowParams{ID: idUUID, WorkspaceID: wsUUID})
 	if err != nil {
 		writeError(w, http.StatusNotFound, "workflow not found")
+		return
+	}
+	if !canEditIssueWorkflow(member, current) {
+		writeError(w, http.StatusForbidden, "only the workflow owner and workspace admins can change this workflow")
 		return
 	}
 	def, err := issueworkflow.Decode(current)
@@ -1158,6 +1181,12 @@ func (h *Handler) saveHandoffOnProjectCopy(w http.ResponseWriter, r *http.Reques
 		writeErrorCode(w, http.StatusConflict, "invalid_handoff", "the project does not use this workflow")
 		return
 	}
+	// The copy switches the project's workflow, which only admins and the
+	// project's lead may do.
+	if !canManageProjectWorkflow(member, project) {
+		writeError(w, http.StatusForbidden, "only workspace admins and the project lead can change this project's workflow")
+		return
+	}
 	existing, err := qtx.ListIssueWorkflows(ctx, source.WorkspaceID)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to save handoff")
@@ -1173,6 +1202,7 @@ func (h *Handler) saveHandoffOnProjectCopy(w http.ResponseWriter, r *http.Reques
 		Description:      source.Description,
 		InitialStatusKey: issueworkflow.StartStatus,
 		Steps:            steps,
+		OwnerID:          member.UserID,
 	})
 	if err != nil {
 		slog.Warn("SetIssueWorkflowHandoff copy failed", append(logger.RequestAttrs(r), "error", err)...)
