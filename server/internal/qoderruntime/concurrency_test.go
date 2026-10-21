@@ -28,6 +28,8 @@ type multiHarness struct {
 	creates       int
 	sentTo        []string
 	prompts       map[string]string
+	metadata      map[string]map[string]string
+	resources     map[string][]map[string]any
 }
 
 func newTask(id, prior string) *daemon.Task {
@@ -36,7 +38,7 @@ func newTask(id, prior string) *daemon.Task {
 
 func setupMulti(t *testing.T, limit int, tasks ...*daemon.Task) *multiHarness {
 	t.Helper()
-	h := &multiHarness{queue: tasks, status: map[string]string{}, completed: map[string]map[string]any{}, failed: map[string]map[string]any{}, sessions: map[string][]map[string]any{}, sessionStatus: map[string]string{}, prompts: map[string]string{}}
+	h := &multiHarness{queue: tasks, status: map[string]string{}, completed: map[string]map[string]any{}, failed: map[string]map[string]any{}, sessions: map[string][]map[string]any{}, sessionStatus: map[string]string{}, prompts: map[string]string{}, metadata: map[string]map[string]string{}, resources: map[string][]map[string]any{}}
 	taskID := func(path string) string {
 		rest := strings.TrimPrefix(path, "/api/daemon/tasks/")
 		return rest[:strings.Index(rest, "/")]
@@ -91,6 +93,13 @@ func setupMulti(t *testing.T, limit int, tasks ...*daemon.Task) *multiHarness {
 			h.creates++
 			id := fmt.Sprintf("sess_new_%d", h.creates)
 			h.sessionStatus[id] = "idle"
+			var req struct {
+				Metadata  map[string]string `json:"metadata"`
+				Resources []map[string]any  `json:"resources"`
+			}
+			json.NewDecoder(r.Body).Decode(&req)
+			h.metadata[id] = req.Metadata
+			h.resources[id] = req.Resources
 			fmt.Fprintf(w, `{"id":%q}`, id)
 		case len(parts) == 3 && parts[2] == "events" && r.Method == http.MethodPost:
 			var req struct {
@@ -119,7 +128,7 @@ func setupMulti(t *testing.T, limit int, tasks ...*daemon.Task) *multiHarness {
 				http.NotFound(w, r)
 				return
 			}
-			fmt.Fprintf(w, `{"status":%q,"agent":"agent_1","environment_id":"env_1"}`, status)
+			json.NewEncoder(w).Encode(map[string]any{"status": status, "agent": "agent_1", "environment_id": "env_1", "metadata": h.metadata[parts[1]]})
 		default:
 			t.Errorf("unexpected Qoder request %s", r.URL)
 			http.NotFound(w, r)
@@ -169,6 +178,7 @@ func TestConcurrentRunsRespectLimit(t *testing.T) {
 func TestFollowUpContinuesIdleSession(t *testing.T) {
 	h := setupMulti(t, 1, newTask("task-1", "sess_prev"))
 	h.sessionStatus["sess_prev"] = "idle"
+	h.metadata["sess_prev"] = map[string]string{resourcesMetadataKey: resourceFingerprint(nil)}
 	h.sessions["sess_prev"] = []map[string]any{
 		{"id": "evt_old_0", "type": "user.message", "content": []map[string]string{{"type": "text", "text": "earlier run"}}},
 		{"id": "evt_old_1", "type": "session.status_idle", "stop_reason": map[string]string{"type": "end_turn"}},
@@ -206,6 +216,78 @@ func TestFollowUpStartsNewSessionWhenPriorIsUnavailable(t *testing.T) {
 				t.Fatalf("creates=%d sentTo=%v", h.creates, h.sentTo)
 			}
 		})
+	}
+}
+
+func repoTask(id, prior, repo, ref string) *daemon.Task {
+	task := newTask(id, prior)
+	task.Agent.RuntimeConfig = json.RawMessage(fmt.Sprintf(`{"qoder_agent_id":"agent_1","repository":{"url":%q,"ref":%q}}`, repo, ref))
+	return task
+}
+
+func TestFollowUpReusesSessionOnlyForSameRepositoryAndCredential(t *testing.T) {
+	const repoA, repoB = "https://github.com/acme/a", "https://github.com/acme/b"
+	for name, tc := range map[string]struct {
+		followUp *daemon.Task
+		tokens   map[string]string
+		reuse    bool
+	}{
+		"unchanged":        {repoTask("task-2", "sess_new_1", repoA, "main"), map[string]string{repoA: "tok-a"}, true},
+		"other repository": {repoTask("task-2", "sess_new_1", repoB, "main"), map[string]string{repoA: "tok-a", repoB: "tok-b"}, false},
+		"other branch":     {repoTask("task-2", "sess_new_1", repoA, "release"), map[string]string{repoA: "tok-a"}, false},
+		"rotated token":    {repoTask("task-2", "sess_new_1", repoA, "main"), map[string]string{repoA: "tok-a2"}, false},
+	} {
+		t.Run(name, func(t *testing.T) {
+			h := setupMulti(t, 1, repoTask("task-1", "", repoA, "main"), tc.followUp)
+			h.b.cfg.GitHubTokens = map[string]string{repoA: "tok-a"}
+			ctx := context.Background()
+			if err := h.b.step(ctx); err != nil {
+				t.Fatal(err)
+			}
+			h.b.cfg.GitHubTokens = tc.tokens
+			h.finish("sess_new_1")
+			if err := h.b.step(ctx); err != nil {
+				t.Fatal(err)
+			}
+			if reused := h.creates == 1 && h.sentTo[len(h.sentTo)-1] == "sess_new_1"; reused != tc.reuse {
+				t.Fatalf("reuse=%v, want %v (creates=%d sentTo=%v)", reused, tc.reuse, h.creates, h.sentTo)
+			}
+			if !tc.reuse {
+				got := h.resources["sess_new_2"]
+				if len(got) != 1 || got[0]["authorization_token"] != tc.tokens[got[0]["url"].(string)] {
+					t.Fatalf("new session resources: %v", got)
+				}
+			}
+		})
+	}
+}
+
+func TestFollowUpFailsWhenRepositoryCredentialWasRemoved(t *testing.T) {
+	const repo = "https://github.com/acme/a"
+	h := setupMulti(t, 1, repoTask("task-1", "", repo, ""), repoTask("task-2", "sess_new_1", repo, ""))
+	h.b.cfg.GitHubTokens = map[string]string{repo: "tok-a"}
+	ctx := context.Background()
+	if err := h.b.step(ctx); err != nil {
+		t.Fatal(err)
+	}
+	h.b.cfg.GitHubTokens = nil
+	h.finish("sess_new_1")
+	if err := h.b.step(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if len(h.sentTo) != 1 || h.creates != 1 || h.failed["task-2"] == nil {
+		t.Fatalf("follow-up ran without a credential: creates=%d sentTo=%v failed=%v", h.creates, h.sentTo, h.failed["task-2"])
+	}
+}
+
+func TestFollowUpSkipsSessionWithoutFingerprint(t *testing.T) {
+	h := setupMulti(t, 1, newTask("task-1", "sess_prev"))
+	h.sessionStatus["sess_prev"] = "idle"
+	if err := h.b.step(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if h.creates != 1 || len(h.sentTo) != 1 || h.sentTo[0] != "sess_new_1" {
+		t.Fatalf("legacy session reused: creates=%d sentTo=%v", h.creates, h.sentTo)
 	}
 }
 

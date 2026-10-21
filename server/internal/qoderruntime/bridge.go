@@ -357,50 +357,32 @@ func (b *Bridge) stepRun(ctx context.Context, r *run) error {
 	} else if status.Status != "running" {
 		return fmt.Errorf("unexpected Multica run status %q", status.Status)
 	}
-	if r.Phase == "prepared" && r.PriorSessionID != "" {
-		continued, err := b.continueSession(ctx, r)
-		if err != nil {
-			return err
-		}
-		if continued {
-			r.SessionID = r.PriorSessionID
-			r.Continued = true
-			r.Phase = "created"
-			if err := b.persist(); err != nil {
-				return err
-			}
-		}
-	}
 	if r.Phase == "prepared" {
+		// Resolve credentials before reusing a session too, so a revoked or
+		// changed repository credential is never carried into a follow-up.
 		resources, err := b.sessionResources(r.Resources)
 		if err != nil {
 			return b.reject(ctx, r, err.Error())
 		}
-		var session struct {
-			ID string `json:"id"`
-		}
-		r.Phase = "creating"
-		if err := b.persist(); err != nil {
-			return err
-		}
-		if err := b.qoder.call(ctx, http.MethodPost, "/sessions", map[string]any{"agent": r.AgentID, "environment_id": b.cfg.EnvironmentID, "title": "Multica run " + r.TaskID, "metadata": map[string]string{"multica_task_id": r.TaskID, "multica_workspace_id": b.cfg.WorkspaceID}, "resources": resources}, &session); err != nil {
-			if rateLimited(err) {
-				r.Phase = "prepared"
-				r.RetryAt = time.Now().Add(30 * time.Second)
-				return b.persist()
+		fingerprint := resourceFingerprint(resources)
+		if r.PriorSessionID != "" {
+			continued, err := b.continueSession(ctx, r, fingerprint)
+			if err != nil {
+				return err
 			}
-			if definitelyRejected(err) {
-				return b.reject(ctx, r, "Qoder rejected session creation: "+err.Error())
+			if continued {
+				r.SessionID = r.PriorSessionID
+				r.Continued = true
+				r.Phase = "created"
+				if err := b.persist(); err != nil {
+					return err
+				}
 			}
-			return err
 		}
-		if session.ID == "" {
-			return fmt.Errorf("Qoder create returned no session ID")
-		}
-		r.SessionID = session.ID
-		r.Phase = "created"
-		if err := b.persist(); err != nil {
-			return err
+		if r.Phase == "prepared" {
+			if err := b.createSession(ctx, r, resources, fingerprint); err != nil || r.Phase != "created" {
+				return err
+			}
 		}
 	}
 	if err := b.taskCall(ctx, r, "/session", map[string]string{"session_id": r.SessionID}, nil); err != nil {
@@ -441,19 +423,73 @@ func (b *Bridge) stepRun(ctx context.Context, r *run) error {
 	return b.events(ctx, r)
 }
 
+// createSession moves the run to "created" on success. A rate-limited request
+// leaves it "prepared" for a later retry; a definite refusal finalizes it.
+func (b *Bridge) createSession(ctx context.Context, r *run, resources []map[string]any, fingerprint string) error {
+	var session struct {
+		ID string `json:"id"`
+	}
+	r.Phase = "creating"
+	if err := b.persist(); err != nil {
+		return err
+	}
+	metadata := map[string]string{"multica_task_id": r.TaskID, "multica_workspace_id": b.cfg.WorkspaceID, resourcesMetadataKey: fingerprint}
+	if err := b.qoder.call(ctx, http.MethodPost, "/sessions", map[string]any{"agent": r.AgentID, "environment_id": b.cfg.EnvironmentID, "title": "Multica run " + r.TaskID, "metadata": metadata, "resources": resources}, &session); err != nil {
+		if rateLimited(err) {
+			r.Phase = "prepared"
+			r.RetryAt = time.Now().Add(30 * time.Second)
+			return b.persist()
+		}
+		if definitelyRejected(err) {
+			return b.reject(ctx, r, "Qoder rejected session creation: "+err.Error())
+		}
+		return err
+	}
+	if session.ID == "" {
+		return fmt.Errorf("Qoder create returned no session ID")
+	}
+	r.SessionID = session.ID
+	r.Phase = "created"
+	return b.persist()
+}
+
+// resourcesMetadataKey stores resourceFingerprint on each session Multica creates.
+const resourcesMetadataKey = "multica_resources"
+
+// resourceFingerprint identifies the repositories, branches and credentials a
+// session was created with. Only this digest leaves the bridge.
+func resourceFingerprint(resources []map[string]any) string {
+	h := sha256.New()
+	h.Write([]byte("multica-qoder-resources-v1\n"))
+	for _, res := range resources {
+		raw, _ := res["url"].(string)
+		key, _ := repositoryKey(raw)
+		branch := ""
+		if checkout, ok := res["checkout"].(map[string]string); ok {
+			branch = checkout["name"]
+		}
+		token, _ := res["authorization_token"].(string)
+		fmt.Fprintf(h, "%s\x00%s\x00%s\n", key, branch, token)
+	}
+	return hex.EncodeToString(h.Sum(nil))
+}
+
 // continueSession reports whether the agent's previous session on this issue
 // can take the follow-up. Only an idle session that no other active run is
-// using qualifies; anything else falls back to a new session.
-func (b *Bridge) continueSession(ctx context.Context, r *run) (bool, error) {
+// using, created with the same repositories, branches and credentials,
+// qualifies; anything else (including sessions without a fingerprint) falls
+// back to a new session.
+func (b *Bridge) continueSession(ctx context.Context, r *run, fingerprint string) (bool, error) {
 	for _, other := range b.state.Runs {
 		if other != r && other.SessionID == r.PriorSessionID {
 			return false, nil
 		}
 	}
 	var s struct {
-		Status        string          `json:"status"`
-		Agent         json.RawMessage `json:"agent"`
-		EnvironmentID string          `json:"environment_id"`
+		Status        string            `json:"status"`
+		Agent         json.RawMessage   `json:"agent"`
+		EnvironmentID string            `json:"environment_id"`
+		Metadata      map[string]string `json:"metadata"`
 	}
 	if err := b.qoder.call(ctx, http.MethodGet, "/sessions/"+url.PathEscape(r.PriorSessionID), nil, &s); err != nil {
 		if definitelyRejected(err) {
@@ -467,7 +503,7 @@ func (b *Bridge) continueSession(ctx context.Context, r *run) (bool, error) {
 	if id := sessionAgentID(s.Agent); (id != "" && id != r.AgentID) || (s.EnvironmentID != "" && s.EnvironmentID != b.cfg.EnvironmentID) {
 		return false, nil
 	}
-	return true, nil
+	return s.Metadata[resourcesMetadataKey] == fingerprint, nil
 }
 
 // sessionAgentID accepts the agent as a bare ID or as an object with an id.
