@@ -198,14 +198,11 @@ export function ProjectWorkflowControl({ project }: { project: Project }) {
               className="-ml-1 inline-flex min-w-0 max-w-full items-center gap-1.5 rounded-md px-1 py-0.5 text-caption transition-colors hover:bg-accent data-popup-open:bg-accent"
             >
               <Workflow aria-hidden className="size-3.5 shrink-0 text-muted-foreground" />
-              {/* The name is what identifies the workflow, so it keeps its width;
-                  the handoff count is secondary and gives way first in a narrow
-                  sidebar (MUL-8119). The heavy shrink weight makes the count
-                  absorb the overflow before the name starts truncating. */}
+              {/* Only the name competes for the narrow sidebar row (MUL-8119):
+                  a sibling summary, however it is weighted, still takes width
+                  from the name. The handoff count lives in the title and the
+                  picker items instead. */}
               <span className="min-w-0 truncate font-medium">{name}</span>
-              {handoffLabel && (
-                <span className="min-w-0 shrink-[1000] truncate text-muted-foreground">· {handoffLabel}</span>
-              )}
               <ChevronDown aria-hidden className="size-3 shrink-0 text-muted-foreground" />
             </button>
           }

@@ -39,17 +39,11 @@ const project = { id: "project-1", title: "Multica 线上发布", workflow_id: "
 describe("ProjectWorkflowControl", () => {
   // MUL-8119: in the narrow project sidebar the handoff count used to keep its
   // width and squeeze the workflow name down to a single glyph.
-  it("lets the handoff count give way before the workflow name", () => {
+  it("gives the whole row to the workflow name and moves the handoff count to the title", () => {
     renderWithI18n(<ProjectWorkflowControl project={project} />);
 
     const trigger = screen.getByRole("button", { name: /版本发布/ });
     expect(trigger.getAttribute("title")).toBe("版本发布 · 3 handoff steps");
-
-    const name = screen.getByText("版本发布");
-    const count = screen.getByText("· 3 handoff steps");
-    expect(count.className).toContain("shrink-[1000]");
-    expect(count.className).toContain("truncate");
-    expect(count.className).not.toContain("shrink-0");
-    expect(name.className).not.toContain("shrink-[1000]");
+    expect(trigger.textContent).toBe("版本发布");
   });
 });
