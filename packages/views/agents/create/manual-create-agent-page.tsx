@@ -287,7 +287,7 @@ function RuntimeSummaryCard({
   const where = !runtime
     ? ""
     : runtime.runtime_mode === "cloud"
-      ? t(($) => $.creation_studio.runtime_step.sections.cloud.title)
+      ? t(($) => $.creation_studio.runtime_step.groups.cloud)
       : splitRuntimeName(runtime.name).hostname ?? runtime.device_info;
   return (
     <div>

@@ -13,9 +13,12 @@ import { QoderConfiguration } from "./qoder-configuration";
 /** Connects or manages the workspace's Qoder Cloud Agent connection. */
 export function RemoteRuntimeDialog({
   onClose,
+  onConnected,
   configure = false,
 }: {
   onClose: () => void;
+  /** Called after a first-time connection succeeds, before the dialog closes. */
+  onConnected?: () => void;
   /** The connection already exists; title the dialog as managing it. */
   configure?: boolean;
 }) {
@@ -40,7 +43,12 @@ export function RemoteRuntimeDialog({
               : t(($) => $.qoder.connect_description)}
           </DialogDescription>
         </DialogHeader>
-        <QoderConfiguration onConnected={onClose} />
+        <QoderConfiguration
+          onConnected={() => {
+            onConnected?.();
+            onClose();
+          }}
+        />
       </DialogContent>
     </Dialog>
   );

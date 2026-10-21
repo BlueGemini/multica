@@ -10,12 +10,10 @@ import {
 
 export const QODER_PROVIDER = "qoder_cloud";
 
-/** This device collapses to a preview once it has more harnesses than this. */
-export const LOCAL_COLLAPSE_THRESHOLD = 8;
-/** Tiles shown while collapsed; the last slot becomes "show all". */
-export const LOCAL_PREVIEW_COUNT = 7;
-/** Harness pills shown per remote device before "+N". */
-export const REMOTE_PILL_LIMIT = 3;
+/** Harness rows shown under an open machine before the rest fold into one row. */
+export const HARNESS_PREVIEW_COUNT = 6;
+/** Provider logos on a closed machine row before "+N". */
+export const LOGO_STACK_LIMIT = 4;
 
 export interface HarnessOption {
   runtime: RuntimeDevice;
@@ -142,14 +140,15 @@ export function filterDevice(
 /**
  * The first `limit` options, with the selected one swapped into the last slot
  * when it would otherwise be hidden — a collapsed list must never hide what is
- * selected.
+ * selected. A single leftover is shown rather than folded, since the fold row
+ * would take the same space.
  */
 export function previewOptions(
   options: HarnessOption[],
   selectedRuntimeId: string | null,
   limit: number,
 ): { shown: HarnessOption[]; hiddenCount: number } {
-  if (options.length <= limit) return { shown: options, hiddenCount: 0 };
+  if (options.length <= limit + 1) return { shown: options, hiddenCount: 0 };
   const shown = options.slice(0, limit);
   const selected = selectedRuntimeId
     ? options.find((option) => option.runtime.id === selectedRuntimeId)

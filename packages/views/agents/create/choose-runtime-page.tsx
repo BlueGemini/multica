@@ -20,19 +20,13 @@ import { RemoteRuntimeDialog } from "../../runtimes/components/remote-runtime-di
 import { buildRuntimeMachines } from "../../runtimes/components/runtime-machines";
 import { AgentCreateShell } from "./create-shell";
 import { buildRuntimeChoiceGroups, type HarnessOption } from "./runtime-choice";
-import { HarnessPanel, IntroPanel, QoderPanel } from "./runtime-choice-panel";
-import {
-  CloudSection,
-  LocalSection,
-  RemoteSection,
-  qoderChoiceState,
-} from "./runtime-choice-sections";
+import { RuntimeChoiceList, qoderChoiceState } from "./runtime-choice-list";
 import { createPathWithParams } from "./squad-param";
 import { UnfinishedDraftsBanner } from "./unfinished-drafts";
 
 type Selection = { kind: "runtime"; runtimeId: string } | { kind: "qoder" } | null;
 
-/** How often a pending Qoder runtime is re-fetched while this screen waits on it. */
+/** How often a starting Qoder runtime is re-fetched while this screen shows it. */
 const QODER_REGISTER_POLL_MS = 3_000;
 
 export interface ChooseRuntimePageProps {
@@ -90,9 +84,6 @@ export function ChooseRuntimePage({
 
   const member = members.find((m) => m.user_id === currentUserId);
   const canManage = member?.role === "owner" || member?.role === "admin";
-  const admins = members
-    .filter((m) => m.role === "owner" || m.role === "admin")
-    .map((m) => m.name);
   const ownerName = (ownerId: string | null) =>
     members.find((m) => m.user_id === ownerId)?.name ?? null;
 
@@ -104,28 +95,24 @@ export function ChooseRuntimePage({
 
   const [selection, setSelection] = useState<Selection>(null);
   const [query, setQuery] = useState("");
-  const [localExpanded, setLocalExpanded] = useState(false);
-  const [expandedRemoteId, setExpandedRemoteId] = useState<string | null>(null);
-  const [waitingForQoder, setWaitingForQoder] = useState(false);
   const [showConnectRemote, setShowConnectRemote] = useState(false);
-  const [showQoderSettings, setShowQoderSettings] = useState(false);
+  const [qoderDialog, setQoderDialog] = useState<"connect" | "configure" | null>(null);
+  const [selectQoderWhenReady, setSelectQoderWhenReady] = useState(false);
   const searchRef = useRef<HTMLInputElement>(null);
 
   const options = useMemo(() => {
-    const byId = new Map<string, { option: HarnessOption; section: "local" | "remote" | "cloud" }>();
-    for (const option of groups.local?.harnesses ?? []) {
-      byId.set(option.runtime.id, { option, section: "local" });
-    }
-    for (const device of groups.remotes) {
+    const byId = new Map<string, { option: HarnessOption; where: string }>();
+    for (const device of [...(groups.local ? [groups.local] : []), ...groups.remotes]) {
       for (const option of device.harnesses) {
-        byId.set(option.runtime.id, { option, section: "remote" });
+        byId.set(option.runtime.id, { option, where: device.machine.title });
       }
     }
+    const cloudTitle = t(($) => $.creation_studio.runtime_step.groups.cloud);
     for (const option of groups.cloud) {
-      byId.set(option.runtime.id, { option, section: "cloud" });
+      byId.set(option.runtime.id, { option, where: cloudTitle });
     }
     return byId;
-  }, [groups]);
+  }, [groups, t]);
 
   // `?runtime=` comes back from step 2's "change runtime" and from the Qoder
   // card on the runtimes page; it preselects once the list can resolve it.
@@ -152,6 +139,26 @@ export function ChooseRuntimePage({
     return () => window.removeEventListener("keydown", onKeyDown);
   }, []);
 
+  // A fresh connection registers its runtime asynchronously; keep the list
+  // current while Qoder starts, and select it once it can take tasks.
+  useEffect(() => {
+    if (qoderState !== "starting") return;
+    const timer = setInterval(() => {
+      void qc.invalidateQueries({ queryKey: runtimeKeys.all(wsId) });
+    }, QODER_REGISTER_POLL_MS);
+    return () => clearInterval(timer);
+  }, [qoderState, qc, wsId]);
+
+  useEffect(() => {
+    if (!selectQoderWhenReady) return;
+    if (qoderState === "ready") {
+      setSelectQoderWhenReady(false);
+      setSelection({ kind: "qoder" });
+    } else if (qoderState === "error" || qoderState === "stopped") {
+      setSelectQoderWhenReady(false);
+    }
+  }, [selectQoderWhenReady, qoderState]);
+
   const selected =
     selection?.kind === "runtime" ? options.get(selection.runtimeId) ?? null : null;
   const nextRuntimeId =
@@ -171,89 +178,17 @@ export function ChooseRuntimePage({
       }),
     );
 
-  // A connection saved from this screen registers its runtime asynchronously;
-  // poll until it lands and then continue on the member's behalf.
-  useEffect(() => {
-    if (!waitingForQoder) return;
-    if (qoderState === "ready" && qoderRuntime) {
-      setWaitingForQoder(false);
-      goNext(qoderRuntime.id);
-      return;
-    }
-    if (qoderState === "error") {
-      setWaitingForQoder(false);
-      return;
-    }
-    const timer = setInterval(() => {
-      void qc.invalidateQueries({ queryKey: runtimeKeys.all(wsId) });
-    }, QODER_REGISTER_POLL_MS);
-    return () => clearInterval(timer);
-    // goNext is recreated each render; the effect only reacts to state changes.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [waitingForQoder, qoderState, qoderRuntime, qc, wsId]);
-
   const resumeSession = (sessionId: string) =>
     navigation.push(
       createPathWithParams(paths.newAgentAiSession(sessionId), { squad: squadId }),
     );
 
-  const selectRuntime = (runtimeId: string) =>
-    setSelection((current) =>
-      current?.kind === "runtime" && current.runtimeId === runtimeId
-        ? null
-        : { kind: "runtime", runtimeId },
-    );
-
-  const summary = (() => {
-    if (selection?.kind === "qoder") return "Qoder Cloud Agent";
-    if (!selected) return null;
-    const sectionTitle =
-      selected.section === "local"
-        ? t(($) => $.creation_studio.runtime_step.sections.local.title)
-        : selected.section === "cloud"
-          ? t(($) => $.creation_studio.runtime_step.sections.cloud.title)
-          : groups.remotes.find((device) =>
-              device.harnesses.some((h) => h.runtime.id === selected.option.runtime.id),
-            )?.machine.title ?? "";
-    return `${selected.option.label} · ${sectionTitle}`;
-  })();
-
-  const panel = (() => {
-    if (selection?.kind === "qoder" && qoder && qoderState) {
-      return (
-        <QoderPanel
-          wsId={wsId}
-          connection={qoder}
-          state={waitingForQoder && qoderState !== "error" ? "starting" : qoderState}
-          canManage={canManage}
-          admins={admins}
-          waiting={waitingForQoder}
-          onConnected={() => setWaitingForQoder(true)}
-          onOpenSettings={() => setShowQoderSettings(true)}
-          onClearSelection={() => setSelection(null)}
-        />
-      );
-    }
-    if (selected) {
-      const runtime = selected.option.runtime;
-      const machine =
-        selected.section === "local"
-          ? groups.local?.machine ?? null
-          : groups.remotes.find((device) =>
-              device.harnesses.some((h) => h.runtime.id === runtime.id),
-            )?.machine ?? null;
-      return (
-        <HarnessPanel
-          option={selected.option}
-          machine={machine}
-          isLocal={selected.section === "local"}
-          owner={ownerName(runtime.owner_id)}
-          ownerIsMe={runtime.owner_id === currentUserId}
-        />
-      );
-    }
-    return <IntroPanel />;
-  })();
+  const summary =
+    selection?.kind === "qoder"
+      ? "Qoder Cloud Agent"
+      : selected
+        ? `${selected.option.label} · ${selected.where}`
+        : null;
 
   return (
     <AgentCreateShell
@@ -267,94 +202,74 @@ export function ChooseRuntimePage({
       onBack={() => backOrReplace(paths.agents())}
       closeIcon
     >
-      <div className="min-h-0 flex-1 overflow-y-auto lg:grid lg:grid-cols-[minmax(0,1fr)_400px] lg:overflow-hidden">
-        <main className="min-w-0 lg:overflow-y-auto">
-          <div className="mx-auto w-full max-w-3xl px-5 py-8 sm:px-8">
-            <div className="flex flex-wrap items-end justify-between gap-4">
-              <div className="min-w-0">
-                <h2 className="text-balance text-title font-semibold tracking-tight">
-                  {t(($) => $.creation_studio.runtime_step.title)}
-                </h2>
-                <p className="mt-1 text-body text-muted-foreground">
-                  {t(($) => $.creation_studio.runtime_step.description)}
-                </p>
-              </div>
-              <div className="relative w-full sm:w-60">
-                <Search
-                  aria-hidden="true"
-                  className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground"
-                />
-                <Input
-                  ref={searchRef}
-                  type="search"
-                  value={query}
-                  onChange={(event) => setQuery(event.target.value)}
-                  onKeyDown={(event) => {
-                    if (event.key === "Escape") setQuery("");
-                  }}
-                  placeholder={t(($) => $.creation_studio.runtime_step.search_placeholder)}
-                  aria-label={t(($) => $.creation_studio.runtime_step.search_placeholder)}
-                  className="h-8 pl-8 pr-8"
-                />
-                <kbd className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 rounded-xs border bg-muted px-1 text-micro text-muted-foreground">
-                  /
-                </kbd>
-              </div>
-            </div>
-
-            {sessions.length > 0 ? (
-              <div className="mt-6">
-                <UnfinishedDraftsBanner sessions={sessions} onResume={resumeSession} />
-              </div>
-            ) : null}
-
-            <div className="mt-8 space-y-9">
-              <LocalSection
-                device={groups.local}
-                available={hasLocalMachine}
-                starting={bootstrapping}
-                query={query}
-                selectedRuntimeId={selection?.kind === "runtime" ? selection.runtimeId : null}
-                expanded={localExpanded}
-                onToggleExpanded={() => setLocalExpanded((value) => !value)}
-                onSelect={selectRuntime}
-                manageHref={
-                  groups.local ? paths.runtimeDetail(groups.local.machine.id) : null
-                }
+      <main className="min-h-0 flex-1 overflow-y-auto">
+        <div className="mx-auto w-full max-w-3xl px-5 py-8 sm:px-8">
+          <div className="flex flex-wrap items-center justify-between gap-4">
+            <h2 className="min-w-0 text-balance text-title font-semibold tracking-tight">
+              {t(($) => $.creation_studio.runtime_step.title)}
+            </h2>
+            <div className="relative w-full sm:w-60">
+              <Search
+                aria-hidden="true"
+                className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground"
               />
-              <RemoteSection
-                devices={groups.remotes}
-                hiddenCount={groups.hiddenRemoteCount}
-                query={query}
-                selectedRuntimeId={selection?.kind === "runtime" ? selection.runtimeId : null}
-                expandedMachineId={expandedRemoteId}
-                onExpand={setExpandedRemoteId}
-                onSelect={selectRuntime}
-                ownerName={ownerName}
-                onAddRemote={() => setShowConnectRemote(true)}
+              <Input
+                ref={searchRef}
+                type="search"
+                value={query}
+                onChange={(event) => setQuery(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === "Escape") setQuery("");
+                }}
+                placeholder={t(($) => $.creation_studio.runtime_step.search_placeholder)}
+                aria-label={t(($) => $.creation_studio.runtime_step.search_placeholder)}
+                className="h-8 pl-8 pr-8"
               />
-              <CloudSection
-                qoder={qoder}
-                qoderState={qoderState}
-                qoderSelected={selection?.kind === "qoder"}
-                onSelectQoder={() =>
-                  setSelection((current) => (current?.kind === "qoder" ? null : { kind: "qoder" }))
-                }
-                others={groups.cloud}
-                selectedRuntimeId={selection?.kind === "runtime" ? selection.runtimeId : null}
-                onSelect={selectRuntime}
-                query={query}
-              />
+              <kbd className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 rounded-xs border bg-muted px-1 text-micro text-muted-foreground">
+                /
+              </kbd>
             </div>
           </div>
-        </main>
-        <aside
-          aria-label={t(($) => $.creation_studio.runtime_step.panel_label)}
-          className="flex min-w-0 flex-col border-t bg-muted/20 lg:overflow-y-auto lg:border-l lg:border-t-0"
-        >
-          {panel}
-        </aside>
-      </div>
+
+          {sessions.length > 0 ? (
+            <div className="mt-6">
+              <UnfinishedDraftsBanner sessions={sessions} onResume={resumeSession} />
+            </div>
+          ) : null}
+
+          <div className="mt-5">
+            <RuntimeChoiceList
+              local={groups.local}
+              localAvailable={hasLocalMachine}
+              localStarting={bootstrapping}
+              remotes={groups.remotes}
+              hiddenRemoteCount={groups.hiddenRemoteCount}
+              cloud={groups.cloud}
+              qoder={qoder}
+              qoderState={qoderState}
+              qoderSelected={selection?.kind === "qoder"}
+              selectedRuntimeId={selection?.kind === "runtime" ? selection.runtimeId : null}
+              query={query}
+              currentUserId={currentUserId}
+              canManage={canManage}
+              ownerName={ownerName}
+              onSelect={(runtimeId) =>
+                setSelection((current) =>
+                  current?.kind === "runtime" && current.runtimeId === runtimeId
+                    ? null
+                    : { kind: "runtime", runtimeId },
+                )
+              }
+              onSelectQoder={() =>
+                setSelection((current) => (current?.kind === "qoder" ? null : { kind: "qoder" }))
+              }
+              onConnectQoder={() => setQoderDialog("connect")}
+              onManageQoder={() => setQoderDialog("configure")}
+              onAddRemote={() => setShowConnectRemote(true)}
+            />
+          </div>
+        </div>
+      </main>
       <footer className="flex shrink-0 items-center gap-3 border-t bg-background px-5 py-3">
         <p className="min-w-0 flex-1 truncate text-label text-muted-foreground">
           {summary ? (
@@ -377,8 +292,12 @@ export function ChooseRuntimePage({
       {showConnectRemote ? (
         <ConnectRemoteDialog onClose={() => setShowConnectRemote(false)} />
       ) : null}
-      {showQoderSettings ? (
-        <RemoteRuntimeDialog configure onClose={() => setShowQoderSettings(false)} />
+      {qoderDialog ? (
+        <RemoteRuntimeDialog
+          configure={qoderDialog === "configure"}
+          onConnected={() => setSelectQoderWhenReady(true)}
+          onClose={() => setQoderDialog(null)}
+        />
       ) : null}
     </AgentCreateShell>
   );

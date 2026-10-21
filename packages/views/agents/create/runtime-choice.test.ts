@@ -120,6 +120,12 @@ describe("harness helpers", () => {
     expect(hiddenCount).toBe(3);
   });
 
+  it("shows a single leftover harness instead of folding it", () => {
+    const { shown, hiddenCount } = previewOptions(options.slice(0, 7), null, 6);
+    expect(shown).toHaveLength(7);
+    expect(hiddenCount).toBe(0);
+  });
+
   it("matches a device by its name or by any of its harnesses", () => {
     const device = {
       machine: buildRuntimeMachines([options[0]!.runtime], { now: NOW })[0]!,
