@@ -195,4 +195,32 @@ describe("RuntimesPage", () => {
       screen.getByText("No machines or cloud services match"),
     ).toBeInTheDocument();
   });
+
+  it("never lists the Qoder runtime as a machine", () => {
+    const qoderRuntime = makeRuntime({
+      id: "rt-qoder",
+      daemon_id: "qoder-managed-ws-test",
+      name: "Qoder Cloud Agent",
+      provider: "qoder_cloud",
+      runtime_mode: "cloud",
+      device_info: "",
+    });
+    for (const connection of [
+      qoder({ configured: true, enabled: true, status: "online" }),
+      qoder({ available: false }),
+    ]) {
+      const { unmount } = renderPage({
+        runtimes: [makeRuntime(), qoderRuntime],
+        connection,
+      });
+      expect(screen.getByText("dev-machine.local")).toBeInTheDocument();
+      expect(screen.queryAllByText("Qoder Cloud Agent")).toHaveLength(
+        connection.available ? 1 : 0,
+      );
+      expect(screen.getByRole("button", { name: /^All/ })).toHaveTextContent(
+        connection.available ? "2" : "1",
+      );
+      unmount();
+    }
+  });
 });

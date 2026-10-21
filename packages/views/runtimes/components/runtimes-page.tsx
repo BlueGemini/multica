@@ -241,18 +241,15 @@ export function RuntimesPage({
   const qoder = qoderConnection?.available === true ? qoderConnection : null;
   const qoderHref = paths.runtimeDetail(QODER_RUNTIME_LOCATOR);
   // Qoder's runtime registers like a machine, but it is listed once, as a
-  // cloud service.
-  const machineList = qoder
-    ? machines.filter(
-        (machine) =>
-          !(
-            machine.runtimes.length > 0 &&
-            machine.runtimes.every(
-              (runtime) => runtime.provider === "qoder_cloud",
-            )
-          ),
-      )
-    : machines;
+  // cloud service — never as a machine, even when this server cannot run
+  // Qoder and the cloud row is hidden.
+  const machineList = machines.filter(
+    (machine) =>
+      !(
+        machine.runtimes.length > 0 &&
+        machine.runtimes.every((runtime) => runtime.provider === "qoder_cloud")
+      ),
+  );
   const qoderAgentCount = agents.filter((agent) =>
     runtimes.some(
       (runtime) =>
