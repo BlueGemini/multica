@@ -104,7 +104,7 @@ WITH locked_task AS MATERIALIZED (
       AND r.workspace_id = $4
       AND t.status = 'running'
       AND cap.capability = 'task-supplement-v1'
-      AND r.provider IN ('codex', 'claude', 'cursor', 'kiro')
+      AND r.provider IN ('codex', 'claude', 'grok', 'cursor', 'kiro')
     FOR UPDATE OF t
 ), inserted AS (
     INSERT INTO task_supplement (
