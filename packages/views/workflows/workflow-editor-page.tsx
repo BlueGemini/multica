@@ -161,6 +161,7 @@ export function WorkflowEditorPage({
   seed,
   template,
   canEdit,
+  canDuplicate = canEdit,
   onBack,
   onOpen,
 }: {
@@ -169,6 +170,8 @@ export function WorkflowEditorPage({
   /** Pre-fills a new workflow from a template. */
   template?: WorkflowTemplateId | null;
   canEdit: boolean;
+  /** Duplicating creates a workflow, which any member may do. */
+  canDuplicate?: boolean;
   onBack: () => void;
   /** Navigates to another workflow's editor (after create, or to a duplicate). */
   onOpen: (target: { id: string } | { duplicateOf: string }) => void;
@@ -418,22 +421,24 @@ export function WorkflowEditorPage({
               </span>
             </p>
           </div>
-          {canEdit && (
+          {(canEdit || canDuplicate) && (
             <div className="flex shrink-0 items-center gap-2">
-              {dirty && workflowId && (
+              {canEdit && dirty && workflowId && (
                 <span className="text-caption text-muted-foreground">{t(($) => $.workflows.editor.unsaved)}</span>
               )}
-              {workflowId && (
+              {canDuplicate && workflowId && (
                 <Button variant="outline" className="gap-1.5" onClick={() => onOpen({ duplicateOf: workflowId })}>
                   <Copy className="size-3.5" />
                   {t(($) => $.workflows.editor.duplicate)}
                 </Button>
               )}
-              <Button onClick={() => void save()} disabled={!canSave} aria-busy={pending}>
-                {pending && <Spinner className="size-3.5" />}
-                {workflowId ? t(($) => $.workflows.editor.save) : t(($) => $.workflows.editor.create)}
-              </Button>
-              {workflowId && !isDefault && (
+              {canEdit && (
+                <Button onClick={() => void save()} disabled={!canSave} aria-busy={pending}>
+                  {pending && <Spinner className="size-3.5" />}
+                  {workflowId ? t(($) => $.workflows.editor.save) : t(($) => $.workflows.editor.create)}
+                </Button>
+              )}
+              {canEdit && workflowId && !isDefault && (
                 <DropdownMenu>
                   <DropdownMenuTrigger
                     render={

@@ -1684,7 +1684,7 @@
       "next_default": "Colonne suivante ({{status}})",
       "saved": "Passage de relais enregistré",
       "error": "Impossible d’enregistrer le passage de relais",
-      "read_only": "Les transferts appartiennent au workflow ; les administrateurs de l’espace les modifient.",
+      "read_only": "Les transferts appartiennent au workflow ; son propriétaire et les administrateurs de l’espace les modifient.",
       "to": "Confier à",
       "members": "Membres",
       "mode_none": "Pas de relais",

@@ -1684,7 +1684,7 @@
       "next_default": "Next column ({{status}})",
       "saved": "Handoff saved",
       "error": "Couldn't save the handoff",
-      "read_only": "Handoffs belong to the workflow; workspace admins change them.",
+      "read_only": "Handoffs belong to the workflow; its owner and workspace admins change them.",
       "to": "Hand to",
       "members": "Members",
       "mode_none": "No handoff",
