@@ -37,10 +37,11 @@ func decodeDepSyncLogs(t *testing.T, buf *bytes.Buffer) []depSyncLogRecord {
 }
 
 func newTestDepSyncWatcher(buf *bytes.Buffer) (*hermesDepSyncWatcher, *time.Time) {
-	w := newHermesDepSyncWatcher(slog.New(slog.NewJSONHandler(buf, nil)), "/tmp/task/hermes-home")
-	clock := time.Unix(1_700_000_000, 0)
-	w.now = func() time.Time { return clock }
-	return w, &clock
+	clock := new(time.Time)
+	*clock = time.Unix(1_700_000_000, 0)
+	w := newHermesDepSyncWatcherAt(slog.New(slog.NewJSONHandler(buf, nil)), "/tmp/task/hermes-home",
+		func() time.Time { return *clock })
+	return w, clock
 }
 
 // Every launch-time reinstall message Hermes prints (hermes_cli/venv_sync.py)
@@ -141,5 +142,30 @@ func TestHermesDepSyncWatcherBoundsPartialLine(t *testing.T) {
 	_, _ = w.Write([]byte("\nhermes: completing source-update dependencies...\n"))
 	if !w.Detected() {
 		t.Fatal("marker after a dropped oversized line should still be detected")
+	}
+}
+
+// stdout and stderr are drained independently, so the handshake can be
+// handled before the stderr copier reaches a marker Hermes wrote first. The
+// finish log must still be emitted, with the delay measured from launch to the
+// handshake rather than from when the marker line happened to be processed.
+func TestHermesDepSyncWatcherHandshakeBeforeMarker(t *testing.T) {
+	t.Parallel()
+	var buf bytes.Buffer
+	w, clock := newTestDepSyncWatcher(&buf)
+	*clock = clock.Add(52 * time.Second)
+	w.Finish(true)
+	if recs := decodeDepSyncLogs(t, &buf); len(recs) != 0 {
+		t.Fatalf("no logs expected before a marker is seen, got %s", buf.String())
+	}
+	*clock = clock.Add(3 * time.Second)
+	_, _ = w.Write([]byte("hermes: completing source-update dependencies...\n"))
+
+	recs := decodeDepSyncLogs(t, &buf)
+	if len(recs) != 2 {
+		t.Fatalf("want start+finish logs, got %d: %s", len(recs), buf.String())
+	}
+	if recs[1].StartupDelayMs != 52000 || recs[1].HandshakeOK == nil || !*recs[1].HandshakeOK {
+		t.Errorf("finish should report launch-to-handshake delay: %+v", recs[1])
 	}
 }

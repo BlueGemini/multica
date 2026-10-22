@@ -34,25 +34,40 @@ const hermesDepSyncHint = "Hermes resolves its dependency set from the active ho
 	"the shared environment (multica#9390, NousResearch/hermes-agent#137726)"
 
 // hermesDepSyncWatcher sniffs Hermes stderr for a launch-time dependency
-// reinstall, logs one Warn when it starts and one when the ACP handshake
-// proves it finished, with the measured startup cost. It never alters the
-// task outcome. Safe for concurrent Write (stderr copier) and Finish (run
+// reinstall and logs one Warn when it is seen and one once the ACP handshake
+// has returned, with the measured startup time. It never alters the task
+// outcome. Safe for concurrent Write (stderr copier) and Finish (run
 // goroutine).
+//
+// stdout and stderr are read independently, so the stderr copier may process
+// the marker only AFTER the initialize response was handled, even though
+// Hermes wrote the marker first. The watcher therefore records both events
+// and emits the finish log when the second of them arrives, whichever it is.
+// The delay is measured from launch (watcher creation, right after the
+// process starts) to the handshake, so it does not depend on when the stderr
+// copier got to the marker line.
 type hermesDepSyncWatcher struct {
 	logger     *slog.Logger
 	hermesHome string
 	now        func() time.Time
+	launched   time.Time
 
-	mu       sync.Mutex
-	remains  []byte
-	started  time.Time
-	marker   string
-	detected bool
-	finished bool
+	mu          sync.Mutex
+	remains     []byte
+	marker      string
+	detected    bool
+	handshake   bool // Finish has been called
+	handshakeOK bool
+	handshakeAt time.Time
+	finished    bool // finish log emitted
 }
 
 func newHermesDepSyncWatcher(logger *slog.Logger, hermesHome string) *hermesDepSyncWatcher {
-	return &hermesDepSyncWatcher{logger: logger, hermesHome: hermesHome, now: time.Now}
+	return newHermesDepSyncWatcherAt(logger, hermesHome, time.Now)
+}
+
+func newHermesDepSyncWatcherAt(logger *slog.Logger, hermesHome string, now func() time.Time) *hermesDepSyncWatcher {
+	return &hermesDepSyncWatcher{logger: logger, hermesHome: hermesHome, now: now, launched: now()}
 }
 
 // hermesDepSyncRemainsCap bounds the partial-line buffer. Marker lines are
@@ -89,13 +104,13 @@ func (w *hermesDepSyncWatcher) Write(p []byte) (int, error) {
 			if strings.HasPrefix(line, m) {
 				w.detected = true
 				w.marker = line
-				w.started = w.now()
 				w.remains = w.remains[:0]
 				w.logger.Warn("hermes is reinstalling its dependency environment before this task starts; startup will be slower",
 					"hermes_output", line,
 					"hermes_home", w.hermesHome,
 					"hint", hermesDepSyncHint,
 				)
+				w.maybeLogFinishLocked()
 				return len(p), nil
 			}
 		}
@@ -103,20 +118,31 @@ func (w *hermesDepSyncWatcher) Write(p []byte) (int, error) {
 	return len(p), nil
 }
 
-// Finish is called once the ACP initialize handshake has returned (Hermes'
+// Finish records that the ACP initialize handshake has returned (Hermes'
 // dependency sync runs before its ACP server starts, so this bounds the
-// reinstall's added startup time). ok=false means the handshake failed.
-// It is a no-op when no reinstall was seen, and logs at most once.
+// reinstall's added startup time). ok=false means the handshake failed. Only
+// the first call counts. The finish log is emitted here if the marker was
+// already seen, or later by Write if the marker is processed afterwards.
 func (w *hermesDepSyncWatcher) Finish(ok bool) {
 	w.mu.Lock()
 	defer w.mu.Unlock()
-	if !w.detected || w.finished {
+	if w.handshake {
+		return
+	}
+	w.handshake = true
+	w.handshakeOK = ok
+	w.handshakeAt = w.now()
+	w.maybeLogFinishLocked()
+}
+
+func (w *hermesDepSyncWatcher) maybeLogFinishLocked() {
+	if !w.detected || !w.handshake || w.finished {
 		return
 	}
 	w.finished = true
 	w.logger.Warn("hermes dependency reinstall finished",
-		"startup_delay_ms", w.now().Sub(w.started).Milliseconds(),
-		"handshake_ok", ok,
+		"startup_delay_ms", w.handshakeAt.Sub(w.launched).Milliseconds(),
+		"handshake_ok", w.handshakeOK,
 		"hermes_output", w.marker,
 		"hermes_home", w.hermesHome,
 	)
