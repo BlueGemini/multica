@@ -93,4 +93,23 @@ describe("surfaceStatusOrder (MUL-7420)", () => {
   it("is the catalog order without a workflow", () => {
     expect(surfaceStatusOrder(["backlog", "todo"], null)).toEqual(["backlog", "todo"]);
   });
+
+  it("offers only the project's workflow steps on a project surface (MUL-8160)", () => {
+    expect(
+      surfaceStatusOrder(["backlog", "todo", "in_progress", "in_review", "done", "code_review"], workflow, workflow),
+    ).toEqual(["todo", "code_review", "in_progress", "done"]);
+  });
+
+  it("keeps a project surface to its workflow under a status filter (MUL-8160)", () => {
+    expect(surfaceStatusOrder(["backlog", "todo", "in_progress", "done", "code_review"], null, workflow)).toEqual([
+      "todo",
+      "code_review",
+      "in_progress",
+      "done",
+    ]);
+  });
+
+  it("drops a workflow step the catalog no longer has (MUL-8160)", () => {
+    expect(surfaceStatusOrder(["todo", "in_progress", "done"], workflow, workflow)).toEqual(["todo", "in_progress", "done"]);
+  });
 });
