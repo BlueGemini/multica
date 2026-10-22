@@ -88,6 +88,19 @@ describe("Display columns", () => {
     expect(store.getState().hiddenStatuses).not.toContain("cancelled");
   });
 
+  it("locks the chips while a status filter picks the columns", async () => {
+    const store = renderDisplay(["todo", "done", "cancelled"], (s) => {
+      s.getState().setViewMode("board");
+      s.getState().toggleStatusFilter("todo");
+    });
+
+    const todo = await screen.findByRole("button", { name: "Todo" });
+    expect(todo).toBeDisabled();
+    fireEvent.click(todo);
+    expect(store.getState().hiddenStatuses).not.toContain("todo");
+    expect(screen.getByText("Clear the status filter to show or hide columns.")).toBeInTheDocument();
+  });
+
   it("is absent where columns are not statuses", async () => {
     renderDisplay(["todo", "done"], (store) => {
       store.getState().setViewMode("board");

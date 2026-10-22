@@ -203,6 +203,7 @@
     "ordering_section": "排序",
     "card_properties_section": "卡片属性",
     "columns_section": "列",
+    "columns_locked_by_filter": "清除状态筛选后才能显示或隐藏列。",
     "ascending_title": "升序",
     "descending_title": "降序",
     "newest_first": "最新优先",

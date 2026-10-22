@@ -203,6 +203,7 @@
     "ordering_section": "정렬",
     "card_properties_section": "카드 속성",
     "columns_section": "열",
+    "columns_locked_by_filter": "열을 표시하거나 숨기려면 상태 필터를 해제하세요.",
     "ascending_title": "오름차순",
     "descending_title": "내림차순",
     "newest_first": "최신순",

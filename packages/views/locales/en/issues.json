@@ -207,6 +207,7 @@
     "ordering_section": "Ordering",
     "card_properties_section": "Card properties",
     "columns_section": "Columns",
+    "columns_locked_by_filter": "Clear the status filter to show or hide columns.",
     "ascending_title": "Ascending",
     "descending_title": "Descending",
     "newest_first": "Newest first",

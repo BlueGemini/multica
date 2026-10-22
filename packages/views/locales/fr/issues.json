@@ -207,6 +207,7 @@
     "ordering_section": "Tri",
     "card_properties_section": "Propriétés des cartes",
     "columns_section": "Colonnes",
+    "columns_locked_by_filter": "Retirez le filtre d’état pour afficher ou masquer des colonnes.",
     "ascending_title": "Croissant",
     "descending_title": "Décroissant",
     "newest_first": "Plus récents d'abord",

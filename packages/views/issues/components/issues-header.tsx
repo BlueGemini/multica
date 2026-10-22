@@ -2271,7 +2271,9 @@ export function IssueDisplayControls({
                   <span className="text-caption font-medium text-muted-foreground">
                     {t(($) => $.display.columns_section)}
                   </span>
-                  {/* Same chip grammar as Card properties: pressed = column shown. */}
+                  {/* Same chip grammar as Card properties: pressed = column shown.
+                      A status filter picks the columns itself and overrides
+                      these, so the chips lock rather than flip to no effect. */}
                   <div className="mt-2 flex flex-wrap gap-1">
                     {columnOptions.map((option) => (
                       <Toggle
@@ -2279,6 +2281,7 @@ export function IssueDisplayControls({
                         size="sm"
                         variant="outline"
                         pressed={!hiddenStatuses.includes(option.key)}
+                        disabled={statusFilters.length > 0}
                         onPressedChange={(pressed) =>
                           pressed ? act.showStatus(option.key) : act.hideStatus(option.key)
                         }
@@ -2295,6 +2298,11 @@ export function IssueDisplayControls({
                       </Toggle>
                     ))}
                   </div>
+                  {statusFilters.length > 0 && (
+                    <p className="mt-1.5 text-caption text-faint-foreground">
+                      {t(($) => $.display.columns_locked_by_filter)}
+                    </p>
+                  )}
                 </div>
               )}
               {viewMode === "table" && (
