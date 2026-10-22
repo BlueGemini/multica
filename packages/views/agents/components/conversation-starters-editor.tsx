@@ -33,9 +33,11 @@ export function ConversationStartersEditor({
   const { t } = useT("agents");
   const fallbackCount = useFallbackConversationStarters().length;
   const [editing, setEditing] = useState<number | null>(null);
-  const hasIncompletePrompt = value.some(
-    (item) => !item.label.trim() || !item.prompt.trim(),
-  );
+  const hasIncompletePrompt = value.some(isIncomplete);
+  // An open suggestion stays open until it is filled in or removed, so a
+  // half-written one is never tucked away behind a collapsed row.
+  const editingItem = editing === null ? undefined : value[editing];
+  const editingIncomplete = editingItem ? isIncomplete(editingItem) : false;
 
   const update = (
     index: number,
@@ -130,6 +132,7 @@ export function ConversationStartersEditor({
                 type="button"
                 variant="outline"
                 size="xs"
+                disabled={editingIncomplete}
                 onClick={() => setEditing(null)}
               >
                 {t(($) => $.conversation_starters.done)}
@@ -159,7 +162,7 @@ export function ConversationStartersEditor({
               type="button"
               variant="ghost"
               size="icon-sm"
-              disabled={disabled}
+              disabled={disabled || editingIncomplete}
               label={t(($) => $.conversation_starters.edit, {
                 number: index + 1,
               })}
@@ -178,7 +181,7 @@ export function ConversationStartersEditor({
             variant="ghost"
             size="xs"
             className="-ml-1.5 text-muted-foreground"
-            disabled={disabled}
+            disabled={disabled || editingIncomplete}
             onClick={add}
           >
             <Plus aria-hidden="true" />
@@ -199,4 +202,8 @@ export function ConversationStartersEditor({
       ) : null}
     </div>
   );
+}
+
+function isIncomplete(item: AgentConversationStarter) {
+  return !item.label.trim() || !item.prompt.trim();
 }

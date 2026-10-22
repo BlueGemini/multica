@@ -52,6 +52,27 @@ describe("ConversationStartersEditor", () => {
     ).toBeInTheDocument();
   });
 
+  it("keeps an incomplete suggestion open until it is filled in", async () => {
+    const user = userEvent.setup();
+    renderWithI18n(<Controlled initial={[review]} />);
+
+    await user.click(screen.getByRole("button", { name: "Add suggestion" }));
+    const done = screen.getByRole("button", { name: "Done" });
+    expect(done).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Add suggestion" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Edit suggestion 1" })).toBeDisabled();
+
+    await user.type(screen.getByLabelText("Suggestion 2 label"), "Plan");
+    expect(done).toBeDisabled();
+
+    await user.type(screen.getByLabelText("Suggestion 2 prompt"), "Plan the week.");
+    expect(done).toBeEnabled();
+    await user.click(done);
+
+    expect(screen.getByText("Plan")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Add suggestion" })).toBeEnabled();
+  });
+
   it("summarises a configured suggestion and edits it in place", async () => {
     const user = userEvent.setup();
     const onChange = vi.fn();
