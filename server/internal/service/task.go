@@ -38,6 +38,11 @@ import (
 )
 
 type TaskService struct {
+	// RecordMemberActivity enables the member_delegation_day ledger, which
+	// only feeds self-host telemetry. Off unless the server enables telemetry
+	// at startup, so DO_NOT_TRACK stops collection, not just delivery.
+	RecordMemberActivity bool
+
 	Queries   *db.Queries
 	TxStarter TxStarter
 	Hub       *realtime.Hub
@@ -824,7 +829,7 @@ func attributionCreateParams(attr attribution.Result) (source pgtype.Text, deleg
 // Best-effort and outside any caller transaction: a failed write costs one
 // activity mark, never the run.
 func (s *TaskService) RecordHumanDelegation(ctx context.Context, attr attribution.Result) {
-	if s == nil || s.Queries == nil || !attr.HumanAction || !attr.UserID.Valid {
+	if s == nil || !s.RecordMemberActivity || s.Queries == nil || !attr.HumanAction || !attr.UserID.Valid {
 		return
 	}
 	if err := s.Queries.RecordMemberDelegationDay(ctx, db.RecordMemberDelegationDayParams{

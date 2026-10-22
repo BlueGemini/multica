@@ -37,6 +37,15 @@ func delegationDays(t *testing.T, f principalFixture, userID string) []string {
 	return days
 }
 
+// activityFixture is conditionFixture with the ledger enabled, as the server
+// does when telemetry is on.
+func activityFixture(t *testing.T) (principalFixture, *IssueWakeupService, pgtype.UUID, string) {
+	t.Helper()
+	f, s, issue, agent := conditionFixture(t)
+	s.Tasks.RecordMemberActivity = true
+	return f, s, issue, agent
+}
+
 func cleanupDelegationDays(t *testing.T, f principalFixture, userIDs ...string) {
 	t.Helper()
 	for _, id := range userIDs {
@@ -57,7 +66,7 @@ func assignIssueToAgent(t *testing.T, f principalFixture, issue pgtype.UUID, age
 }
 
 func TestSelfHostTelemetryActorAssignmentMarksToday(t *testing.T) {
-	f, s, issueID, agent := conditionFixture(t)
+	f, s, issueID, agent := activityFixture(t)
 	cleanupDelegationDays(t, f, f.UserID)
 	issue := assignIssueToAgent(t, f, issueID, agent)
 	if _, err := s.Tasks.EnqueueTaskForIssueByActor(context.Background(), issue, parseTestUUID(t, f.UserID)); err != nil {
@@ -71,7 +80,7 @@ func TestSelfHostTelemetryActorAssignmentMarksToday(t *testing.T) {
 // The parent issue's member creator is inherited by a child_done wakeup run as
 // direct_human, but nobody acted.
 func TestSelfHostTelemetryAutomaticChildDoneMustNotCountHumanActivity(t *testing.T) {
-	f, s, issue, agent := conditionFixture(t)
+	f, s, issue, agent := activityFixture(t)
 	ctx := context.Background()
 	cleanupDelegationDays(t, f, f.UserID)
 	f.Exec(t, "UPDATE issue SET status='in_progress', assignee_type='agent',assignee_id=$2,created_at=now()-interval '40 days' WHERE id=$1", issue, agent)
@@ -94,7 +103,7 @@ func TestSelfHostTelemetryAutomaticChildDoneMustNotCountHumanActivity(t *testing
 }
 
 func TestSelfHostTelemetryAutomaticRetryMustNotCountHumanActivity(t *testing.T) {
-	f, s, issueID, agent := conditionFixture(t)
+	f, s, issueID, agent := activityFixture(t)
 	ctx := context.Background()
 	cleanupDelegationDays(t, f, f.UserID)
 	issue := assignIssueToAgent(t, f, issueID, agent)
@@ -121,7 +130,7 @@ func TestSelfHostTelemetryAutomaticRetryMustNotCountHumanActivity(t *testing.T) 
 // A replies to the agent yesterday; the run is still queued today when B's reply
 // folds into it and re-attributes it to B. Both humans keep their own day.
 func TestSelfHostTelemetryCoalescedHumanActionsMustRetainUsersAndDates(t *testing.T) {
-	f, s, issueID, agent := conditionFixture(t)
+	f, s, issueID, agent := activityFixture(t)
 	ctx := context.Background()
 	userB := f.member(t, "second human")
 	cleanupDelegationDays(t, f, f.UserID, userB)
@@ -159,5 +168,59 @@ func TestSelfHostTelemetryCoalescedHumanActionsMustRetainUsersAndDates(t *testin
 	}
 	if got := delegationDays(t, f, userB); len(got) != 1 || got[0] != utcDate(time.Now()) {
 		t.Errorf("B's days = %v, want [today]", got)
+	}
+}
+
+// Creating an issue already assigned to an agent is a member delegating work,
+// on both the immediate and the deferred (channel media) path.
+func TestSelfHostTelemetryCreateAssignedIssueMarksToday(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		fireAt time.Time
+	}{
+		{"immediate", time.Time{}},
+		{"deferred", time.Now().Add(time.Hour)},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			f, s, _, agent := activityFixture(t)
+			cleanupDelegationDays(t, f, f.UserID)
+			ctx := context.Background()
+			f.Exec(t, "UPDATE workspace SET issue_counter=(SELECT COALESCE(MAX(number),0) FROM issue WHERE workspace_id=$1) WHERE id=$1", f.WorkspaceID)
+			issues := NewIssueService(f.q, f.Pool, f.svc.Bus, nil, s.Tasks)
+			result, err := issues.Create(ctx, IssueCreateParams{
+				WorkspaceID: parseTestUUID(t, f.WorkspaceID), Title: "Human creates an assigned issue", Status: "todo", Priority: "medium",
+				AssigneeType: pgtype.Text{String: "agent", Valid: true}, AssigneeID: parseTestUUID(t, agent),
+				CreatorType: "member", CreatorID: parseTestUUID(t, f.UserID),
+			}, IssueCreateOpts{AssignedAgentRunFireAt: tc.fireAt})
+			if err != nil {
+				t.Fatal(err)
+			}
+			f.Cleanup(t, "DELETE FROM issue WHERE id=$1", result.Issue.ID)
+			f.Cleanup(t, "DELETE FROM activity_log WHERE issue_id=$1", result.Issue.ID)
+			f.Cleanup(t, "DELETE FROM agent_task_queue WHERE issue_id=$1", result.Issue.ID)
+			if !result.AssignedTaskID.Valid {
+				t.Fatal("no assigned run was created")
+			}
+			if got := delegationDays(t, f, f.UserID); len(got) != 1 || got[0] != utcDate(time.Now()) {
+				t.Fatalf("create-with-assignee days = %v, want [today]", got)
+			}
+		})
+	}
+}
+
+// With telemetry off (the server leaves RecordMemberActivity false under
+// DO_NOT_TRACK) the ledger is never written.
+func TestSelfHostTelemetryDisabledDoesNotRecordDelegation(t *testing.T) {
+	f, s, issueID, agent := conditionFixture(t)
+	cleanupDelegationDays(t, f, f.UserID)
+	if s.Tasks.RecordMemberActivity {
+		t.Fatal("ledger must be off unless the server enables telemetry")
+	}
+	issue := assignIssueToAgent(t, f, issueID, agent)
+	if _, err := s.Tasks.EnqueueTaskForIssueByActor(context.Background(), issue, parseTestUUID(t, f.UserID)); err != nil {
+		t.Fatal(err)
+	}
+	if got := delegationDays(t, f, f.UserID); len(got) != 0 {
+		t.Fatalf("telemetry disabled but ledger recorded %v", got)
 	}
 }
