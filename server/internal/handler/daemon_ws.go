@@ -70,12 +70,12 @@ func (h *Handler) buildDaemonWebSocketIdentity(w http.ResponseWriter, r *http.Re
 			return daemonws.ClientIdentity{}, false
 		}
 		rt := rows[index]
-		if identity.DaemonID != "" && rt.DaemonID.Valid && rt.DaemonID.String != identity.DaemonID {
-			writeError(w, http.StatusNotFound, "runtime not found")
-			return daemonws.ClientIdentity{}, false
-		}
+		// Same runtime-level rule as the HTTP daemon routes (MUL-8154): a
+		// daemon token must match the runtime's daemon_id, a user credential
+		// must own the runtime. The leases seeded below authorize every later
+		// WS heartbeat for this runtime, so this is the only check they get.
 		workspaceID := uuidToString(rt.WorkspaceID)
-		if !h.requireDaemonWorkspaceAccess(w, r, workspaceID) {
+		if !h.requireDaemonRuntimeAuthorized(w, r, workspaceID, rt.DaemonID, rt.OwnerID, "runtime not found") {
 			return daemonws.ClientIdentity{}, false
 		}
 		if workspaceID != "" {
