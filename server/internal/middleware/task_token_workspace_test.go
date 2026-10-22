@@ -151,6 +151,22 @@ func TestAuth_TaskTokenWorkspaceSelectors(t *testing.T) {
 		{name: "slug lookup db error", method: "GET", target: "/api/projects?workspace_slug=" + ttSlugDBError,
 			wantStatus: http.StatusInternalServerError},
 
+		// Query strings that url.Query() would partially drop must be
+		// refused outright, not read as "no selector" (PR #9422 review).
+		{name: "bad escape in workspace_id", method: "POST",
+			target: "/api/projects?workspace_id=" + ttWorkspaceB + "%zz", wantStatus: http.StatusBadRequest},
+		{name: "bad escape in workspace_slug", method: "POST",
+			target: "/api/projects?workspace_slug=ws-b%zz", wantStatus: http.StatusBadRequest},
+		{name: "unencoded semicolon", method: "POST",
+			target: "/api/projects?workspace_id=" + ttWorkspaceB + ";ignored=1", wantStatus: http.StatusBadRequest},
+		{name: "valid A then malformed B", method: "POST",
+			target:     "/api/projects?workspace_id=" + ttWorkspaceA + "&workspace_id=" + ttWorkspaceB + "%zz",
+			wantStatus: http.StatusBadRequest},
+		{name: "malformed non-selector param", method: "POST",
+			target: "/api/projects?workspace_id=" + ttWorkspaceA + "&q=%zz", wantStatus: http.StatusBadRequest},
+		{name: "encoded values still accepted", method: "GET",
+			target: "/api/projects?workspace_slug=ws%2Da&q=a%20b", wantStatus: http.StatusOK},
+
 		// Writes, including an auth-only route that never reaches the
 		// workspace middleware.
 		{name: "POST conflict", method: "POST", target: "/api/issues",

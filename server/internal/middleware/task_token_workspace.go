@@ -4,6 +4,7 @@ import (
 	"errors"
 	"log/slog"
 	"net/http"
+	"net/url"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/multica-ai/multica/server/internal/util"
@@ -37,12 +38,26 @@ const errTaskTokenWorkspaceMismatch = "task token is bound to a different worksp
 //
 // Returns true when it has written an error response; the caller must stop.
 // Status codes:
-//   - 400 malformed workspace ID
+//   - 400 query string that cannot be fully parsed, or malformed workspace ID
 //   - 404 unknown workspace slug
 //   - 403 selector resolves to a different workspace than the token's
 //   - 500 slug lookup failed for a reason other than "not found"
 func checkTaskTokenWorkspaceTarget(w http.ResponseWriter, r *http.Request, queries *db.Queries, boundWorkspaceID string) bool {
-	query := r.URL.Query()
+	// r.URL.Query() silently drops pairs it cannot decode (bad percent
+	// escapes, unencoded ';'), so `workspace_slug=ws-b%zz` would look like
+	// "no selector" and fall through to the bound workspace. Parse strictly
+	// and refuse anything we cannot read in full.
+	query, err := url.ParseQuery(r.URL.RawQuery)
+	if err != nil {
+		slog.Warn("auth: task token request has malformed query string",
+			"path", r.URL.Path,
+			"method", r.Method,
+			"bound_workspace_id", boundWorkspaceID,
+			"error", err,
+		)
+		writeError(w, http.StatusBadRequest, "malformed query string")
+		return true
+	}
 
 	reject := func(status int, msg, selector, value string) bool {
 		slog.Warn("auth: task token workspace selector rejected",
