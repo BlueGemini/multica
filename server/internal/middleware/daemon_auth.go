@@ -20,6 +20,7 @@ const (
 	ctxKeyDaemonWorkspaceID daemonContextKey = iota
 	ctxKeyDaemonID
 	ctxKeyDaemonAuthPath
+	ctxKeyDaemonTokenHash
 )
 
 // Daemon auth path labels exposed via context for slow-log attribution.
@@ -52,6 +53,26 @@ func DaemonAuthPathFromContext(ctx context.Context) string {
 
 // WithDaemonContext returns a new context with the daemon workspace ID and daemon ID set.
 // This is used by tests to simulate daemon token authentication.
+// DaemonTokenHashFromContext returns the hash of the mdt_ token that
+// authenticated the request, or "" for any other auth path. Checks that must
+// re-validate the exact credential (e.g. Qoder revocation) read it from here
+// rather than the Authorization header, so they also work for requests that
+// are replayed in-process from a WebSocket connection (MUL-8154).
+func DaemonTokenHashFromContext(ctx context.Context) string {
+	h, _ := ctx.Value(ctxKeyDaemonTokenHash).(string)
+	return h
+}
+
+// WithDaemonTokenHash attaches the authenticating mdt_ token hash. The WS
+// RPC bridge uses it to carry the connection's credential into the
+// synthetic request it hands to the HTTP handler.
+func WithDaemonTokenHash(ctx context.Context, tokenHash string) context.Context {
+	if tokenHash == "" {
+		return ctx
+	}
+	return context.WithValue(ctx, ctxKeyDaemonTokenHash, tokenHash)
+}
+
 func WithDaemonContext(ctx context.Context, workspaceID, daemonID string) context.Context {
 	ctx = context.WithValue(ctx, ctxKeyDaemonWorkspaceID, workspaceID)
 	ctx = context.WithValue(ctx, ctxKeyDaemonID, daemonID)
@@ -119,6 +140,7 @@ func DaemonAuth(queries *db.Queries, patCache *auth.PATCache, daemonCache *auth.
 					ctx := context.WithValue(r.Context(), ctxKeyDaemonWorkspaceID, id.WorkspaceID)
 					ctx = context.WithValue(ctx, ctxKeyDaemonID, id.DaemonID)
 					ctx = context.WithValue(ctx, ctxKeyDaemonAuthPath, DaemonAuthPathDaemonToken)
+					ctx = context.WithValue(ctx, ctxKeyDaemonTokenHash, hash)
 					next.ServeHTTP(w, r.WithContext(ctx))
 					return
 				}
@@ -149,6 +171,7 @@ func DaemonAuth(queries *db.Queries, patCache *auth.PATCache, daemonCache *auth.
 				ctx := context.WithValue(r.Context(), ctxKeyDaemonWorkspaceID, identity.WorkspaceID)
 				ctx = context.WithValue(ctx, ctxKeyDaemonID, identity.DaemonID)
 				ctx = context.WithValue(ctx, ctxKeyDaemonAuthPath, DaemonAuthPathDaemonToken)
+				ctx = context.WithValue(ctx, ctxKeyDaemonTokenHash, hash)
 				next.ServeHTTP(w, r.WithContext(ctx))
 				return
 			}

@@ -407,11 +407,11 @@ func normalizeProvider(s string) string {
 // existing rows keep whatever they already have. A lookup/update error is
 // non-fatal — registration must still succeed — so the input row is returned
 // unchanged on any failure.
-func (h *Handler) inheritMachineCustomName(ctx context.Context, rt db.AgentRuntime, inserted bool) db.AgentRuntime {
+func (h *Handler) inheritMachineCustomName(ctx context.Context, q *db.Queries, rt db.AgentRuntime, inserted bool) db.AgentRuntime {
 	if !inserted || rt.CustomName.Valid || !rt.DaemonID.Valid {
 		return rt
 	}
-	names, err := h.Queries.ListDaemonCustomNames(ctx, db.ListDaemonCustomNamesParams{
+	names, err := q.ListDaemonCustomNames(ctx, db.ListDaemonCustomNamesParams{
 		WorkspaceID: rt.WorkspaceID,
 		DaemonID:    rt.DaemonID,
 		ExcludeID:   rt.ID,
@@ -423,7 +423,7 @@ func (h *Handler) inheritMachineCustomName(ctx context.Context, rt db.AgentRunti
 	if !ok {
 		return rt
 	}
-	updated, err := h.Queries.UpdateAgentRuntimeCustomName(ctx, db.UpdateAgentRuntimeCustomNameParams{
+	updated, err := q.UpdateAgentRuntimeCustomName(ctx, db.UpdateAgentRuntimeCustomNameParams{
 		CustomName: pgtype.Text{String: shared, Valid: true},
 		ID:         rt.ID,
 	})
@@ -440,22 +440,19 @@ var errRuntimeProfileDisabled = errors.New("runtime profile is disabled")
 // commits; DeleteRuntimeProfile takes a conflicting UPDATE lock before it
 // enumerates runtime rows. This closes the stale-read window where deletion
 // could miss an instance inserted by a concurrently registering daemon.
+//
+// It runs on the caller's registration transaction (MUL-8154), so the profile
+// lock is held until the whole registration commits.
 func (h *Handler) upsertRuntimeWithProfile(
 	ctx context.Context,
+	qtx *db.Queries,
 	workspaceID, profileID pgtype.UUID,
 	build func(db.RuntimeProfile) db.UpsertAgentRuntimeWithProfileParams,
 ) (db.UpsertAgentRuntimeWithProfileRow, db.RuntimeProfile, error) {
 	var row db.UpsertAgentRuntimeWithProfileRow
 	var profile db.RuntimeProfile
 
-	tx, err := h.TxStarter.Begin(ctx)
-	if err != nil {
-		return row, profile, fmt.Errorf("begin profile runtime registration: %w", err)
-	}
-	defer tx.Rollback(ctx)
-	qtx := h.Queries.WithTx(tx)
-
-	profile, err = qtx.LockRuntimeProfileForRegistration(ctx, db.LockRuntimeProfileForRegistrationParams{
+	profile, err := qtx.LockRuntimeProfileForRegistration(ctx, db.LockRuntimeProfileForRegistrationParams{
 		ID:          profileID,
 		WorkspaceID: workspaceID,
 	})
@@ -476,9 +473,6 @@ func (h *Handler) upsertRuntimeWithProfile(
 			return row, profile, errRuntimeOwnedByAnotherUser
 		}
 		return row, profile, fmt.Errorf("upsert profile runtime: %w", err)
-	}
-	if err := tx.Commit(ctx); err != nil {
-		return row, profile, fmt.Errorf("commit profile runtime registration: %w", err)
 	}
 	return row, profile, nil
 }
@@ -508,6 +502,25 @@ func sharedDaemonCustomName(names []pgtype.Text) (string, bool) {
 		}
 	}
 	return first, true
+}
+
+// beginDaemonRegistration opens the transaction a registration's ownership
+// pre-check and every runtime write run in, after taking a transaction-scoped
+// advisory lock on (workspace_id, daemon_id). Registrations of the same daemon
+// therefore run one at a time and each pre-check sees what the previous one
+// committed (MUL-8154 review). Everything under the lock runs on this one
+// connection, so a queue of waiting registrations cannot starve the holder of
+// pool connections.
+func (h *Handler) beginDaemonRegistration(ctx context.Context, workspaceID, daemonID string) (pgx.Tx, error) {
+	tx, err := h.TxStarter.Begin(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("begin registration: %w", err)
+	}
+	if _, err := tx.Exec(ctx, `SELECT pg_advisory_xact_lock(hashtextextended($1, 8154))`, workspaceID+"/"+daemonID); err != nil {
+		_ = tx.Rollback(context.Background())
+		return nil, fmt.Errorf("acquire registration lock: %w", err)
+	}
+	return tx, nil
 }
 
 // errRuntimeOwnedByAnotherUser reports that a user-credential registration
@@ -601,15 +614,40 @@ func (h *Handler) DaemonRegister(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		ownerID = member.UserID
+	}
 
-		// Ownership pre-check (MUL-8154), before any write so a refused
-		// registration leaves nothing half-applied. Every row this
-		// daemon_id already holds in the workspace must belong to the
-		// caller — including ownerless rows, which ordinary registration
-		// must not silently claim. The upserts carry the same fence in
-		// SQL (required_owner_id) to close the race with a concurrent
-		// registration; this check just makes the common case atomic.
-		existing, err := h.Queries.ListRuntimeOwnersByDaemon(r.Context(), db.ListRuntimeOwnersByDaemonParams{
+	ws, err := h.Queries.GetWorkspace(r.Context(), wsUUID)
+	if err != nil {
+		writeError(w, http.StatusNotFound, "workspace not found")
+		return
+	}
+
+	// One transaction for the ownership pre-check and every runtime write,
+	// serialized per (workspace, daemon_id) for both auth paths (MUL-8154
+	// review). The pre-check and the per-provider / per-profile upserts hit
+	// different conflict keys, so without this two members registering
+	// different providers of the same daemon could both read "no rows" and
+	// both insert — one daemon, two owners, and a daemon token minted for
+	// either runtime would then reach the other's. A failure anywhere rolls
+	// the whole registration back. Legacy merges, analytics and the
+	// register event run only after commit.
+	tx, err := h.beginDaemonRegistration(r.Context(), req.WorkspaceID, req.DaemonID)
+	if err != nil {
+		slog.Warn("register: begin registration failed", append(logger.RequestAttrs(r), "error", err)...)
+		writeError(w, http.StatusServiceUnavailable, "failed to register runtime")
+		return
+	}
+	defer tx.Rollback(context.Background())
+	qtx := h.Queries.WithTx(tx)
+	var afterCommit []func()
+
+	if ownerID.Valid {
+		// Ownership pre-check: every row this daemon_id already holds in
+		// the workspace must belong to the caller — including ownerless
+		// rows, which ordinary registration must not silently claim. The
+		// upserts keep the same fence in SQL (required_owner_id) as
+		// defense in depth.
+		existing, err := qtx.ListRuntimeOwnersByDaemon(r.Context(), db.ListRuntimeOwnersByDaemonParams{
 			WorkspaceID: wsUUID,
 			DaemonID:    strToText(req.DaemonID),
 		})
@@ -627,12 +665,6 @@ func (h *Handler) DaemonRegister(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 		}
-	}
-
-	ws, err := h.Queries.GetWorkspace(r.Context(), wsUUID)
-	if err != nil {
-		writeError(w, http.StatusNotFound, "workspace not found")
-		return
 	}
 
 	resp := make([]AgentRuntimeResponse, 0, len(req.Runtimes))
@@ -683,6 +715,7 @@ func (h *Handler) DaemonRegister(w http.ResponseWriter, r *http.Request) {
 			// the provider used for task routing cannot drift from the profile.
 			prow, profile, err := h.upsertRuntimeWithProfile(
 				r.Context(),
+				qtx,
 				wsUUID,
 				profileUUID,
 				func(profile db.RuntimeProfile) db.UpsertAgentRuntimeWithProfileParams {
@@ -751,7 +784,7 @@ func (h *Handler) DaemonRegister(w http.ResponseWriter, r *http.Request) {
 				ProfileID:      prow.ProfileID,
 			}
 		} else {
-			row, err := h.Queries.UpsertAgentRuntime(r.Context(), db.UpsertAgentRuntimeParams{
+			row, err := qtx.UpsertAgentRuntime(r.Context(), db.UpsertAgentRuntimeParams{
 				WorkspaceID: wsUUID,
 				DaemonID:    strToText(req.DaemonID),
 				Name:        name,
@@ -808,30 +841,33 @@ func (h *Handler) DaemonRegister(w http.ResponseWriter, r *http.Request) {
 		// A brand-new runtime on an already-named machine inherits the machine's
 		// shared custom name so the machine title stays stable as providers come
 		// and go (MUL-4217). Shared with the failed-profile path below.
-		registered = h.inheritMachineCustomName(r.Context(), registered, inserted)
+		registered = h.inheritMachineCustomName(r.Context(), qtx, registered, inserted)
 
 		// Inserted is false for normal daemon reconnects/upserts, so
 		// runtime_ready is a first-ready-per-runtime-row signal.
 		if inserted {
-			obsmetrics.RecordEvent(h.Analytics, h.Metrics, analytics.RuntimeRegistered(
-				uuidToString(ownerID),
-				req.WorkspaceID,
-				uuidToString(registered.ID),
-				req.DaemonID,
-				provider,
-				runtime.Version,
-				req.CLIVersion,
-			))
-			if registered.Status == "online" {
-				obsmetrics.RecordEvent(h.Analytics, h.Metrics, analytics.RuntimeReady(
+			registered, provider, runtime := registered, provider, runtime
+			afterCommit = append(afterCommit, func() {
+				obsmetrics.RecordEvent(h.Analytics, h.Metrics, analytics.RuntimeRegistered(
 					uuidToString(ownerID),
 					req.WorkspaceID,
 					uuidToString(registered.ID),
 					req.DaemonID,
 					provider,
-					0,
+					runtime.Version,
+					req.CLIVersion,
 				))
-			}
+				if registered.Status == "online" {
+					obsmetrics.RecordEvent(h.Analytics, h.Metrics, analytics.RuntimeReady(
+						uuidToString(ownerID),
+						req.WorkspaceID,
+						uuidToString(registered.ID),
+						req.DaemonID,
+						provider,
+						0,
+					))
+				}
+			})
 		}
 
 		// Seamless migration from the previous hostname-derived identity. The
@@ -845,8 +881,13 @@ func (h *Handler) DaemonRegister(w http.ResponseWriter, r *http.Request) {
 		// ancestor to merge, and mergeLegacyRuntimes scopes by provider alone
 		// (no profile_id), which could otherwise fold a built-in row into a
 		// custom one of the same provider.
+		// Merges lock both runtime rows in their own transaction, so they
+		// must run after this registration commits the new row.
 		if !isCustom {
-			h.mergeLegacyRuntimes(r, registered, provider, req.LegacyDaemonIDs, ownerID)
+			registered, provider := registered, provider
+			afterCommit = append(afterCommit, func() {
+				h.mergeLegacyRuntimes(r, registered, provider, req.LegacyDaemonIDs, ownerID)
+			})
 		}
 
 		resp = append(resp, runtimeToResponse(registered))
@@ -865,8 +906,18 @@ func (h *Handler) DaemonRegister(w http.ResponseWriter, r *http.Request) {
 			reason = "custom runtime command could not be resolved"
 		}
 		commandName := strings.TrimSpace(failed.CommandName)
+		// Best effort, as before: a savepoint keeps one failed record from
+		// aborting the registration transaction.
+		sp, err := tx.Begin(r.Context())
+		if err != nil {
+			slog.Warn("failed to record runtime profile registration failure",
+				"workspace_id", req.WorkspaceID, "daemon_id", req.DaemonID,
+				"profile_id", profileID, "error", err)
+			continue
+		}
 		prow, _, err := h.upsertRuntimeWithProfile(
 			r.Context(),
+			h.Queries.WithTx(sp),
 			wsUUID,
 			profileUUID,
 			func(profile db.RuntimeProfile) db.UpsertAgentRuntimeWithProfileParams {
@@ -909,6 +960,13 @@ func (h *Handler) DaemonRegister(w http.ResponseWriter, r *http.Request) {
 			},
 		)
 		if err != nil {
+			_ = sp.Rollback(r.Context())
+			slog.Warn("failed to record runtime profile registration failure",
+				"workspace_id", req.WorkspaceID, "daemon_id", req.DaemonID,
+				"profile_id", profileID, "error", err)
+			continue
+		}
+		if err := sp.Commit(r.Context()); err != nil {
 			slog.Warn("failed to record runtime profile registration failure",
 				"workspace_id", req.WorkspaceID, "daemon_id", req.DaemonID,
 				"profile_id", profileID, "error", err)
@@ -916,12 +974,21 @@ func (h *Handler) DaemonRegister(w http.ResponseWriter, r *http.Request) {
 		}
 		// Keep the failed-profile row consistent with the machine's name so it
 		// doesn't drag the machine title back to the hostname (MUL-4217).
-		h.inheritMachineCustomName(r.Context(), db.AgentRuntime{
+		h.inheritMachineCustomName(r.Context(), qtx, db.AgentRuntime{
 			ID:          prow.ID,
 			WorkspaceID: prow.WorkspaceID,
 			DaemonID:    prow.DaemonID,
 			CustomName:  prow.CustomName,
 		}, prow.Inserted)
+	}
+
+	if err := tx.Commit(r.Context()); err != nil {
+		slog.Warn("register: commit failed", append(logger.RequestAttrs(r), "error", err)...)
+		writeError(w, http.StatusInternalServerError, "failed to register runtime")
+		return
+	}
+	for _, fn := range afterCommit {
+		fn()
 	}
 
 	slog.Info("daemon registered", "workspace_id", req.WorkspaceID, "daemon_id", req.DaemonID, "runtimes_count", len(resp))

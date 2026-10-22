@@ -1,0 +1,203 @@
+package handler
+
+import (
+	"context"
+	"encoding/json"
+	"net/http"
+	"net/http/httptest"
+	"strings"
+	"sync"
+	"sync/atomic"
+	"testing"
+	"time"
+
+	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgtype"
+	"github.com/multica-ai/multica/server/internal/auth"
+	"github.com/multica-ai/multica/server/internal/daemonws"
+	"github.com/multica-ai/multica/server/internal/middleware"
+	"github.com/multica-ai/multica/server/internal/testutil"
+	db "github.com/multica-ai/multica/server/pkg/db/generated"
+)
+
+// Regression tests for the PR #9423 review (MUL-8154), derived from the
+// reviewer's reproduction probes.
+
+// registrationPrecheckBarrier delays every registration's owner pre-check
+// until a second one has also read (or the window closes). Before the
+// registration lock both reads saw an empty daemon and both inserted; with
+// the lock the second read cannot start until the first registration is done,
+// so the barrier just times out and lets each proceed in turn.
+type registrationPrecheckBarrier struct {
+	db.DBTX
+	arrivals atomic.Int32
+	release  chan struct{}
+	window   time.Duration
+}
+
+func (d *registrationPrecheckBarrier) Query(ctx context.Context, query string, args ...any) (pgx.Rows, error) {
+	rows, err := d.DBTX.Query(ctx, query, args...)
+	if err != nil || !strings.Contains(query, "name: ListRuntimeOwnersByDaemon") {
+		return rows, err
+	}
+	if d.arrivals.Add(1) == 2 {
+		close(d.release)
+	}
+	select {
+	case <-d.release:
+	case <-time.After(d.window):
+	}
+	return rows, nil
+}
+
+func TestDaemonRegister_ConcurrentDifferentProvidersAndProfilesHaveOneOwner(t *testing.T) {
+	if testHandler == nil || testPool == nil {
+		t.Skip("database not available")
+	}
+	ctx := context.Background()
+	profileID := insertRuntimeProfileFixture(t, ctx, "Race profile "+uuid.NewString()[:8], "pi", "race-wrapper")
+
+	cases := []struct {
+		name     string
+		runtimes [2]map[string]any
+	}{
+		{"providers", [2]map[string]any{
+			{"name": "claude", "type": "claude", "status": "online"},
+			{"name": "codex", "type": "codex", "status": "online"},
+		}},
+		{"provider and profile", [2]map[string]any{
+			{"name": "claude", "type": "claude", "status": "online"},
+			{"name": "race profile", "type": "pi", "profile_id": profileID, "status": "online"},
+		}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			second := dbfx.User(t, "race second owner", "race-"+uuid.NewString()+"@example.com")
+			dbfx.Member(t, testWorkspaceID, second, "member")
+			daemonID := "race-" + uuid.NewString()
+			t.Cleanup(func() {
+				testPool.Exec(context.Background(), `DELETE FROM agent_runtime WHERE workspace_id = $1 AND daemon_id = $2`, testWorkspaceID, daemonID)
+			})
+
+			h := *testHandler
+			h.Queries = db.New(&registrationPrecheckBarrier{DBTX: testPool, release: make(chan struct{}), window: 500 * time.Millisecond})
+			users := []string{testUserID, second}
+			codes := make([]int, 2)
+			var wg sync.WaitGroup
+			for i := range users {
+				wg.Add(1)
+				go func(i int) {
+					defer wg.Done()
+					w := httptest.NewRecorder()
+					h.DaemonRegister(w, newRequestAs(users[i], "POST", "/api/daemon/register", map[string]any{
+						"workspace_id": testWorkspaceID, "daemon_id": daemonID,
+						"runtimes": []map[string]any{tc.runtimes[i]},
+					}))
+					codes[i] = w.Code
+				}(i)
+			}
+			wg.Wait()
+
+			var owners, rows int
+			dbfx.QueryRow(t, `SELECT count(DISTINCT owner_id), count(*) FROM agent_runtime WHERE workspace_id = $1 AND daemon_id = $2`,
+				testWorkspaceID, daemonID).Scan(&owners, &rows)
+			if owners != 1 || rows != 1 {
+				t.Fatalf("daemon has %d owners across %d rows after concurrent registration (statuses %v), want exactly one", owners, rows, codes)
+			}
+			ok, forbidden := 0, 0
+			for _, c := range codes {
+				switch c {
+				case http.StatusOK:
+					ok++
+				case http.StatusForbidden:
+					forbidden++
+				}
+			}
+			if ok != 1 || forbidden != 1 {
+				t.Fatalf("statuses = %v, want one 200 and one 403", codes)
+			}
+		})
+	}
+}
+
+// TestDaemonRPC_QoderClaimRevalidatesConnectionCredential: a WS RPC replays
+// the claim without an Authorization header, so the Qoder revocation check
+// must use the connection's credential — accepting it while valid and
+// refusing it once revoked.
+func TestDaemonRPC_QoderClaimRevalidatesConnectionCredential(t *testing.T) {
+	if testHandler == nil || testPool == nil {
+		t.Skip("database not available")
+	}
+	ctx := context.Background()
+	daemonID := "qoder-managed-" + testWorkspaceID
+	raw, err := auth.GenerateDaemonToken()
+	if err != nil {
+		t.Fatal(err)
+	}
+	token, err := testHandler.Queries.CreateDaemonToken(ctx, db.CreateDaemonTokenParams{
+		TokenHash: auth.HashToken(raw), WorkspaceID: parseUUID(testWorkspaceID), DaemonID: daemonID,
+		ExpiresAt: pgtype.Timestamptz{Time: time.Now().Add(time.Hour), Valid: true},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { testPool.Exec(context.Background(), `DELETE FROM daemon_token WHERE id = $1`, token.ID) })
+	dbfx.Exec(t, `INSERT INTO cloud_agent_connection (workspace_id, provider, owner_id, token_id, config_encrypted, enabled)
+		VALUES ($1, 'qoder_cloud', $2, $3, 'test-only', true)`, testWorkspaceID, testUserID, token.ID)
+	t.Cleanup(func() {
+		testPool.Exec(context.Background(), `DELETE FROM cloud_agent_connection WHERE workspace_id = $1 AND provider = 'qoder_cloud'`, testWorkspaceID)
+	})
+	runtimeID := dbfx.Runtime(t, "qoder ws runtime", testutil.Cols{"daemon_id": daemonID, "provider": "qoder_cloud"})
+	agentID, issueID := createClaimReclaimAgentAndIssue(t, ctx, runtimeID, "qoder ws agent")
+
+	// Handshake through the real DaemonAuth middleware, as production does.
+	var (
+		identity daemonws.ClientIdentity
+		ok       bool
+	)
+	handshake := httptest.NewRequest(http.MethodGet, "/api/daemon/ws", nil)
+	handshake.Header.Set("Authorization", "Bearer "+raw)
+	hw := httptest.NewRecorder()
+	middleware.DaemonAuth(testHandler.Queries, nil, nil, nil)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		identity, ok = testHandler.buildDaemonWebSocketIdentity(w, r, []string{runtimeID}, "")
+	})).ServeHTTP(hw, handshake)
+	if !ok {
+		t.Fatalf("valid Qoder handshake refused: %d %s", hw.Code, hw.Body.String())
+	}
+	if identity.DaemonTokenHash == "" {
+		t.Fatal("WS identity did not capture the authenticating token")
+	}
+
+	claim := func(t *testing.T) []AgentTaskResponse {
+		t.Helper()
+		body, _ := json.Marshal(map[string]any{"daemon_id": daemonID, "runtime_ids": []string{runtimeID}, "max_tasks": 1})
+		status, respBody, err := testHandler.DaemonRPCHandler(ctx, identity, "tasks.claim", body)
+		if err != nil || status != http.StatusOK {
+			t.Fatalf("rpc claim: status=%d err=%v body=%s", status, err, respBody)
+		}
+		var resp struct {
+			Tasks []AgentTaskResponse `json:"tasks"`
+		}
+		if err := json.Unmarshal(respBody, &resp); err != nil {
+			t.Fatal(err)
+		}
+		return resp.Tasks
+	}
+
+	first := seedQueuedIssueTask(t, ctx, agentID, runtimeID, issueID)
+	if tasks := claim(t); len(tasks) != 1 || tasks[0].ID != first {
+		t.Fatalf("valid credential: claimed %+v, want task %s", tasks, first)
+	}
+
+	// Revoke the connection: the same open WS must stop claiming.
+	dbfx.Exec(t, `UPDATE cloud_agent_connection SET enabled = false WHERE workspace_id = $1 AND provider = 'qoder_cloud'`, testWorkspaceID)
+	dbfx.Exec(t, `UPDATE agent_task_queue SET status = 'completed', completed_at = now() WHERE id = $1`, first)
+	second := seedQueuedIssueTask(t, ctx, agentID, runtimeID, issueID)
+	if tasks := claim(t); len(tasks) != 0 {
+		t.Fatalf("revoked credential still claimed %+v", tasks)
+	}
+	if got := taskStatusOf(t, second); got != "queued" {
+		t.Fatalf("task status after revoked claim = %q, want queued", got)
+	}
+}
