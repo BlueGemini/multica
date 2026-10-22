@@ -1,6 +1,5 @@
 import { autoUpdater, type UpdateDownloadedEvent } from "electron-updater";
 import { app, type BrowserWindow, ipcMain } from "electron";
-import { release as osRelease } from "node:os";
 import type {
   ManualUpdateCheckResult,
   UpdaterPreferences,
@@ -51,27 +50,6 @@ export function configureMacX64UpdateChannel(
 // package.mjs publishes macOS x64 as `latest-x64-mac.yml`; the established
 // arm64 feed and runtime path remain unchanged.
 configureMacX64UpdateChannel(autoUpdater);
-
-// Electron 44+ requires macOS 13 (Darwin 22). electron-builder does not
-// publish `minimumSystemVersion` in latest-mac.yml, so electron-updater
-// cannot skip the update on its own: a macOS 12 install would silently
-// download and replace a working app with one that refuses to launch.
-// Keep those hosts on their current build instead.
-export const MIN_SUPPORTED_DARWIN_MAJOR = 22;
-
-export function isHostOsTooOldForUpdates(
-  platform: NodeJS.Platform = process.platform,
-  kernelRelease: string = osRelease(),
-): boolean {
-  if (platform !== "darwin") return false;
-  const major = Number.parseInt(kernelRelease.split(".")[0] ?? "", 10);
-  // Unparseable release: don't block, fall back to normal behavior.
-  if (!Number.isFinite(major)) return false;
-  return major < MIN_SUPPORTED_DARWIN_MAJOR;
-}
-
-export const UNSUPPORTED_OS_UPDATE_MESSAGE =
-  "New versions of Multica require macOS 13 or later.";
 
 const STARTUP_CHECK_DELAY_MS = 5_000;
 const PERIODIC_CHECK_INTERVAL_MS = 60 * 60 * 1000; // 1 hour
@@ -145,15 +123,7 @@ export function setupAutoUpdater(getMainWindow: () => BrowserWindow | null): voi
     },
   );
 
-  const hostTooOld = isHostOsTooOldForUpdates();
-  if (hostTooOld) {
-    console.warn(
-      `[updater] automatic updates disabled: ${UNSUPPORTED_OS_UPDATE_MESSAGE} (darwin ${osRelease()})`,
-    );
-  }
-
   const runAutomaticCheck = (errorMessage: string): void => {
-    if (hostTooOld) return;
     void preferencesReady
       .then(() => {
         if (!automaticUpdatesEnabled) return;
@@ -228,7 +198,6 @@ export function setupAutoUpdater(getMainWindow: () => BrowserWindow | null): voi
   // Retained for IPC back-compat with older renderer bundles. With
   // autoDownload=true the renderer no longer triggers this path.
   ipcMain.handle("updater:download", () => {
-    if (hostTooOld) return Promise.resolve([]);
     return autoUpdater.downloadUpdate();
   });
 
@@ -273,9 +242,6 @@ export function setupAutoUpdater(getMainWindow: () => BrowserWindow | null): voi
   );
 
   ipcMain.handle("updater:check", async (): Promise<ManualUpdateCheckResult> => {
-    if (hostTooOld) {
-      return { ok: false, error: UNSUPPORTED_OS_UPDATE_MESSAGE };
-    }
     try {
       const result = (await checkForUpdatesOnce()) as
         | { updateInfo: { version: string }; isUpdateAvailable?: boolean }
