@@ -67,6 +67,8 @@ interface RunConfirmData {
   assigneeId?: string;
   assigneeName?: string;
   issueRevision?: number;
+  /** Runs after the write succeeds; never on dismiss or failure. */
+  onApplied?: () => void;
 }
 
 /**
@@ -152,6 +154,7 @@ export function RunConfirmModal({
       } else {
         await batchUpdate.mutateAsync({ ids: issueIds, updates: payload });
       }
+      d.onApplied?.();
       onClose();
     } catch (err) {
       toast.error(

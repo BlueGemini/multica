@@ -304,4 +304,21 @@ describe("RunConfirmModal", () => {
     expect(onClose).not.toHaveBeenCalled();
     expect(mockToast.success).not.toHaveBeenCalled();
   });
+
+  it("runs onApplied only after the write succeeds (MUL-8179)", async () => {
+    const onApplied = vi.fn();
+    mockBatch.mockRejectedValueOnce(new Error("boom"));
+    render(
+      <RunConfirmModal
+        onClose={vi.fn()}
+        data={{ ...single, issueIds: ["i1", "i2"], onApplied }}
+      />,
+    );
+    fireEvent.click(confirmButton());
+    await waitFor(() => expect(mockToast.error).toHaveBeenCalledWith("boom"));
+    expect(onApplied).not.toHaveBeenCalled();
+
+    fireEvent.click(confirmButton());
+    await waitFor(() => expect(onApplied).toHaveBeenCalledTimes(1));
+  });
 });
