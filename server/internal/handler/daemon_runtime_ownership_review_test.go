@@ -430,3 +430,90 @@ func TestDaemonToken_ReplacedOwnerAndUnboundTokensCannotRegisterOrAct(t *testing
 		})
 	}
 }
+
+// Fourth #9423 review: a qoder-managed-* daemon token gets the owner-binding
+// exemption only with a live cloud_agent_connection, whatever runtime type
+// the body declares. Pre-upgrade tokens under that prefix were issued for
+// ordinary runtimes and have no connection.
+func TestDaemonRegister_QoderPrefixNeedsLiveConnectionForEveryShape(t *testing.T) {
+	if testHandler == nil || testPool == nil {
+		t.Skip("database not available")
+	}
+	ctx := context.Background()
+	daemonID := "qoder-managed-" + testWorkspaceID
+	victim := dbfx.User(t, "qoder prefix victim", "qoder-prefix-"+uuid.NewString()+"@example.com")
+	dbfx.Member(t, testWorkspaceID, victim, "member")
+	runtimeID := dbfx.Runtime(t, "qoder prefix victim runtime", testutil.Cols{
+		"daemon_id": daemonID, "provider": "claude", "owner_id": victim,
+	})
+	raw, err := auth.GenerateDaemonToken()
+	if err != nil {
+		t.Fatal(err)
+	}
+	token, err := testHandler.Queries.CreateDaemonToken(ctx, db.CreateDaemonTokenParams{
+		TokenHash: auth.HashToken(raw), WorkspaceID: parseUUID(testWorkspaceID), DaemonID: daemonID,
+		ExpiresAt: pgtype.Timestamptz{Time: time.Now().Add(time.Hour), Valid: true},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { testPool.Exec(context.Background(), `DELETE FROM daemon_token WHERE id = $1`, token.ID) })
+	profileID := insertRuntimeProfileFixture(t, ctx, "Qoder prefix profile "+uuid.NewString()[:8], "pi", "qp-wrapper")
+
+	register := func(body map[string]any) int {
+		body["workspace_id"] = testWorkspaceID
+		body["daemon_id"] = daemonID
+		req := httptest.NewRequest(http.MethodPost, "/api/daemon/register", strings.NewReader(mustJSON(t, body)))
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("Authorization", "Bearer "+raw)
+		w := httptest.NewRecorder()
+		middleware.DaemonAuth(testHandler.Queries, nil, nil, nil)(http.HandlerFunc(testHandler.DaemonRegister)).ServeHTTP(w, req)
+		return w.Code
+	}
+	for name, body := range map[string]map[string]any{
+		"built-in claude": {"runtimes": []map[string]any{{"type": "claude", "name": "written via prefix", "status": "offline"}}},
+		"custom profile":  {"runtimes": []map[string]any{{"type": "pi", "profile_id": profileID, "name": "written via prefix", "status": "offline"}}},
+		"failed profiles": {"failed_profiles": []map[string]any{{"profile_id": profileID, "reason": "x"}}},
+		"qoder_cloud":     {"runtimes": []map[string]any{{"type": "qoder_cloud", "runtime_mode": "cloud", "name": "written via prefix", "status": "online"}}},
+	} {
+		if code := register(body); code != http.StatusForbidden {
+			t.Errorf("%s: register with an unconnected qoder-prefix token = %d, want 403", name, code)
+		}
+	}
+	rt, err := testHandler.Queries.GetAgentRuntime(ctx, parseUUID(runtimeID))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rt.Status != "online" || rt.Name == "written via prefix" || uuidToString(rt.OwnerID) != victim {
+		t.Fatalf("victim runtime mutated: status=%s name=%q owner=%s", rt.Status, rt.Name, uuidToString(rt.OwnerID))
+	}
+	var n int
+	dbfx.QueryRow(t, `SELECT count(*) FROM agent_runtime WHERE workspace_id = $1 AND daemon_id = $2`, testWorkspaceID, daemonID).Scan(&n)
+	if n != 1 {
+		t.Fatalf("%d runtimes under the qoder prefix, want only the victim's", n)
+	}
+
+	// With a live connection the bridge's own registration shape works, and
+	// it still cannot register anything other than its qoder_cloud runtime.
+	dbfx.Exec(t, `INSERT INTO cloud_agent_connection (workspace_id, provider, owner_id, token_id, config_encrypted, enabled)
+		VALUES ($1, 'qoder_cloud', $2, $3, 'test-only', true)`, testWorkspaceID, testUserID, token.ID)
+	t.Cleanup(func() {
+		testPool.Exec(context.Background(), `DELETE FROM cloud_agent_connection WHERE workspace_id = $1 AND provider = 'qoder_cloud'`, testWorkspaceID)
+		testPool.Exec(context.Background(), `DELETE FROM agent_runtime WHERE workspace_id = $1 AND daemon_id = $2 AND provider = 'qoder_cloud'`, testWorkspaceID, daemonID)
+	})
+	if code := register(map[string]any{"runtimes": []map[string]any{{"type": "claude", "name": "written via prefix", "status": "offline"}}}); code != http.StatusForbidden {
+		t.Fatalf("connected qoder token registering a claude runtime = %d, want 403", code)
+	}
+	if code := register(map[string]any{"runtimes": []map[string]any{{"type": "qoder_cloud", "runtime_mode": "cloud", "name": "QCA", "status": "online"}}}); code != http.StatusOK {
+		t.Fatalf("connected qoder token registering its qoder_cloud runtime = %d, want 200", code)
+	}
+}
+
+func mustJSON(t *testing.T, v any) string {
+	t.Helper()
+	b, err := json.Marshal(v)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return string(b)
+}

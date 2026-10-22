@@ -590,6 +590,34 @@ func (h *Handler) DaemonRegister(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusForbidden, "daemon identity mismatch")
 		return
 	}
+	// Qoder-managed daemon tokens are exempt from the owner binding below,
+	// so the exemption is granted only after the token is proven to belong to
+	// a live cloud_agent_connection — unconditionally, not just when the body
+	// declares a qoder_cloud runtime (MUL-8154 review round 4). Pre-upgrade
+	// tokens under this prefix were issued for ordinary runtimes and carry no
+	// such binding. The bridge only ever registers one built-in qoder_cloud
+	// runtime, so anything else under this namespace is refused too.
+	if tokenDaemonID := middleware.DaemonIDFromContext(r.Context()); tokenDaemonID != "" && isQoderManagedDaemonID(tokenDaemonID) {
+		allowed, err := h.qoderCredentialAllowed(r, req.WorkspaceID, req.DaemonID)
+		if err != nil {
+			writeError(w, http.StatusServiceUnavailable, "runtime authorization unavailable")
+			return
+		}
+		if !allowed {
+			writeError(w, http.StatusForbidden, "managed runtime credential required")
+			return
+		}
+		if len(req.FailedProfiles) > 0 {
+			writeError(w, http.StatusForbidden, "managed runtime registration must be a single qoder_cloud runtime")
+			return
+		}
+		for _, rt := range req.Runtimes {
+			if normalizeProvider(rt.Type) != "qoder_cloud" || strings.TrimSpace(rt.ProfileID) != "" {
+				writeError(w, http.StatusForbidden, "managed runtime registration must be a single qoder_cloud runtime")
+				return
+			}
+		}
+	}
 	for _, rt := range req.Runtimes {
 		if normalizeProvider(rt.Type) != "qoder_cloud" {
 			continue
