@@ -3,23 +3,12 @@
 -- deleted; a token bound only to (workspace_id, daemon_id) would then reach
 -- the new owner's runtimes. Daemon routes require owner_id to match the
 -- runtime's owner for every non-Qoder-managed token.
-ALTER TABLE daemon_token
-    ADD COLUMN owner_id UUID REFERENCES "user"(id) ON DELETE CASCADE;
-
--- Backfill live tokens from the current runtimes of their daemon, only where
--- that daemon has exactly one owner. Ambiguous or ownerless daemons stay NULL
--- and are refused until re-issued (they expire within 24h). Qoder-managed
--- tokens are governed by cloud_agent_connection and stay NULL.
-UPDATE daemon_token d
-SET owner_id = o.owner_id
-FROM (
-    SELECT workspace_id, daemon_id, min(owner_id::text)::uuid AS owner_id
-    FROM agent_runtime
-    WHERE daemon_id IS NOT NULL
-    GROUP BY workspace_id, daemon_id
-    HAVING count(DISTINCT owner_id) = 1
-       AND count(*) FILTER (WHERE owner_id IS NULL) = 0
-) o
-WHERE d.workspace_id = o.workspace_id
-  AND d.daemon_id = o.daemon_id
-  AND d.daemon_id NOT LIKE 'qoder-managed-%';
+--
+-- No backfill: the issuing owner of a pre-existing token cannot be recovered
+-- (the daemon's current owner may be a later re-registrant), so existing
+-- non-Qoder tokens stay NULL and are refused. They are short-lived Remote MCP
+-- credentials (24h) that are re-issued on the next claim. Qoder-managed
+-- tokens are governed by cloud_agent_connection and stay NULL by design.
+-- Plain column, no foreign key (repository rule): a token whose owner is
+-- deleted simply never matches a runtime owner again.
+ALTER TABLE daemon_token ADD COLUMN IF NOT EXISTS owner_id UUID;

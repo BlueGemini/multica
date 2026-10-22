@@ -613,22 +613,42 @@ func (h *Handler) DaemonRegister(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Verify workspace access and resolve owner.
-	// Daemon tokens (mdt_) prove workspace access directly; OwnerID will be zero
-	// (the SQL COALESCE preserves any existing owner on upsert).
-	// PAT/JWT tokens require a membership check and set OwnerID from the member.
-	var ownerID pgtype.UUID
+	//   - User credential (PAT/JWT): membership check; the member is the owner.
+	//   - Non-Qoder daemon token: the owner the token is bound to (MUL-8154).
+	//     The same pre-check and SQL fence apply, so a token issued for one
+	//     owner cannot rewrite a runtime another member re-registered under
+	//     this daemon_id. Unbound tokens (pre-588) are refused.
+	//   - Qoder-managed daemon token: ownerID stays zero (COALESCE keeps the
+	//     existing owner); the credential was checked against its
+	//     cloud_agent_connection above.
+	// mergeOwnerID is set only for user credentials: daemon tokens never
+	// trigger legacy merges.
+	var ownerID, mergeOwnerID pgtype.UUID
 	if daemonWsID := middleware.DaemonWorkspaceIDFromContext(r.Context()); daemonWsID != "" {
 		if daemonWsID != req.WorkspaceID {
 			writeError(w, http.StatusNotFound, "workspace not found")
 			return
 		}
-		// ownerID stays zero — COALESCE keeps the existing owner on upsert.
+		if !isQoderManagedDaemonID(req.DaemonID) {
+			tokenOwner := middleware.DaemonTokenOwnerIDFromContext(r.Context())
+			if tokenOwner == "" {
+				writeError(w, http.StatusForbidden, "daemon credential is not bound to a runtime owner")
+				return
+			}
+			ownerUUID, err := util.ParseUUID(tokenOwner)
+			if err != nil {
+				writeError(w, http.StatusForbidden, "daemon credential is not bound to a runtime owner")
+				return
+			}
+			ownerID = ownerUUID
+		}
 	} else {
 		member, ok := h.requireWorkspaceMember(w, r, req.WorkspaceID, "workspace not found")
 		if !ok {
 			return
 		}
 		ownerID = member.UserID
+		mergeOwnerID = member.UserID
 
 		// The Qoder-managed namespace is reserved for the server's bridge
 		// and its daemon token, which is not owner-bound; a member must not
@@ -909,7 +929,7 @@ func (h *Handler) DaemonRegister(w http.ResponseWriter, r *http.Request) {
 		if !isCustom {
 			registered, provider := registered, provider
 			afterCommit = append(afterCommit, func() {
-				h.mergeLegacyRuntimes(r, registered, provider, req.LegacyDaemonIDs, ownerID)
+				h.mergeLegacyRuntimes(r, registered, provider, req.LegacyDaemonIDs, mergeOwnerID)
 			})
 		}
 

@@ -343,3 +343,90 @@ func TestDaemonRegister_RefusesReservedQoderDaemonIDForUsers(t *testing.T) {
 		t.Fatalf("%d runtimes registered under the reserved Qoder daemon_id", n)
 	}
 }
+
+// Third #9423 review: daemon-token registration must apply the token's owner
+// binding, and tokens without a recorded issuing owner (pre-migration 588)
+// must be refused everywhere rather than re-bound to whoever owns the
+// daemon now.
+func TestDaemonToken_ReplacedOwnerAndUnboundTokensCannotRegisterOrAct(t *testing.T) {
+	if testHandler == nil || testPool == nil {
+		t.Skip("database not available")
+	}
+	ctx := context.Background()
+	for _, tc := range []struct {
+		name    string
+		unbound bool
+	}{{"bound to previous owner", false}, {"unbound legacy token", true}} {
+		t.Run(tc.name, func(t *testing.T) {
+			daemonID := "reuse-reg-" + uuid.NewString()
+			oldID := dbfx.Runtime(t, "reuse-reg old", testutil.Cols{"daemon_id": daemonID, "provider": "claude"})
+			old, err := testHandler.Queries.GetAgentRuntime(ctx, parseUUID(oldID))
+			if err != nil {
+				t.Fatal(err)
+			}
+			raw, params, err := remoteMCPDaemonTokenForClaim(AgentTaskResponse{
+				RemoteMCPConnections: []remotemcp.Connection{{ContributionKey: "reuse-reg"}},
+			}, old)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if tc.unbound {
+				params[0].OwnerID = pgtype.UUID{}
+			}
+			token, err := testHandler.Queries.CreateDaemonToken(ctx, params[0])
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(func() {
+				testPool.Exec(context.Background(), `DELETE FROM daemon_token WHERE id = $1`, token.ID)
+				testPool.Exec(context.Background(), `DELETE FROM agent_runtime WHERE workspace_id = $1 AND daemon_id = $2`, testWorkspaceID, daemonID)
+			})
+			call := func(h http.HandlerFunc, req *http.Request) int {
+				req.Header.Del("X-User-ID")
+				req.Header.Set("Authorization", "Bearer "+raw)
+				w := httptest.NewRecorder()
+				middleware.DaemonAuth(testHandler.Queries, nil, nil, nil)(h).ServeHTTP(w, req)
+				return w.Code
+			}
+			register := func() int {
+				return call(testHandler.DaemonRegister, newRequest("POST", "/api/daemon/register", map[string]any{
+					"workspace_id": testWorkspaceID, "daemon_id": daemonID,
+					"runtimes": []map[string]any{{"type": "claude", "name": "written by old token", "status": "offline"}},
+				}))
+			}
+			if tc.unbound {
+				// Refused even while the issuing owner still owns the daemon.
+				if code := call(testHandler.DaemonHeartbeat, newRequest("POST", "/api/daemon/heartbeat", map[string]any{"runtime_id": oldID})); code != http.StatusNotFound {
+					t.Fatalf("unbound token heartbeat = %d, want 404", code)
+				}
+				if code := register(); code != http.StatusForbidden {
+					t.Fatalf("unbound token register = %d, want 403", code)
+				}
+			} else if code := register(); code != http.StatusOK {
+				t.Fatalf("positive control: bound token re-registers its owner's daemon = %d", code)
+			}
+
+			testutil.Call(t, testHandler.DeleteAgentRuntime,
+				withURLParams(newRequestAs(testUserID, "DELETE", "/api/runtimes/"+oldID, nil), "runtimeId", oldID)).Want(http.StatusOK)
+			second := dbfx.User(t, "reuse-reg replacement", "reuse-reg-"+uuid.NewString()+"@example.com")
+			dbfx.Member(t, testWorkspaceID, second, "member")
+			testutil.Call(t, testHandler.DaemonRegister, registerAs(second, daemonID)).Want(http.StatusOK)
+			var newID string
+			dbfx.QueryRow(t, `SELECT id FROM agent_runtime WHERE workspace_id = $1 AND daemon_id = $2`, testWorkspaceID, daemonID).Scan(&newID)
+
+			if code := register(); code != http.StatusForbidden {
+				t.Fatalf("old token register over the replacement owner = %d, want 403", code)
+			}
+			rt, err := testHandler.Queries.GetAgentRuntime(ctx, parseUUID(newID))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if rt.Status != "online" || rt.Name == "written by old token" || uuidToString(rt.OwnerID) != second {
+				t.Fatalf("replacement runtime mutated: status=%s name=%q owner=%s", rt.Status, rt.Name, uuidToString(rt.OwnerID))
+			}
+			if code := call(testHandler.DaemonHeartbeat, newRequest("POST", "/api/daemon/heartbeat", map[string]any{"runtime_id": newID})); code != http.StatusNotFound {
+				t.Fatalf("old token heartbeat on the replacement runtime = %d, want 404", code)
+			}
+		})
+	}
+}
