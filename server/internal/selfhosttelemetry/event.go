@@ -12,13 +12,11 @@ import (
 
 const (
 	eventName = "instance_daily_snapshot"
-	// schemaVersionV1 carries deployment size and run volume. V2 adds the
-	// member-activity buckets; a sender falls back to V1 only when it could not
-	// collect them, so the Cloud receiver must keep accepting both.
-	schemaVersionV1 = 1
-	schemaVersionV2 = 2
-	maxRequestSize  = 16 * 1024
-	maxTaskCount    = int64(1_000_000)
+	// V2 = the V1 fields plus member-activity buckets. This sender only emits
+	// V2; the Cloud receiver keeps accepting V1 from older servers.
+	schemaVersion  = 2
+	maxRequestSize = 16 * 1024
+	maxTaskCount   = int64(1_000_000)
 )
 
 var releaseVersionPattern = regexp.MustCompile(
@@ -46,14 +44,12 @@ type Payload struct {
 	TasksFailed24h             int64  `json:"tasks_failed_24h"`
 	TasksCancelled24h          int64  `json:"tasks_cancelled_24h"`
 
-	// V2 only. Nil pointers are omitted so a V1 body stays byte-identical to
-	// what V1 senders have always produced.
-	VisitingMemberCount1dBucket    *string `json:"visiting_member_count_1d_bucket,omitempty"`
-	VisitingMemberCount7dBucket    *string `json:"visiting_member_count_7d_bucket,omitempty"`
-	VisitingMemberCount28dBucket   *string `json:"visiting_member_count_28d_bucket,omitempty"`
-	DelegatingMemberCount1dBucket  *string `json:"delegating_member_count_1d_bucket,omitempty"`
-	DelegatingMemberCount7dBucket  *string `json:"delegating_member_count_7d_bucket,omitempty"`
-	DelegatingMemberCount28dBucket *string `json:"delegating_member_count_28d_bucket,omitempty"`
+	VisitingMemberCount1dBucket    string `json:"visiting_member_count_1d_bucket"`
+	VisitingMemberCount7dBucket    string `json:"visiting_member_count_7d_bucket"`
+	VisitingMemberCount28dBucket   string `json:"visiting_member_count_28d_bucket"`
+	DelegatingMemberCount1dBucket  string `json:"delegating_member_count_1d_bucket"`
+	DelegatingMemberCount7dBucket  string `json:"delegating_member_count_7d_bucket"`
+	DelegatingMemberCount28dBucket string `json:"delegating_member_count_28d_bucket"`
 }
 
 // Counts contains deployment-wide aggregates at one snapshot instant.
@@ -67,10 +63,7 @@ type Counts struct {
 	TasksFailed    int64
 	TasksCancelled int64
 
-	// ActivityCollected is false when the optional member-activity read failed;
-	// the event is then sent as V1 without any activity field.
-	ActivityCollected bool
-	Activity          ActivityCounts
+	Activity ActivityCounts
 }
 
 // ActivityCounts are distinct current members active in the 1, 7 and 28
@@ -83,9 +76,10 @@ type ActivityCounts struct {
 }
 
 func newEvent(instanceID uuid.UUID, occurredAt time.Time, serverVersion string, counts Counts) Event {
-	event := Event{
+	a := counts.Activity
+	return Event{
 		EventName:     eventName,
-		SchemaVersion: schemaVersionV1,
+		SchemaVersion: schemaVersion,
 		InstanceID:    instanceID.String(),
 		OccurredAt:    occurredAt.UTC().Format(time.RFC3339),
 		Payload: Payload{
@@ -98,24 +92,15 @@ func newEvent(instanceID uuid.UUID, occurredAt time.Time, serverVersion string, 
 			TasksCompleted24h:          clampTaskCount(counts.TasksCompleted),
 			TasksFailed24h:             clampTaskCount(counts.TasksFailed),
 			TasksCancelled24h:          clampTaskCount(counts.TasksCancelled),
+
+			VisitingMemberCount1dBucket:    countBucket(a.Visiting1d),
+			VisitingMemberCount7dBucket:    countBucket(a.Visiting7d),
+			VisitingMemberCount28dBucket:   countBucket(a.Visiting28d),
+			DelegatingMemberCount1dBucket:  countBucket(a.Delegating1d),
+			DelegatingMemberCount7dBucket:  countBucket(a.Delegating7d),
+			DelegatingMemberCount28dBucket: countBucket(a.Delegating28d),
 		},
 	}
-	if counts.ActivityCollected {
-		event.SchemaVersion = schemaVersionV2
-		a := counts.Activity
-		event.Payload.VisitingMemberCount1dBucket = bucketPtr(a.Visiting1d)
-		event.Payload.VisitingMemberCount7dBucket = bucketPtr(a.Visiting7d)
-		event.Payload.VisitingMemberCount28dBucket = bucketPtr(a.Visiting28d)
-		event.Payload.DelegatingMemberCount1dBucket = bucketPtr(a.Delegating1d)
-		event.Payload.DelegatingMemberCount7dBucket = bucketPtr(a.Delegating7d)
-		event.Payload.DelegatingMemberCount28dBucket = bucketPtr(a.Delegating28d)
-	}
-	return event
-}
-
-func bucketPtr(count int64) *string {
-	bucket := countBucket(count)
-	return &bucket
 }
 
 func marshalEvent(event Event) ([]byte, error) {
