@@ -121,6 +121,26 @@ const squadParentStatusOwned = `6. **Own the parent issue status.** This issue i
    when no comment asked you to. Leave ` + "`" + `done` + "`" + ` to a human reviewer or
    existing integrations (for example a PR with close intent that merges).`
 
+// squadParentStatusOwnedInWorkflow is responsibility 6 for an owning leader
+// whose issue follows a project workflow that came with the claim (MUL-8145).
+// The workflow may list neither in_progress nor in_review — the server rejects
+// a status outside it — and entering a step with a handler reassigns the
+// issue, so squadParentStatusOwned's "move to in_progress, then in_review"
+// would be refused or hand the parent away mid-dispatch. The ownership
+// boundary and the standing wrap-up authorization stay; the moves become the
+// [Project workflow] commands the runtime brief points at.
+const squadParentStatusOwnedInWorkflow = `6. **Own the parent issue status — through its project workflow.** This issue
+   is assigned to your squad and follows its project workflow, so its status
+   is yours to move (unless Agent Identity forbids status changes), using only
+   the commands in ` + "`" + `[Project workflow]` + "`" + ` and the status keys it lists.
+   Set no status when you start or dispatch: the parent stays at its current
+   step while members work — a successful dispatch is not completion. On later
+   turns, do not move it for routine progress updates. When you confirm the
+   overall goal is met, run that block's Step done command — this
+   responsibility is itself the standing instruction that authorizes that
+   change, so do it even when no comment asked you to. Never set
+   ` + "`" + `in_progress` + "`" + ` or ` + "`" + `in_review` + "`" + ` on it just to mark progress or delivery.`
+
 // squadParentStatusNotOwned is responsibility 6 for every other leader path:
 // an @squad mention on an issue owned by someone else (MUL-3724), and
 // quick-create, where no issue exists yet on this turn. Granting status
@@ -166,10 +186,14 @@ const squadOperatingProtocolHardRules = `Hard rules:
   them. Never both for the same work.`
 
 // squadOperatingProtocolFor assembles the protocol, selecting the parent-status
-// responsibility that matches this leader's actual authority over the issue.
-func squadOperatingProtocolFor(ownsIssueStatus bool) string {
+// responsibility that matches this leader's actual authority over the issue
+// and, for an owner, whether the issue's project workflow governs its moves.
+func squadOperatingProtocolFor(ownsIssueStatus, followsProjectWorkflow bool) string {
 	status := squadParentStatusNotOwned
-	if ownsIssueStatus {
+	switch {
+	case ownsIssueStatus && followsProjectWorkflow:
+		status = squadParentStatusOwnedInWorkflow
+	case ownsIssueStatus:
 		status = squadParentStatusOwned
 	}
 	return squadOperatingProtocolHeader + "\n" + status + "\n\n" + squadOperatingProtocolHardRules
@@ -190,12 +214,16 @@ func squadOperatingProtocolFor(ownsIssueStatus bool) string {
 // including ones where the squad is a guest on someone else's issue, so this
 // flag is what keeps status authority from leaking along with the roster.
 //
+// followsProjectWorkflow is true when the claim carries a [Project workflow]
+// block for the issue; an owning leader then moves the parent with that
+// block's commands instead of in_progress / in_review (MUL-8145).
+//
 // Archived agent members are skipped — there's no point asking the leader
 // to delegate to a retired agent. Members whose underlying record can't be
 // loaded (deleted user/agent races, FK weirdness) are also skipped silently.
-func buildSquadLeaderBriefing(ctx context.Context, q *db.Queries, squad db.Squad, ownsIssueStatus bool) string {
+func buildSquadLeaderBriefing(ctx context.Context, q *db.Queries, squad db.Squad, ownsIssueStatus, followsProjectWorkflow bool) string {
 	var sb strings.Builder
-	sb.WriteString(squadOperatingProtocolFor(ownsIssueStatus))
+	sb.WriteString(squadOperatingProtocolFor(ownsIssueStatus, followsProjectWorkflow))
 	sb.WriteString("\n\n")
 	sb.WriteString(buildSquadRoster(ctx, q, squad))
 
