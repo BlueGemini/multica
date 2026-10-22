@@ -102,6 +102,9 @@ func newDaemonTokenRequest(method, path string, body any, workspaceID, daemonID 
 	req.Header.Set("Content-Type", "application/json")
 	// No X-User-ID — daemon tokens don't set it.
 	ctx := middleware.WithDaemonContext(req.Context(), workspaceID, daemonID)
+	// Production daemon tokens are bound to the runtime owner they were
+	// issued for (MUL-8154); fixture runtimes are owned by testUserID.
+	ctx = middleware.WithDaemonTokenOwnerID(ctx, testUserID)
 	return req.WithContext(ctx)
 }
 
@@ -743,19 +746,17 @@ func TestClaimTaskByRuntime_MissingRuntimeOwnerCancelsAndRejects(t *testing.T) {
 	userReq = withURLParam(userReq, "runtimeId", runtimeID)
 	testutil.Call(t, testHandler.ClaimTaskByRuntime, userReq).Want(http.StatusNotFound)
 
-	// Its own daemon token still reaches the claim path, where the
-	// missing-owner defense must cancel instead of minting a token.
+	// Daemon tokens are owner-bound too, so even this daemon's own token
+	// cannot reach an ownerless runtime; the claim-path missing-owner
+	// defense stays covered by TestFinalizeClaimDelivery_*OwnerMissing*.
 	req := newDaemonTokenRequest("POST", "/api/daemon/runtimes/"+runtimeID+"/tasks/claim", nil, testWorkspaceID, "missing-owner-daemon")
 	req = withURLParam(req, "runtimeId", runtimeID)
-	w := testutil.Call(t, testHandler.ClaimTaskByRuntime, req).Want(http.StatusInternalServerError)
-	if !strings.Contains(w.Body.String(), "runtime owner required to mint task token") {
-		t.Fatalf("ClaimTaskByRuntime body = %q, want runtime owner error", w.Body.String())
-	}
+	testutil.Call(t, testHandler.ClaimTaskByRuntime, req).Want(http.StatusNotFound)
 
 	var status string
 	dbfx.QueryRow(t, `SELECT status FROM agent_task_queue WHERE id = $1`, taskID).Scan(&status)
-	if status != "cancelled" {
-		t.Fatalf("task status = %q, want cancelled", status)
+	if status != "dispatched" {
+		t.Fatalf("task status = %q, want untouched (dispatched)", status)
 	}
 }
 

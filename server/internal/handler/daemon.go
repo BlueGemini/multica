@@ -103,7 +103,11 @@ func (h *Handler) requireDaemonWorkspaceAccess(w http.ResponseWriter, r *http.Re
 //   - Daemon token (mdt_): the token is bound to one daemon, so the runtime
 //     must carry that exact, non-empty daemon_id. A runtime with no daemon_id
 //     is never reachable through a daemon token — those tokens are also minted
-//     per task for Remote MCP, so "same workspace" is far too wide.
+//     per task for Remote MCP, so "same workspace" is far too wide. A daemon_id
+//     can be re-registered by another member once its runtimes are deleted,
+//     so the token must also be bound to the runtime's current owner;
+//     unbound tokens are accepted only for Qoder-managed daemons, whose
+//     tokens are governed by their cloud_agent_connection instead.
 //   - User credential (PAT / JWT / mcn_): the caller must be the runtime's
 //     owner. A NULL owner fails closed; ownerless rows are only reachable by
 //     a daemon token for their own daemon.
@@ -114,13 +118,24 @@ func daemonRuntimeBindingAllowed(r *http.Request, daemonID pgtype.Text, ownerID 
 	ctx := r.Context()
 	if middleware.DaemonWorkspaceIDFromContext(ctx) != "" {
 		tokenDaemonID := middleware.DaemonIDFromContext(ctx)
-		return tokenDaemonID != "" &&
-			daemonID.Valid &&
-			strings.TrimSpace(daemonID.String) != "" &&
-			daemonID.String == tokenDaemonID
+		if tokenDaemonID == "" || !daemonID.Valid ||
+			strings.TrimSpace(daemonID.String) == "" || daemonID.String != tokenDaemonID {
+			return false
+		}
+		if isQoderManagedDaemonID(tokenDaemonID) {
+			return true
+		}
+		tokenOwnerID := middleware.DaemonTokenOwnerIDFromContext(ctx)
+		return tokenOwnerID != "" && ownerID.Valid && uuidToString(ownerID) == tokenOwnerID
 	}
 	userID := requestUserID(r)
 	return userID != "" && ownerID.Valid && uuidToString(ownerID) == userID
+}
+
+// isQoderManagedDaemonID reports the reserved daemon_id namespace of the
+// server-run Qoder bridge.
+func isQoderManagedDaemonID(daemonID string) bool {
+	return strings.HasPrefix(daemonID, "qoder-managed-")
 }
 
 // requireDaemonRuntimeAuthorized combines workspace access with the runtime
@@ -614,6 +629,14 @@ func (h *Handler) DaemonRegister(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		ownerID = member.UserID
+
+		// The Qoder-managed namespace is reserved for the server's bridge
+		// and its daemon token, which is not owner-bound; a member must not
+		// be able to own a runtime that token would reach (MUL-8154).
+		if isQoderManagedDaemonID(req.DaemonID) {
+			writeError(w, http.StatusForbidden, "reserved daemon_id")
+			return
+		}
 	}
 
 	ws, err := h.Queries.GetWorkspace(r.Context(), wsUUID)
@@ -2601,6 +2624,9 @@ func remoteMCPDaemonTokenForClaim(resp AgentTaskResponse, runtime db.AgentRuntim
 		WorkspaceID: runtime.WorkspaceID,
 		DaemonID:    runtime.DaemonID.String,
 		ExpiresAt:   pgtype.Timestamptz{Time: time.Now().Add(24 * time.Hour), Valid: true},
+		// Owner binding (MUL-8154). FinalizeTaskClaim re-binds it to the
+		// locked runtime owner inside the claim transaction.
+		OwnerID: runtime.OwnerID,
 	}}, nil
 }
 

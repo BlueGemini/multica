@@ -27,7 +27,11 @@ type ClientIdentity struct {
 	// an Authorization header, so credential-specific checks such as Qoder
 	// revocation re-validate this hash on every call (MUL-8154).
 	DaemonTokenHash string
-	UserID          string
+	// DaemonTokenOwnerID is the runtime owner that token is bound to (empty
+	// for Qoder-managed tokens and user credentials), replayed into every RPC
+	// so the per-runtime owner binding holds over WS as well (MUL-8154).
+	DaemonTokenOwnerID string
+	UserID             string
 	// WorkspaceID is the legacy single-workspace scope used by older callers
 	// and daemon-token auth. New code should populate WorkspaceIDs from the
 	// runtime rows authorized for this connection.

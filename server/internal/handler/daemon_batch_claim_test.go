@@ -322,28 +322,21 @@ func TestClaimTasksByRuntime_CancelsTaskWhenRuntimeOwnerMissing(t *testing.T) {
 		t.Fatalf("task status after refused user claim = %q (%v), want queued", untouched, err)
 	}
 
-	// Its own daemon token does reach it, and the claim path must cancel
-	// the task rather than mint a token for nobody.
+	// Daemon tokens are owner-bound as well (MUL-8154): this daemon's own
+	// token cannot reach the ownerless runtime either.
 	w := httptest.NewRecorder()
 	testHandler.ClaimTasksByRuntime(w, newDaemonTokenRequest(http.MethodPost, "/api/daemon/tasks/claim",
 		map[string]any{"daemon_id": batchClaimTestDaemonID, "runtime_ids": []string{rtNull}, "max_tasks": 1},
 		testWorkspaceID, batchClaimTestDaemonID))
-	if w.Code != http.StatusOK {
-		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
-	}
-	var resp batchClaimResponse
-	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
-		t.Fatalf("decode: %v", err)
-	}
-	if len(resp.Tasks) != 0 {
-		t.Fatalf("claimed %d tasks from owner-less runtime, want 0: %s", len(resp.Tasks), w.Body.String())
+	if w.Code != http.StatusOK || strings.Contains(w.Body.String(), taskID) {
+		t.Fatalf("daemon-token batch claim reached the ownerless runtime: %d %s", w.Code, w.Body.String())
 	}
 	var status string
 	if err := testPool.QueryRow(ctx, `SELECT status FROM agent_task_queue WHERE id = $1`, taskID).Scan(&status); err != nil {
 		t.Fatalf("read task status: %v", err)
 	}
-	if status != "cancelled" {
-		t.Fatalf("task status = %s, want cancelled (owner missing)", status)
+	if status != "queued" {
+		t.Fatalf("task status = %s, want untouched (queued)", status)
 	}
 }
 
