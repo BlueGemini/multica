@@ -1643,6 +1643,196 @@ func (w *LocalWorktree) verifyDeliveryPoint(tip string) error {
 	return nil
 }
 
+// DeliveryProblem is a refusal Finalize is about to make that the agent can
+// still repair from inside its own worktree: the run left its work somewhere
+// verifyDeliveryPoint will not record, but the work itself is intact and the
+// fix is ordinary git (#9404).
+type DeliveryProblem struct {
+	// Branch is the task branch the delivery has to end on.
+	Branch string
+	// BaseCommit is the commit the delivery has to contain — this turn's
+	// baseline, or the branch tip it continued.
+	BaseCommit string
+	// Tip is the commit the worktree's HEAD points at now.
+	Tip string
+	// Reason is verifyDeliveryPoint's own explanation, as Finalize would
+	// report it.
+	Reason string
+}
+
+// RepairCommitMessage is the commit message RepairSteps uses for the one
+// commit it makes.
+const RepairCommitMessage = "chore(agent): put this turn's work back on its task branch"
+
+// RepairSteps is one git sequence that resolves any DeliveryProblem while
+// keeping the worktree's files exactly as they are: stage everything, point
+// HEAD back at the task branch without touching files or index, move the
+// branch to BaseCommit, and commit the staged tree on top of it. The result is
+// a single commit whose parent is BaseCommit and whose tree is what the agent
+// left — so it passes verifyDeliveryPoint by construction, and the guard
+// itself is unchanged.
+//
+// Each step is a git argv (without the leading "git"). Rendered into the
+// repair prompt and executed verbatim by the tests, so the instruction the
+// agent gets is the one that is proven to work.
+func (p *DeliveryProblem) RepairSteps() [][]string {
+	return [][]string{
+		{"add", "-A"},
+		{"symbolic-ref", "HEAD", "refs/heads/" + p.Branch},
+		{"reset", "--soft", p.BaseCommit},
+		{"commit", "-m", RepairCommitMessage},
+	}
+}
+
+// CheckDelivery reports, without changing anything, whether Finalize would
+// refuse to record this turn's delivery because of where the run left its
+// history — and returns nil whenever it would not, or when it would refuse for
+// a reason a repair turn should not be asked to undo.
+//
+// It predicts the same verifyDeliveryPoint call Finalize makes, including the
+// auto-commit Finalize adds first: uncommitted leftovers are committed onto
+// whatever HEAD points at, so they only reach the task branch when HEAD is
+// attached to it.
+//
+// A tip that is an ancestor of BaseCommit is deliberately NOT offered for
+// repair. That is the run resetting back to where the turn started or earlier
+// — the MUL-6881 case, where the user's replayed edits were thrown away — and
+// the guard exists to stop exactly that being recorded. Asking the agent to
+// re-commit such a tree on top of the baseline would turn a refused discard
+// into a delivered revert of the user's edits. Repair is only for a tip that
+// carries something the baseline line does not: a squash or rebase that
+// dropped the baseline, or work committed onto another branch.
+func (w *LocalWorktree) CheckDelivery() *DeliveryProblem {
+	if w == nil || w.aborted != nil || !w.tracksState || w.BaseCommit == "" {
+		return nil
+	}
+	// An unresolved merge fails Finalize before the delivery point is ever
+	// checked, and the prompt already told the agent to resolve it.
+	if unmerged, err := unmergedPaths(w.Path); err != nil || len(unmerged) > 0 {
+		return nil
+	}
+	tip, err := runGitTrimmed(w.Path, "rev-parse", "--verify", "HEAD")
+	if err != nil || tip == "" {
+		return nil
+	}
+	dirty, err := worktreeIsDirty(w.Path)
+	if err != nil {
+		dirty = true // Finalize commits defensively on the same uncertainty.
+	}
+	if !dirty && tip == w.BaseCommit {
+		// Nothing produced: Finalize drops a branch it created and records a
+		// continued one as-is. Neither is refused.
+		return nil
+	}
+	if tip != w.BaseCommit {
+		if _, err := runGit(w.GitRoot, "merge-base", "--is-ancestor", tip, w.BaseCommit); err == nil {
+			// Reset back past the baseline (see the doc comment): Finalize
+			// refuses it, and that refusal is not ours to talk the agent around.
+			return nil
+		}
+	}
+	if dirty && !headAttachedTo(w.Path, w.Branch) {
+		if w.repairWouldRevertBase(tip) {
+			return nil
+		}
+		return &DeliveryProblem{
+			Branch:     w.Branch,
+			BaseCommit: w.BaseCommit,
+			Tip:        tip,
+			Reason: fmt.Sprintf("the worktree has uncommitted changes while HEAD is not on branch %s, so they would not be delivered onto it",
+				w.Branch),
+		}
+	}
+	if verifyErr := w.verifyDeliveryPoint(tip); verifyErr != nil {
+		if w.repairWouldRevertBase(tip) {
+			return nil
+		}
+		return &DeliveryProblem{Branch: w.Branch, BaseCommit: w.BaseCommit, Tip: tip, Reason: verifyErr.Error()}
+	}
+	return nil
+}
+
+// repairWouldRevertBase reports whether re-committing the worktree's current
+// tree on top of BaseCommit would undo something BaseCommit carries — the
+// user's replayed edits, or an earlier turn's work — that tip never had.
+//
+// RepairSteps keeps the agent's files exactly as they are. That is right for a
+// squash (the tree still carries everything; only the ancestry dropped the
+// baseline) and wrong for work done on a line that never saw the baseline's
+// content: a detached checkout of the user's HEAD, say, when the baseline holds
+// their uncommitted edits. Delivered on top of the baseline, that tree is a
+// silent revert of those edits — the loss MUL-6881 guards against — so such a
+// delivery is left to Finalize's plain refusal instead of being repaired.
+//
+// The test is per path: anything BaseCommit changed relative to its common
+// ancestor with tip must also be changed in tip. Conservative by design — an
+// agent that deliberately restored such a file to its old content is refused
+// too — and fails closed when git cannot answer.
+func (w *LocalWorktree) repairWouldRevertBase(tip string) bool {
+	mergeBase, err := runGitTrimmed(w.GitRoot, "merge-base", tip, w.BaseCommit)
+	if err != nil || mergeBase == "" {
+		return true // Unrelated histories: nothing to compare against.
+	}
+	baseChanged, err := changedPaths(w.GitRoot, mergeBase, w.BaseCommit)
+	if err != nil {
+		return true
+	}
+	if len(baseChanged) == 0 {
+		return false
+	}
+	// Compare against what Finalize would deliver: the working tree, so
+	// uncommitted leftovers count. `git diff <commit>` without a second commit
+	// compares that commit against the worktree's files.
+	tipChanged, err := changedPaths(w.Path, mergeBase, "")
+	if err != nil {
+		return true
+	}
+	for path := range baseChanged {
+		if _, ok := tipChanged[path]; !ok {
+			return true
+		}
+	}
+	return false
+}
+
+// changedPaths lists the paths that differ between from and to (or, when to is
+// empty, between from and the working tree of dir, untracked files included).
+func changedPaths(dir, from, to string) (map[string]struct{}, error) {
+	args := []string{"diff", "--name-only", "--no-renames", "-z", from}
+	if to != "" {
+		args = append(args, to)
+	}
+	out, err := runGitStdout(dir, args...)
+	if err != nil {
+		return nil, err
+	}
+	paths := map[string]struct{}{}
+	for _, p := range strings.Split(out, "\x00") {
+		if p != "" {
+			paths[p] = struct{}{}
+		}
+	}
+	if to == "" {
+		untracked, err := runGitStdout(dir, "ls-files", "--others", "--exclude-standard", "-z")
+		if err != nil {
+			return nil, err
+		}
+		for _, p := range strings.Split(untracked, "\x00") {
+			if p != "" {
+				paths[p] = struct{}{}
+			}
+		}
+	}
+	return paths, nil
+}
+
+// headAttachedTo reports whether the worktree's HEAD is the symbolic ref of
+// branch, i.e. a commit made now would advance that branch.
+func headAttachedTo(worktreePath, branch string) bool {
+	ref, err := runGitTrimmed(worktreePath, "symbolic-ref", "--quiet", "HEAD")
+	return err == nil && ref == "refs/heads/"+branch
+}
+
 // unmergedPaths lists the files git considers unresolved in a worktree.
 func unmergedPaths(worktreePath string) ([]string, error) {
 	out, err := runGitStdout(worktreePath, "diff", "--name-only", "--diff-filter=U", "-z")
