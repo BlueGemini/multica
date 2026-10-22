@@ -273,6 +273,24 @@ func TestBriefNamesStepCommandsAndHandlers(t *testing.T) {
 	}
 }
 
+// The assignee's brief carries the runtime brief's entry and exit checks in
+// workflow terms, since a current daemon drops its built-in ones (MUL-8145).
+func TestBriefTellsTheAssigneeToMoveOnlyByItsCommands(t *testing.T) {
+	brief := Brief(BriefInput{Workflow: devDefinition(), StatusKey: "code_review", IssueIdentifier: "MUL-7"})
+	for _, want := range []string{
+		"These commands are the only status moves for your step: set no status to mark that you started, and none to mark delivery — no separate `in_progress` or `in_review`.\n",
+		"Before your run ends, either run one of them or leave the issue at this step on purpose because its work continues.",
+	} {
+		if !strings.Contains(brief, want) {
+			t.Fatalf("assignee brief is missing %q:\n%s", want, brief)
+		}
+	}
+	observer := Brief(BriefInput{Workflow: devDefinition(), StatusKey: "code_review", IssueIdentifier: "MUL-7", Observer: true})
+	if strings.Contains(observer, "only status moves for your step") {
+		t.Fatalf("observer brief must not hand out the assignee's status moves:\n%s", observer)
+	}
+}
+
 func TestBriefForObserverLeavesTheStepToItsAssignee(t *testing.T) {
 	brief := Brief(BriefInput{
 		Workflow:        devDefinition(),
