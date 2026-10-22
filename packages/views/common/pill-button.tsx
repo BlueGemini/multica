@@ -15,8 +15,13 @@ import { cn } from "@multica/ui/lib/utils";
 // `overflow-hidden` let the inner `truncate` spans actually shrink (a flex item
 // only drops `min-width: auto` once its overflow is hidden); leading icons are
 // `shrink-0`, so the text yields first.
+//
+// Fixed height, not vertical padding: pills sit side by side in one row, and
+// padding lets the tallest child (an avatar, a label chip) set that pill's
+// height so it stands taller than its text-only neighbours. 26px = the 16px
+// caption line + 4px padding on each side + the border.
 const PILL_CHROME =
-  "inline-flex items-center rounded-full border text-caption min-w-0 max-w-56 overflow-hidden transition-colors";
+  "inline-flex h-6.5 items-center rounded-full border text-caption min-w-0 max-w-56 overflow-hidden transition-colors";
 
 export function PillButton({
   children,
@@ -28,7 +33,7 @@ export function PillButton({
       type="button"
       className={cn(
         PILL_CHROME,
-        "gap-1.5 px-2.5 py-1",
+        "gap-1.5 px-2.5",
         "hover:bg-accent/60 cursor-pointer",
         "data-popup-open:bg-accent data-popup-open:text-accent-foreground",
         "disabled:cursor-not-allowed disabled:hover:bg-transparent",
@@ -94,7 +99,7 @@ export function ClearablePillButton({
         type="button"
         disabled={disabled}
         className={cn(
-          "flex min-w-0 items-center gap-1.5 overflow-hidden py-1 pl-2.5 cursor-pointer",
+          "flex h-full min-w-0 items-center gap-1.5 overflow-hidden pl-2.5 cursor-pointer",
           clearable ? "pr-1" : "pr-2.5",
           "disabled:cursor-not-allowed",
         )}
@@ -111,7 +116,7 @@ export function ClearablePillButton({
               e.stopPropagation();
               onClear?.();
             }}
-            className="flex shrink-0 items-center py-1 pl-0.5 pr-2 text-muted-foreground hover:text-foreground cursor-pointer"
+            className="flex h-full shrink-0 items-center pl-0.5 pr-2 text-muted-foreground hover:text-foreground cursor-pointer"
           >
             <XIcon className="size-3" />
           </button>

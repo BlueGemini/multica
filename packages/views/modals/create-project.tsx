@@ -632,7 +632,7 @@ export function CreateProjectModal({ onClose }: { onClose: () => void }) {
                 <PillButton>
                   {leadType && leadId ? (
                     <>
-                      <ActorAvatar actorType={leadType} actorId={leadId} size="sm" showStatusDot />
+                      <ActorAvatar actorType={leadType} actorId={leadId} size="xs" showStatusDot />
                       <span className="truncate">{leadLabel}</span>
                     </>
                   ) : (
