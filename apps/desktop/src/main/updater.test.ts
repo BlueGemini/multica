@@ -20,7 +20,13 @@ const ctx = vi.hoisted(() => ({
   quitAndInstall: vi.fn(),
   getVersion: vi.fn(() => "0.3.17"),
   userDataPath: "",
+  osRelease: "24.0.0",
 }));
+
+vi.mock("node:os", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("node:os")>();
+  return { ...actual, release: () => ctx.osRelease };
+});
 
 vi.mock("electron-updater", () => {
   const autoUpdater = {
@@ -54,7 +60,9 @@ vi.mock("electron", () => ({
 
 import {
   configureMacX64UpdateChannel,
+  isHostOsTooOldForUpdates,
   setupAutoUpdater,
+  UNSUPPORTED_OS_UPDATE_MESSAGE,
 } from "./updater";
 import { updaterPreferencesPath } from "./updater-preferences";
 
@@ -83,6 +91,25 @@ describe("macOS x64 update channel", () => {
       channel: "latest-x64",
       allowDowngrade: false,
     });
+  });
+});
+
+describe("isHostOsTooOldForUpdates", () => {
+  it("blocks macOS 12 and older (Darwin < 22)", () => {
+    expect(isHostOsTooOldForUpdates("darwin", "21.6.0")).toBe(true); // macOS 12
+    expect(isHostOsTooOldForUpdates("darwin", "20.6.0")).toBe(true); // macOS 11
+  });
+
+  it("allows macOS 13 and newer", () => {
+    expect(isHostOsTooOldForUpdates("darwin", "22.1.0")).toBe(false); // macOS 13
+    expect(isHostOsTooOldForUpdates("darwin", "25.0.0")).toBe(false);
+  });
+
+  it("never blocks other platforms or unparseable releases", () => {
+    expect(isHostOsTooOldForUpdates("win32", "10.0.19045")).toBe(false);
+    expect(isHostOsTooOldForUpdates("linux", "5.15.0")).toBe(false);
+    expect(isHostOsTooOldForUpdates("darwin", "")).toBe(false);
+    expect(isHostOsTooOldForUpdates("darwin", "garbage")).toBe(false);
   });
 });
 
@@ -232,6 +259,47 @@ describe("setupAutoUpdater", () => {
     });
 
     expect(ctx.checkForUpdates).toHaveBeenCalledTimes(1);
+  });
+
+  describe("on macOS 12 hosts", () => {
+    const originalPlatform = process.platform;
+    beforeEach(() => {
+      Object.defineProperty(process, "platform", { value: "darwin" });
+      ctx.osRelease = "21.6.0";
+      vi.spyOn(console, "warn").mockImplementation(() => {});
+    });
+    afterEach(() => {
+      Object.defineProperty(process, "platform", { value: originalPlatform });
+      ctx.osRelease = "24.0.0";
+      vi.mocked(console.warn).mockRestore();
+    });
+
+    it("never runs startup or periodic checks", async () => {
+      setupAutoUpdater(() => null);
+      await invokeIpc("updater:get-preferences");
+
+      await vi.advanceTimersByTimeAsync(60 * 60 * 1000 + 5_000);
+
+      expect(ctx.checkForUpdates).not.toHaveBeenCalled();
+    });
+
+    it("reports the OS requirement on a manual check without fetching", async () => {
+      setupAutoUpdater(() => null);
+
+      await expect(invokeIpc("updater:check")).resolves.toEqual({
+        ok: false,
+        error: UNSUPPORTED_OS_UPDATE_MESSAGE,
+      });
+      expect(ctx.checkForUpdates).not.toHaveBeenCalled();
+    });
+
+    it("ignores legacy download requests", async () => {
+      setupAutoUpdater(() => null);
+
+      await invokeIpc("updater:download");
+
+      expect(ctx.downloadUpdate).not.toHaveBeenCalled();
+    });
   });
 
   it("forwards update progress to a live renderer", () => {
