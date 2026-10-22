@@ -415,3 +415,146 @@ func TestSQLCollectorUsesOneBoundaryAndWindowIndexes(t *testing.T) {
 		}
 	}
 }
+
+func TestSQLCollectorCountsMemberActivityByCompleteUTCDays(t *testing.T) {
+	pool := telemetryTestPool(t)
+	ctx := context.Background()
+	if _, err := pool.Exec(ctx, `
+		CREATE TABLE workspace (id uuid PRIMARY KEY);
+		CREATE TABLE member (user_id uuid NOT NULL);
+		CREATE TABLE agent (archived_at timestamptz);
+		CREATE TABLE agent_runtime (daemon_id text, last_seen_at timestamptz);
+		CREATE TABLE agent_task_queue (
+			status text, started_at timestamptz, completed_at timestamptz,
+			created_at timestamptz NOT NULL, originator_user_id uuid, originator_source text);
+		CREATE TABLE client_usage_daily (
+			user_id uuid NOT NULL, client_type text NOT NULL, install_id uuid NOT NULL,
+			activity_date date NOT NULL);
+		CREATE INDEX client_usage_daily_activity_client_user_idx
+			ON client_usage_daily (activity_date, client_type, user_id);
+		CREATE INDEX idx_agent_task_queue_direct_human_originator
+			ON agent_task_queue (originator_user_id, created_at)
+			WHERE originator_source = 'direct_human' AND originator_user_id IS NOT NULL`); err != nil {
+		t.Fatal(err)
+	}
+	// Snapshot day 2026-09-10; the 1d window is all of 09-09, 7d starts 09-03,
+	// 28d starts 08-13. Anything on 09-10 itself is outside every window.
+	at := time.Date(2026, 9, 10, 3, 0, 0, 0, time.UTC)
+	const (
+		a = "10000000-0000-0000-0000-00000000000a" // member, active yesterday
+		b = "10000000-0000-0000-0000-00000000000b" // member, active 5 days ago
+		c = "10000000-0000-0000-0000-00000000000c" // member, active 20 days ago
+		d = "10000000-0000-0000-0000-00000000000d" // member, only today / too old
+		x = "10000000-0000-0000-0000-0000000000ff" // former member, not in member
+	)
+	if _, err := pool.Exec(ctx, `
+		INSERT INTO member VALUES ($1), ($1), ($2), ($3), ($4)`, a, b, c, d); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := pool.Exec(ctx, `
+		INSERT INTO client_usage_daily VALUES
+			($1, 'web',     gen_random_uuid(), '2026-09-09'),
+			($1, 'desktop', gen_random_uuid(), '2026-09-09'),
+			($2, 'web',     gen_random_uuid(), '2026-09-05'),
+			($3, 'web',     gen_random_uuid(), '2026-08-21'),
+			($4, 'web',     gen_random_uuid(), '2026-09-10'),
+			($4, 'web',     gen_random_uuid(), '2026-08-12'),
+			($5, 'web',     gen_random_uuid(), '2026-09-09')`, a, b, c, d, x); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := pool.Exec(ctx, `
+		INSERT INTO agent_task_queue (status, created_at, originator_user_id, originator_source) VALUES
+			('completed', '2026-09-09T23:59:59Z', $1, 'direct_human'),
+			('completed', '2026-09-03T00:00:00Z', $2, 'direct_human'),
+			('completed', '2026-09-09T12:00:00Z', $3, 'delegation'),
+			('completed', '2026-09-09T12:00:00Z', $3, 'trigger_owner'),
+			('completed', '2026-08-13T00:00:00Z', $3, 'direct_human'),
+			('completed', '2026-09-10T00:00:00Z', $4, 'direct_human'),
+			('completed', '2026-08-12T23:59:59Z', $4, 'direct_human'),
+			('completed', '2026-09-09T12:00:00Z', $5, 'direct_human'),
+			('completed', '2026-09-09T12:00:00Z', NULL, 'unattributed')`, a, b, c, d, x); err != nil {
+		t.Fatal(err)
+	}
+
+	conn, err := pool.Acquire(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer conn.Release()
+	counts, err := (SQLCollector{}).Collect(ctx, conn.Conn(), at)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !counts.ActivityCollected {
+		t.Fatal("activity was not collected")
+	}
+	want := ActivityCounts{
+		Visiting1d: 1, Visiting7d: 2, Visiting28d: 3,
+		Delegating1d: 1, Delegating7d: 2, Delegating28d: 3,
+	}
+	if counts.Activity != want {
+		t.Fatalf("activity = %#v, want %#v", counts.Activity, want)
+	}
+
+	// The per-member delegation probe must use the partial index rather than
+	// scanning task history.
+	if _, err := pool.Exec(ctx, `
+		INSERT INTO agent_task_queue (status, created_at, originator_user_id, originator_source)
+		SELECT 'completed', '2026-07-01T00:00:00Z', NULL, 'trigger_owner' FROM generate_series(1, 50000)`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := pool.Exec(ctx, "ANALYZE agent_task_queue"); err != nil {
+		t.Fatal(err)
+	}
+	plan := explainLines(t, conn.Conn(), activitySQL, utcDay(at))
+	if !strings.Contains(plan, "idx_agent_task_queue_direct_human_originator") {
+		t.Errorf("activity query did not use the direct_human index:\n%s", plan)
+	}
+}
+
+func TestSQLCollectorFallsBackToV1WhenActivityTablesAreMissing(t *testing.T) {
+	pool := telemetryTestPool(t)
+	ctx := context.Background()
+	if _, err := pool.Exec(ctx, `
+		CREATE TABLE workspace (id uuid PRIMARY KEY);
+		CREATE TABLE member (user_id uuid NOT NULL);
+		CREATE TABLE agent (archived_at timestamptz);
+		CREATE TABLE agent_runtime (daemon_id text, last_seen_at timestamptz);
+		CREATE TABLE agent_task_queue (status text, started_at timestamptz, completed_at timestamptz);
+		INSERT INTO workspace VALUES (gen_random_uuid())`); err != nil {
+		t.Fatal(err)
+	}
+	conn, err := pool.Acquire(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer conn.Release()
+	counts, err := (SQLCollector{}).Collect(ctx, conn.Conn(), time.Date(2026, 9, 10, 3, 0, 0, 0, time.UTC))
+	if err != nil {
+		t.Fatalf("activity failure aborted the V1 snapshot: %v", err)
+	}
+	if counts.ActivityCollected || counts.Workspaces != 1 {
+		t.Fatalf("counts = %#v, want V1 counts with no activity", counts)
+	}
+}
+
+func explainLines(t *testing.T, conn *pgx.Conn, query string, args ...any) string {
+	t.Helper()
+	rows, err := conn.Query(context.Background(), "EXPLAIN (COSTS OFF, FORMAT TEXT) "+query, args...)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer rows.Close()
+	var lines []string
+	for rows.Next() {
+		var line string
+		if err := rows.Scan(&line); err != nil {
+			t.Fatal(err)
+		}
+		lines = append(lines, line)
+	}
+	if err := rows.Err(); err != nil {
+		t.Fatal(err)
+	}
+	return strings.Join(lines, "\n")
+}

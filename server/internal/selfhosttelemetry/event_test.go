@@ -123,6 +123,58 @@ func TestEventGoldenJSON(t *testing.T) {
 	}
 }
 
+func TestEventV2GoldenJSON(t *testing.T) {
+	t.Parallel()
+	event := newEvent(
+		uuid.MustParse("11111111-2222-3333-4444-555555555555"),
+		time.Date(2026, 9, 10, 0, 0, 0, 0, time.UTC),
+		"v1.0.0",
+		Counts{
+			Workspaces: 2, HumanMembers: 6, Agents: 20, ActiveDaemons: 1,
+			TasksStarted: 12, TasksCompleted: 10, TasksFailed: 1, TasksCancelled: 1,
+			ActivityCollected: true,
+			Activity: ActivityCounts{
+				Visiting1d: 1, Visiting7d: 3, Visiting28d: 6,
+				Delegating1d: 0, Delegating7d: 2, Delegating28d: 101,
+			},
+		},
+	)
+	body, err := marshalEvent(event)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := `{"event_name":"instance_daily_snapshot","schema_version":2,"instance_id":"11111111-2222-3333-4444-555555555555","occurred_at":"2026-09-10T00:00:00Z","payload":{"server_version":"v1.0.0","workspace_count_bucket":"2-5","human_member_count_bucket":"6-20","agent_count_bucket":"6-20","active_daemon_count_24h_bucket":"1","tasks_started_24h":12,"tasks_completed_24h":10,"tasks_failed_24h":1,"tasks_cancelled_24h":1,"visiting_member_count_1d_bucket":"1","visiting_member_count_7d_bucket":"2-5","visiting_member_count_28d_bucket":"6-20","delegating_member_count_1d_bucket":"0","delegating_member_count_7d_bucket":"2-5","delegating_member_count_28d_bucket":"101+"}}`
+	if string(body) != want {
+		t.Fatalf("body mismatch\n got: %s\nwant: %s", body, want)
+	}
+}
+
+// A failed activity read must still produce the exact V1 body, even if stale
+// activity numbers are present in the struct.
+func TestEventFallsBackToV1WithoutActivity(t *testing.T) {
+	t.Parallel()
+	id := uuid.MustParse("11111111-2222-3333-4444-555555555555")
+	at := time.Date(2026, 9, 10, 0, 0, 0, 0, time.UTC)
+	base := Counts{Workspaces: 1, HumanMembers: 1, TasksStarted: 3}
+	withStale := base
+	withStale.Activity = ActivityCounts{Visiting1d: 5, Delegating28d: 9}
+
+	want, err := marshalEvent(newEvent(id, at, "v1.0.0", base))
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := marshalEvent(newEvent(id, at, "v1.0.0", withStale))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(got) != string(want) {
+		t.Fatalf("fallback body differs from V1\n got: %s\nwant: %s", got, want)
+	}
+	if strings.Contains(string(got), "member_count_1d") || !strings.Contains(string(got), `"schema_version":1`) {
+		t.Fatalf("fallback is not a V1 body: %s", got)
+	}
+}
+
 func TestEventCannotPassFreeTextOrIdentifiers(t *testing.T) {
 	t.Parallel()
 	forbidden := []string{
