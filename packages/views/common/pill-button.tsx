@@ -16,12 +16,16 @@ import { cn } from "@multica/ui/lib/utils";
 // only drops `min-width: auto` once its overflow is hidden); leading icons are
 // `shrink-0`, so the text yields first.
 //
-// Fixed height, not vertical padding: pills sit side by side in one row, and
-// padding lets the tallest child (an avatar, a label chip) set that pill's
-// height so it stands taller than its text-only neighbours. 26px = the 16px
-// caption line + 4px padding on each side + the border.
+// A pill is an xs control: it takes its height from the shared control ladder
+// (`--button-height-xs`, same caption type as `Button size="xs"`), not from
+// vertical padding — padding lets the tallest child set the height, so a row
+// of pills drifts apart. The pill also sizes what it holds to the 16px caption
+// line, so call sites never pick a tier that outgrows it: avatars through
+// `--avatar-slot-size` (read by the base avatar), label chips by dropping
+// their vertical padding.
 const PILL_CHROME =
-  "inline-flex h-6.5 items-center rounded-full border text-caption min-w-0 max-w-56 overflow-hidden transition-colors";
+  "inline-flex h-[var(--button-height-xs)] items-center rounded-full border text-caption min-w-0 max-w-56 overflow-hidden transition-colors " +
+  "[--avatar-slot-size:1rem] [&_[data-slot=label-chip]]:py-0";
 
 export function PillButton({
   children,

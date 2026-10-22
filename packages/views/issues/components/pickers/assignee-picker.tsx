@@ -169,18 +169,10 @@ function AssigneePickerImpl({
       onSearchChange={setFilter}
       triggerRender={triggerRender}
       tooltip={tooltip}
-      // A `triggerRender` shell is caption-sized chrome (toolbar pills): the
-      // avatar drops to the 16px tier to sit on the 16px text line.
       trigger={
         customTrigger ? customTrigger : assigneeType && assigneeId ? (
           <>
-            <ActorAvatar
-              actorType={assigneeType}
-              actorId={assigneeId}
-              size={triggerRender ? "xs" : "sm"}
-              enableHoverCard
-              showStatusDot
-            />
+            <ActorAvatar actorType={assigneeType} actorId={assigneeId} size="sm" enableHoverCard showStatusDot />
             <span className="truncate">{triggerLabel}</span>
           </>
         ) : (
