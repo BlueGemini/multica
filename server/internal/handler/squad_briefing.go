@@ -121,6 +121,22 @@ const squadParentStatusOwned = `6. **Own the parent issue status.** This issue i
    when no comment asked you to. Leave ` + "`" + `done` + "`" + ` to a human reviewer or
    existing integrations (for example a PR with close intent that merges).`
 
+// leaderWorkflow says whether an owning leader's issue follows a project
+// workflow that came with the claim, and whether the daemon's runtime brief
+// still states the built-in in_progress / in_review rules (MUL-8145).
+type leaderWorkflow int
+
+const (
+	leaderNoWorkflow leaderWorkflow = iota
+	// leaderWorkflowCurrentDaemon: the runtime brief points at
+	// [Project workflow] and states no built-in moves.
+	leaderWorkflowCurrentDaemon
+	// leaderWorkflowLegacyDaemon: the runtime brief still says to set
+	// in_progress first and in_review on delivery, so responsibility 6 has
+	// to rule those moves out for this issue.
+	leaderWorkflowLegacyDaemon
+)
+
 // squadParentStatusOwnedInWorkflow is responsibility 6 for an owning leader
 // whose issue follows a project workflow that came with the claim (MUL-8145).
 // The workflow may list neither in_progress nor in_review — the server rejects
@@ -132,14 +148,20 @@ const squadParentStatusOwned = `6. **Own the parent issue status.** This issue i
 const squadParentStatusOwnedInWorkflow = `6. **Own the parent issue status — through its project workflow.** This issue
    is assigned to your squad and follows its project workflow, so its status
    is yours to move (unless Agent Identity forbids status changes), using only
-   the commands in ` + "`" + `[Project workflow]` + "`" + ` and the status keys it lists.
-   Set no status when you start or dispatch: the parent stays at its current
-   step while members work — a successful dispatch is not completion. On later
-   turns, do not move it for routine progress updates. When you confirm the
-   overall goal is met, run that block's Step done command — this
+   the commands in ` + "`" + `[Project workflow]` + "`" + `. The parent stays at its
+   current step while members work — a successful dispatch is not completion.
+   On later turns, do not move it for routine progress updates. When you
+   confirm the overall goal is met, run that block's Step done command — this
    responsibility is itself the standing instruction that authorizes that
-   change, so do it even when no comment asked you to. Never set
-   ` + "`" + `in_progress` + "`" + ` or ` + "`" + `in_review` + "`" + ` on it just to mark progress or delivery.`
+   change, so do it even when no comment asked you to.`
+
+// squadParentStatusWorkflowOverridesRuntime follows
+// squadParentStatusOwnedInWorkflow for a daemon whose runtime brief still
+// states the built-in moves.
+const squadParentStatusWorkflowOverridesRuntime = `
+   This overrides the in_progress / in_review rules in your runtime
+   instructions: never set either on this issue just to mark progress or
+   delivery.`
 
 // squadParentStatusNotOwned is responsibility 6 for every other leader path:
 // an @squad mention on an issue owned by someone else (MUL-3724), and
@@ -188,11 +210,13 @@ const squadOperatingProtocolHardRules = `Hard rules:
 // squadOperatingProtocolFor assembles the protocol, selecting the parent-status
 // responsibility that matches this leader's actual authority over the issue
 // and, for an owner, whether the issue's project workflow governs its moves.
-func squadOperatingProtocolFor(ownsIssueStatus, followsProjectWorkflow bool) string {
+func squadOperatingProtocolFor(ownsIssueStatus bool, workflow leaderWorkflow) string {
 	status := squadParentStatusNotOwned
 	switch {
-	case ownsIssueStatus && followsProjectWorkflow:
+	case ownsIssueStatus && workflow == leaderWorkflowCurrentDaemon:
 		status = squadParentStatusOwnedInWorkflow
+	case ownsIssueStatus && workflow == leaderWorkflowLegacyDaemon:
+		status = squadParentStatusOwnedInWorkflow + squadParentStatusWorkflowOverridesRuntime
 	case ownsIssueStatus:
 		status = squadParentStatusOwned
 	}
@@ -214,16 +238,16 @@ func squadOperatingProtocolFor(ownsIssueStatus, followsProjectWorkflow bool) str
 // including ones where the squad is a guest on someone else's issue, so this
 // flag is what keeps status authority from leaking along with the roster.
 //
-// followsProjectWorkflow is true when the claim carries a [Project workflow]
-// block for the issue; an owning leader then moves the parent with that
-// block's commands instead of in_progress / in_review (MUL-8145).
+// workflow says whether the claim carries a [Project workflow] block for the
+// issue; an owning leader then moves the parent with that block's commands
+// instead of in_progress / in_review (MUL-8145).
 //
 // Archived agent members are skipped — there's no point asking the leader
 // to delegate to a retired agent. Members whose underlying record can't be
 // loaded (deleted user/agent races, FK weirdness) are also skipped silently.
-func buildSquadLeaderBriefing(ctx context.Context, q *db.Queries, squad db.Squad, ownsIssueStatus, followsProjectWorkflow bool) string {
+func buildSquadLeaderBriefing(ctx context.Context, q *db.Queries, squad db.Squad, ownsIssueStatus bool, workflow leaderWorkflow) string {
 	var sb strings.Builder
-	sb.WriteString(squadOperatingProtocolFor(ownsIssueStatus, followsProjectWorkflow))
+	sb.WriteString(squadOperatingProtocolFor(ownsIssueStatus, workflow))
 	sb.WriteString("\n\n")
 	sb.WriteString(buildSquadRoster(ctx, q, squad))
 

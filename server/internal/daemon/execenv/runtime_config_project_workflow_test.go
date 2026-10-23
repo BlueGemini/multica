@@ -34,10 +34,10 @@ func TestBriefWithProjectWorkflowDropsBuiltInStatusRules(t *testing.T) {
 			}
 		}
 		for _, want := range []string{
-			"3. Set no status to mark that you started: this issue follows its project workflow",
+			"3. Complete the task within your Agent Identity boundaries",
 			"5. Before exiting, confirm the issue sits where things actually stand: you ran the matching command from `[Project workflow]`",
 			"**Issue status — this issue follows its project workflow**",
-			"no separate `in_progress` to show you started, no `in_review` to mark delivery",
+			"Move this issue only with its commands.",
 			"run its Step done command",
 			"— flip status. This issue's statuses and commands are in `[Project workflow]`; for other issues, an invalid status errors with the full valid list.",
 			// The duplicate-mark bullet still rides on the status command.
@@ -54,6 +54,13 @@ func TestBriefWithProjectWorkflowDropsBuiltInStatusRules(t *testing.T) {
 		for _, list := range []string{"(todo / in_progress / in_review", "Available statuses by lifecycle category", "`later`", "`code_review`"} {
 			if strings.Contains(out, list) {
 				t.Errorf("%s: workflow brief still lists statuses (%q)", name, list)
+			}
+		}
+		// Nothing else in the brief asks for in_progress / in_review on this
+		// issue, so nothing has to forbid them either (MUL-8145).
+		for _, word := range []string{"`in_progress`", "`in_review`"} {
+			if strings.Contains(out, word) {
+				t.Errorf("%s: workflow brief still names %s", name, word)
 			}
 		}
 		if got := strings.Count(out, "**Issue status"); got != 1 {

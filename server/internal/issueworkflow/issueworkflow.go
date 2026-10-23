@@ -622,13 +622,22 @@ type BriefInput struct {
 	// AssigneeName names the issue's assignee in an observer's brief; empty
 	// means unassigned.
 	AssigneeName string
+	// LegacyRuntimeRules renders for a daemon whose runtime brief still
+	// states the built-in in_progress / in_review rules (one without
+	// protocol.DaemonCapabilityWorkflowStatusRulesV1): the brief then says it
+	// replaces them, rules out the built-in moves, and carries the exit check.
+	// A current daemon drops those rules and states the exit check itself, so
+	// the zero value — also what the editor and timeline show — leaves these
+	// lines out rather than forbid what nothing asks for (MUL-8145).
+	LegacyRuntimeRules bool
 }
 
 // Brief renders what an agent reads about the issue's project workflow: the
 // workflow's statuses, who each step hands off to, and — for the assignee —
 // the current step's instructions and the commands for the next move. The
-// runtime brief's built-in status rules (for example in_review on delivery)
-// name statuses this project may not use, so this text replaces them.
+// runtime brief points at this block instead of stating built-in status rules;
+// for an older daemon that still states them, LegacyRuntimeRules adds the
+// lines that override them.
 //
 // It is the one rendering of a workflow for agents: the claim carries it into
 // every run's prompt, and the editor and timeline show the same text. Names
@@ -651,11 +660,13 @@ func Brief(in BriefInput) string {
 		title = fmt.Sprintf("%s (%s)", title, project)
 	}
 	fmt.Fprintf(&b, "This project's workflow — %s\n", title)
-	b.WriteString("This workflow replaces the status rules in your runtime instructions: use only the status keys below")
-	if !in.Workflow.Has(issuestatus.InReview) {
-		fmt.Fprintf(&b, ", never `%s`", issuestatus.InReview)
+	if in.LegacyRuntimeRules {
+		b.WriteString("This workflow replaces the status rules in your runtime instructions: use only the status keys below")
+		if !in.Workflow.Has(issuestatus.InReview) {
+			fmt.Fprintf(&b, ", never `%s`", issuestatus.InReview)
+		}
+		b.WriteString(".\n")
 	}
-	b.WriteString(".\n")
 	if in.Observer {
 		assignee := "is unassigned"
 		if who := briefLine(in.AssigneeName); who != "" {
@@ -710,11 +721,12 @@ func Brief(in BriefInput) string {
 	default:
 		b.WriteString("Can't proceed  → this workflow has no blocked status: comment why and leave the status as it is\n")
 	}
-	// These carry the entry and exit checks of the runtime brief's workflow
-	// (steps 3 and 5) in this workflow's terms, so a daemon that drops its
-	// built-in status rules for this block loses nothing (MUL-8145).
-	b.WriteString("These commands are the only status moves for your step: set no status to mark that you started, and none to mark delivery — no separate `in_progress` or `in_review`.\n")
-	b.WriteString("Before your run ends, either run one of them or leave the issue at this step on purpose because its work continues. The system does not advance the status when your run ends.\n")
+	if in.LegacyRuntimeRules {
+		// An older daemon's brief still says to set in_progress first and
+		// in_review on delivery, and checks the status on exit in those terms.
+		b.WriteString("These commands are the only status moves for your step: set no status to mark that you started, and none to mark delivery — no separate `in_progress` or `in_review`.\n")
+		b.WriteString("Before your run ends, either run one of them or leave the issue at this step on purpose because its work continues. The system does not advance the status when your run ends.\n")
+	}
 	b.WriteString("When the issue enters a step you handle, you get a run automatically — do not add a wakeup for that. Wakeups for anything else (a time, a PR, another issue, a step someone else handles) are fine.\n")
 	return b.String()
 }

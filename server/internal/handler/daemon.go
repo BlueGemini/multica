@@ -2816,7 +2816,15 @@ func (h *Handler) buildClaimedTaskResponse(r *http.Request, task *db.AgentTaskQu
 		// below — a failure degrades to the workspace-wide status rules.
 		// Resolved before the leader briefing, which words the owning
 		// leader's status moves by it (MUL-8145).
-		projectWorkflow := h.claimProjectWorkflow(r.Context(), issue, task)
+		legacyRuntimeRules := !requestHasClientCapability(r, protocol.DaemonCapabilityWorkflowStatusRulesV1)
+		projectWorkflow := h.claimProjectWorkflow(r.Context(), issue, task, legacyRuntimeRules)
+		leaderWorkflow := leaderNoWorkflow
+		if projectWorkflow != nil {
+			leaderWorkflow = leaderWorkflowCurrentDaemon
+			if legacyRuntimeRules {
+				leaderWorkflow = leaderWorkflowLegacyDaemon
+			}
+		}
 		if task.IsLeaderTask {
 			injected := false
 			if resp.Agent != nil && task.SquadID.Valid {
@@ -2835,7 +2843,7 @@ func (h *Handler) buildClaimedTaskResponse(r *http.Request, task *db.AgentTaskQu
 					ownsIssueStatus := issue.AssigneeType.Valid &&
 						issue.AssigneeType.String == "squad" &&
 						uuidToString(issue.AssigneeID) == uuidToString(squad.ID)
-					briefing := buildSquadLeaderBriefing(r.Context(), h.Queries, squad, ownsIssueStatus, projectWorkflow != nil)
+					briefing := buildSquadLeaderBriefing(r.Context(), h.Queries, squad, ownsIssueStatus, leaderWorkflow)
 					if strings.TrimSpace(resp.Agent.Instructions) == "" {
 						resp.Agent.Instructions = briefing
 					} else {
@@ -3622,7 +3630,7 @@ func (h *Handler) buildClaimedTaskResponse(r *http.Request, task *db.AgentTaskQu
 						// status to own on this turn. Once the leader opens the
 						// issue with the squad as assignee, the issue-bound
 						// claim path above grants ownership.
-						briefing := buildSquadLeaderBriefing(r.Context(), h.Queries, squad, false, false)
+						briefing := buildSquadLeaderBriefing(r.Context(), h.Queries, squad, false, leaderNoWorkflow)
 						if strings.TrimSpace(resp.Agent.Instructions) == "" {
 							resp.Agent.Instructions = briefing
 						} else {

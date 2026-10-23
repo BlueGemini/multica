@@ -273,21 +273,34 @@ func TestBriefNamesStepCommandsAndHandlers(t *testing.T) {
 	}
 }
 
-// The assignee's brief carries the runtime brief's entry and exit checks in
-// workflow terms, since a current daemon drops its built-in ones (MUL-8145).
-func TestBriefTellsTheAssigneeToMoveOnlyByItsCommands(t *testing.T) {
-	brief := Brief(BriefInput{Workflow: devDefinition(), StatusKey: "code_review", IssueIdentifier: "MUL-7"})
-	for _, want := range []string{
-		"These commands are the only status moves for your step: set no status to mark that you started, and none to mark delivery — no separate `in_progress` or `in_review`.\n",
-		"Before your run ends, either run one of them or leave the issue at this step on purpose because its work continues.",
-	} {
-		if !strings.Contains(brief, want) {
-			t.Fatalf("assignee brief is missing %q:\n%s", want, brief)
+// A current daemon's runtime brief states no built-in status rules and owns
+// the exit check, so the brief neither overrides nor repeats them; an older
+// daemon's still states them, so its brief keeps the override lines (MUL-8145).
+func TestBriefOverridesRuntimeRulesOnlyForLegacyDaemons(t *testing.T) {
+	legacyOnly := []string{
+		"replaces the status rules in your runtime instructions",
+		"These commands are the only status moves for your step",
+		"Before your run ends, either run one of them",
+		"The system does not advance the status when your run ends.",
+	}
+	for _, observer := range []bool{false, true} {
+		current := Brief(BriefInput{Workflow: devDefinition(), StatusKey: "code_review", IssueIdentifier: "MUL-7", Observer: observer})
+		for _, line := range legacyOnly {
+			if strings.Contains(current, line) {
+				t.Errorf("observer=%v: current-daemon brief carries %q:\n%s", observer, line, current)
+			}
+		}
+		for _, word := range []string{"`in_progress`", "`in_review`"} {
+			if strings.Contains(current, word) {
+				t.Errorf("observer=%v: current-daemon brief names %s outside the workflow", observer, word)
+			}
 		}
 	}
-	observer := Brief(BriefInput{Workflow: devDefinition(), StatusKey: "code_review", IssueIdentifier: "MUL-7", Observer: true})
-	if strings.Contains(observer, "only status moves for your step") {
-		t.Fatalf("observer brief must not hand out the assignee's status moves:\n%s", observer)
+	legacy := Brief(BriefInput{Workflow: devDefinition(), StatusKey: "code_review", IssueIdentifier: "MUL-7", LegacyRuntimeRules: true})
+	for _, line := range legacyOnly {
+		if !strings.Contains(legacy, line) {
+			t.Errorf("legacy-daemon brief is missing %q:\n%s", line, legacy)
+		}
 	}
 }
 
@@ -314,12 +327,12 @@ func TestBriefForObserverLeavesTheStepToItsAssignee(t *testing.T) {
 }
 
 func TestBriefReplacesInReviewOnlyWhenTheWorkflowLacksIt(t *testing.T) {
-	without := Brief(BriefInput{Workflow: devDefinition(), StatusKey: "code_review", IssueIdentifier: "MUL-7"})
+	without := Brief(BriefInput{Workflow: devDefinition(), StatusKey: "code_review", IssueIdentifier: "MUL-7", LegacyRuntimeRules: true})
 	if !strings.Contains(without, "replaces the status rules in your runtime instructions: use only the status keys below, never `in_review`.\n") {
 		t.Fatalf("a workflow without in_review must rule it out:\n%s", without)
 	}
 	def := Definition{Name: DefaultName, IsDefault: true, Steps: stepsFor(BuiltInDefaultKeys())}
-	with := Brief(BriefInput{Workflow: def, StatusKey: "in_progress", IssueIdentifier: "MUL-7"})
+	with := Brief(BriefInput{Workflow: def, StatusKey: "in_progress", IssueIdentifier: "MUL-7", LegacyRuntimeRules: true})
 	if strings.Contains(with, "never `in_review`") {
 		t.Fatalf("a workflow that lists in_review must not rule it out:\n%s", with)
 	}
