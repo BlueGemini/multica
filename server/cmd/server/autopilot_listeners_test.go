@@ -148,10 +148,11 @@ func TestAutopilotRunOnlyTaskTerminalEventsUpdateRun(t *testing.T) {
 // issue_created with exactly one issue task that carries no autopilot_run_id
 // (so it must be reached via the issue_id lookup, not SyncRunFromTask).
 type linkedIssueAutopilotFixture struct {
-	taskSvc *service.TaskService
-	queries *db.Queries
-	run     *db.AutopilotRun
-	taskID  pgtype.UUID
+	taskSvc      *service.TaskService
+	autopilotSvc *service.AutopilotService
+	queries      *db.Queries
+	run          *db.AutopilotRun
+	taskID       pgtype.UUID
 }
 
 // dispatchCreateIssueAutopilot creates an active create_issue autopilot,
@@ -220,7 +221,7 @@ func dispatchCreateIssueAutopilot(t *testing.T, title string) linkedIssueAutopil
 		t.Fatalf("expected pre-failure run status issue_created, got %q", run.Status)
 	}
 
-	return linkedIssueAutopilotFixture{taskSvc: taskSvc, queries: queries, run: run, taskID: tasks[0].ID}
+	return linkedIssueAutopilotFixture{taskSvc: taskSvc, autopilotSvc: autopilotSvc, queries: queries, run: run, taskID: tasks[0].ID}
 }
 
 // runTaskWithBudget marks the issue task dispatched with the given attempt
@@ -326,6 +327,82 @@ func TestAutopilotCreateIssueTaskRetryPendingKeepsRunOpen(t *testing.T) {
 	}
 	if updatedRun.Status != "issue_created" {
 		t.Fatalf("expected run to stay issue_created while a retry is pending, got %q", updatedRun.Status)
+	}
+}
+
+// setLinkedIssueStatus moves the run's linked issue to status and feeds the
+// reloaded row to SyncRunFromIssue, the same entry the issue:updated listener
+// reaches after its status gate.
+func setLinkedIssueStatus(t *testing.T, f linkedIssueAutopilotFixture, status string) {
+	t.Helper()
+	ctx := context.Background()
+	if _, err := testPool.Exec(ctx, `UPDATE issue SET status = $2 WHERE id = $1`, f.run.IssueID, status); err != nil {
+		t.Fatalf("set issue status %q: %v", status, err)
+	}
+	issue, err := f.queries.GetIssue(ctx, f.run.IssueID)
+	if err != nil {
+		t.Fatalf("GetIssue: %v", err)
+	}
+	f.autopilotSvc.SyncRunFromIssue(ctx, issue)
+}
+
+func requireRunStatus(t *testing.T, f linkedIssueAutopilotFixture, want string) db.AutopilotRun {
+	t.Helper()
+	run, err := f.queries.GetAutopilotRun(context.Background(), f.run.ID)
+	if err != nil {
+		t.Fatalf("GetAutopilotRun: %v", err)
+	}
+	if run.Status != want {
+		t.Fatalf("expected run status %q, got %q (reason %+v)", want, run.Status, run.FailureReason)
+	}
+	return run
+}
+
+// TestAutopilotCreateIssueTaskCompletionCompletesRun: the first agent task on
+// the linked issue finishing cleanly is run success, and a later blocked
+// status on the issue must not flip it to failed. (MUL-8200)
+func TestAutopilotCreateIssueTaskCompletionCompletesRun(t *testing.T) {
+	ctx := context.Background()
+	f := dispatchCreateIssueAutopilot(t, "Create-issue completion listener")
+
+	runTaskWithBudget(t, f.queries, f.taskID, 1)
+	if _, err := f.taskSvc.CompleteTask(ctx, f.taskID, []byte(`{"output":"done"}`), "", "", "", false, "", ""); err != nil {
+		t.Fatalf("CompleteTask: %v", err)
+	}
+	requireRunStatus(t, f, "completed")
+
+	setLinkedIssueStatus(t, f, "blocked")
+	requireRunStatus(t, f, "completed")
+	setLinkedIssueStatus(t, f, "cancelled")
+	requireRunStatus(t, f, "completed")
+}
+
+// TestAutopilotCreateIssueBlockedIssueKeepsRunOpen is the MUL-8198 shape: a
+// reviewer blocks the issue while the autopilot's task is still running. The
+// run must stay open and complete once the task finishes. (MUL-8200)
+func TestAutopilotCreateIssueBlockedIssueKeepsRunOpen(t *testing.T) {
+	ctx := context.Background()
+	f := dispatchCreateIssueAutopilot(t, "Create-issue blocked listener")
+
+	runTaskWithBudget(t, f.queries, f.taskID, 1)
+	setLinkedIssueStatus(t, f, "blocked")
+	requireRunStatus(t, f, "issue_created")
+
+	if _, err := f.taskSvc.CompleteTask(ctx, f.taskID, []byte(`{"output":"done"}`), "", "", "", false, "", ""); err != nil {
+		t.Fatalf("CompleteTask: %v", err)
+	}
+	requireRunStatus(t, f, "completed")
+}
+
+// TestAutopilotCreateIssueCancelledBeforeTaskFailsRun: cancelling the issue
+// before any task finishes still fails the run, so it does not hang. (MUL-8200)
+func TestAutopilotCreateIssueCancelledBeforeTaskFailsRun(t *testing.T) {
+	f := dispatchCreateIssueAutopilot(t, "Create-issue cancelled listener")
+
+	setLinkedIssueStatus(t, f, "cancelled")
+	run := requireRunStatus(t, f, "failed")
+	if !run.FailureReason.Valid || run.FailureReason.String != "issue cancelled" {
+		t.Fatalf("expected failure reason %q, got %+v", "issue cancelled", run.FailureReason)
 	}
 }
 

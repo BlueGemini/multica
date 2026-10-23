@@ -1087,7 +1087,23 @@ func (s *AutopilotService) dispatchRunOnly(ctx context.Context, ap db.Autopilot,
 	return nil
 }
 
-// SyncRunFromIssue updates the autopilot run when its linked issue reaches a terminal status.
+// SyncRunFromIssue updates the autopilot run when its linked issue reaches a
+// status that settles the run without a task outcome.
+//
+// For create_issue runs, the run tracks the autopilot's own execution, not the
+// business outcome of the issue: the first agent task finishing cleanly
+// completes the run (SyncRunFromLinkedIssueTask). `blocked` is therefore no
+// longer a run failure — a review that blocks the issue is a normal result,
+// not an autopilot fault, and counting it as one also skewed the failure-rate
+// auto-pause. Only two issue transitions still settle an active run here:
+//   - done / in_review: the work was delivered (covers runs whose issue never
+//     gets an agent task, e.g. a member assignee).
+//   - cancelled: someone cancelled the issue before any task finished, so the
+//     run fails with "issue cancelled" instead of hanging forever.
+//
+// Both only apply while the run is still active (GetAutopilotRunByIssue
+// filters on issue_created/running), so a run already completed by its task
+// is never reopened or flipped by later issue status changes. (MUL-8200)
 func (s *AutopilotService) SyncRunFromIssue(ctx context.Context, issue db.Issue) {
 	if !issue.OriginType.Valid || issue.OriginType.String != "autopilot" {
 		return
@@ -1105,7 +1121,7 @@ func (s *AutopilotService) SyncRunFromIssue(ctx context.Context, issue db.Issue)
 	wsID := util.UUIDToString(issue.WorkspaceID)
 
 	// Custom statuses only finalize terminal lifecycle (done/closed). Review
-	// completion and blocked failure remain exclusive to the fixed built-in keys.
+	// completion remains exclusive to the fixed built-in key.
 	// The failure reason below deliberately keeps issue.Status, not the
 	// normalized key, so the audit trail names the status a human actually
 	// chose. (MUL-6243)
@@ -1122,7 +1138,7 @@ func (s *AutopilotService) SyncRunFromIssue(ctx context.Context, issue db.Issue)
 		}
 		s.captureAutopilotRunCompleted(autopilot, updatedRun)
 		s.publishRunDone(wsID, updatedRun, "completed")
-	case "cancelled", "blocked":
+	case "cancelled":
 		reason := "issue " + issue.Status
 		updatedRun, err := s.failAutopilotRun(ctx, db.UpdateAutopilotRunFailedParams{
 			ID:            run.ID,
@@ -1181,9 +1197,15 @@ func (s *AutopilotService) SyncRunFromTask(ctx context.Context, task db.AgentTas
 	}
 }
 
-// SyncRunFromLinkedIssueTask fails a create_issue autopilot run when its
-// linked issue task fails terminally before the issue itself reaches a
-// terminal status. create_issue tasks are linked through issue_id rather than
+// SyncRunFromLinkedIssueTask settles a create_issue autopilot run from the
+// outcome of its linked issue's agent task.
+//
+// A completed task completes the run: the autopilot created the issue and the
+// agent ran to the end without error, which is what run success means. Any
+// later issue status change (blocked, cancelled, ...) no longer touches the
+// run. (MUL-8200)
+//
+// A task that fails terminally before the run is settled fails the run. create_issue tasks are linked through issue_id rather than
 // autopilot_run_id, so SyncRunFromTask cannot see them directly. Without this
 // the run would hang in `issue_created` forever — and because the failure-rate
 // auto-pause monitor excludes issue_created/running runs, a consistently
@@ -1196,7 +1218,10 @@ func (s *AutopilotService) SyncRunFromTask(ctx context.Context, task db.AgentTas
 // failing the run prematurely. Once retries are exhausted (or the failure was
 // never retryable in the first place), the run fails carrying the task's reason.
 func (s *AutopilotService) SyncRunFromLinkedIssueTask(ctx context.Context, task db.AgentTaskQueue) {
-	if task.AutopilotRunID.Valid || !task.IssueID.Valid || task.Status != "failed" {
+	if task.AutopilotRunID.Valid || !task.IssueID.Valid {
+		return
+	}
+	if task.Status != "completed" && task.Status != "failed" {
 		return
 	}
 	// Only create_issue runs link through issue_id (and their linked issue is
@@ -1206,6 +1231,10 @@ func (s *AutopilotService) SyncRunFromLinkedIssueTask(ctx context.Context, task 
 	run, err := s.Queries.GetAutopilotRunByIssue(ctx, task.IssueID)
 	if err != nil {
 		return // no active run linked to this issue
+	}
+	if task.Status == "completed" {
+		s.completeRunFromLinkedIssueTask(ctx, run, task)
+		return
 	}
 	// A still-active task — typically the auto-retry FailTask just enqueued —
 	// means the dispatch isn't terminal yet; wait for the final attempt.
@@ -1242,6 +1271,30 @@ func (s *AutopilotService) SyncRunFromLinkedIssueTask(ctx context.Context, task 
 	}
 	s.captureAutopilotRunFailed(autopilot, updatedRun, updatedRun.Source, reason)
 	s.publishRunDone(util.UUIDToString(autopilot.WorkspaceID), updatedRun, "failed")
+}
+
+// completeRunFromLinkedIssueTask marks a create_issue run completed once its
+// linked issue's agent task finishes successfully. The run keeps no result
+// payload: create_issue runs surface the linked issue, not task output.
+func (s *AutopilotService) completeRunFromLinkedIssueTask(ctx context.Context, run db.AutopilotRun, task db.AgentTaskQueue) {
+	autopilot, err := s.Queries.GetAutopilot(ctx, run.AutopilotID)
+	if err != nil {
+		return
+	}
+	updatedRun, err := s.completeAutopilotRun(ctx, db.UpdateAutopilotRunCompletedParams{
+		ID: run.ID,
+	})
+	if err != nil {
+		slog.Warn("failed to complete autopilot run from linked issue task",
+			"run_id", util.UUIDToString(run.ID),
+			"issue_id", util.UUIDToString(task.IssueID),
+			"task_id", util.UUIDToString(task.ID),
+			"error", err,
+		)
+		return
+	}
+	s.captureAutopilotRunCompleted(autopilot, updatedRun)
+	s.publishRunDone(util.UUIDToString(autopilot.WorkspaceID), updatedRun, "completed")
 }
 
 func taskFailureReasonForAutopilotRun(task db.AgentTaskQueue) string {
