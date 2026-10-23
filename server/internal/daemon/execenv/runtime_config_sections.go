@@ -276,9 +276,17 @@ var briefStatusCategoryOrder = issuestatus.Categories()
 // CHECK-constrained server-side; sanitizeBriefCodeToken is defense-in-depth,
 // and an entry whose key fails it is dropped rather than rendered mangled.
 func writeIssueStatusCommand(b *strings.Builder, ctx TaskContextForEnv) {
+	// An issue on a project workflow gets its statuses and commands from the
+	// per-turn [Project workflow] block; listing any keys here would only
+	// compete with it — built-ins the workflow may reject included. The line
+	// stays as the command's reference for other issues, and is fixed text so
+	// the cache prefix splits only on whether a workflow is present (MUL-8145).
+	if ctx.HasProjectWorkflow {
+		b.WriteString("- `multica issue status <id> <status>` — flip status. This issue's statuses and commands are in `[Project workflow]`; for other issues, an invalid status errors with the full valid list.\n")
+		return
+	}
 	if len(ctx.IssueStatuses) == 0 {
 		b.WriteString("- `multica issue status <id> <status>` — flip status (todo / in_progress / in_review / done / blocked / backlog / cancelled).\n")
-		writeIssueStatusWorkflowHint(b, ctx)
 		return
 	}
 	byCategory := make(map[string][]IssueStatusForEnv, len(briefStatusCategoryOrder))
@@ -319,18 +327,6 @@ func writeIssueStatusCommand(b *strings.Builder, ctx TaskContextForEnv) {
 	if ctx.IssueStatusesOmitted > 0 {
 		fmt.Fprintf(b, "  - …and %d more custom statuses not listed; an invalid status errors with the full valid list.\n", ctx.IssueStatusesOmitted)
 	}
-	writeIssueStatusWorkflowHint(b, ctx)
-}
-
-// writeIssueStatusWorkflowHint says which status list governs the current
-// issue when it follows a project workflow. The workspace list stays whole —
-// sub-issues and issues in other projects need it — and filtering it by the
-// workflow would tie the cache prefix to project edits (MUL-5377).
-func writeIssueStatusWorkflowHint(b *strings.Builder, ctx TaskContextForEnv) {
-	if !ctx.HasProjectWorkflow {
-		return
-	}
-	b.WriteString("  - These are for other issues; an issue in a project accepts only its workflow's statuses, and this issue's are listed in `[Project workflow]`.\n")
 }
 
 // writeAvailableCommandsQuickCreate emits a minimal Available Commands

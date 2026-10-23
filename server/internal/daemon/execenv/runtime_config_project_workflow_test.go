@@ -39,12 +39,21 @@ func TestBriefWithProjectWorkflowDropsBuiltInStatusRules(t *testing.T) {
 			"**Issue status — this issue follows its project workflow**",
 			"no separate `in_progress` to show you started, no `in_review` to mark delivery",
 			"run its Step done command",
-			"this issue's are listed in `[Project workflow]`",
+			"— flip status. This issue's statuses and commands are in `[Project workflow]`; for other issues, an invalid status errors with the full valid list.",
+			// The duplicate-mark bullet still rides on the status command.
+			"--duplicate-of",
 			// The no-write default for question-only turns survives the swap.
 			"questions, discussion, and acknowledgements never touch status",
 		} {
 			if !strings.Contains(out, want) {
 				t.Errorf("%s: workflow brief missing %q\n---\n%s", name, want, out)
+			}
+		}
+		// No status key list competes with [Project workflow]: neither the
+		// built-in line nor the custom catalog.
+		for _, list := range []string{"(todo / in_progress / in_review", "Available statuses by lifecycle category", "`later`", "`code_review`"} {
+			if strings.Contains(out, list) {
+				t.Errorf("%s: workflow brief still lists statuses (%q)", name, list)
 			}
 		}
 		if got := strings.Count(out, "**Issue status"); got != 1 {
