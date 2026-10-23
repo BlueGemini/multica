@@ -177,16 +177,28 @@
       "public": "Public",
       "members": "Specific members"
     },
+    "visibility_choice": {
+      "private": "Private",
+      "public": "Public",
+      "members": "Members"
+    },
     "visibility_hint": {
       "private": "Only you can create agents on this runtime.",
       "public": "Any workspace member can create agents on this runtime.",
-      "members": "Selected members can create agents on this runtime. Select at least one member."
+      "members": "Only you and the selected members can create agents on this runtime."
     },
     "visibility_hint_readonly": {
       "private": "Only the runtime owner can create agents on this runtime, and only they can switch it to Public.",
       "public": "Any workspace member can create agents on this runtime. Only the runtime owner can switch it back to Private.",
       "members": "Only the owner and selected members can create agents on this runtime."
     },
+    "visibility_members_title": "Share with members",
+    "visibility_members_search": "Search members",
+    "visibility_members_none": "No other workspace members yet.",
+    "visibility_members_no_match": "No members match.",
+    "visibility_members_edit": "Edit",
+    "visibility_members_count_one": "{{count}} member",
+    "visibility_members_count_other": "{{count}} members",
     "visibility_toast_updated": "Visibility set to {{visibility}}",
     "visibility_toast_failed": "Failed to update visibility",
     "visibility_revoke_dialog": {

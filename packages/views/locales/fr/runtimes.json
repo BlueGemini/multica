@@ -177,16 +177,28 @@
       "public": "Public",
       "members": "Membres spécifiques"
     },
+    "visibility_choice": {
+      "private": "Privé",
+      "public": "Public",
+      "members": "Membres"
+    },
     "visibility_hint": {
       "private": "Vous seul pouvez créer des agents sur ce runtime.",
       "public": "Tout membre de l'espace de travail peut créer des agents sur ce runtime.",
-      "members": "Les membres sélectionnés peuvent créer des agents sur cet environnement. Sélectionnez au moins un membre."
+      "members": "Seuls vous et les membres sélectionnés pouvez créer des agents sur cet environnement."
     },
     "visibility_hint_readonly": {
       "private": "Seul le propriétaire du runtime peut y créer des agents, et lui seul peut le passer en Public.",
       "public": "Tout membre de l'espace de travail peut créer des agents sur ce runtime. Seul son propriétaire peut le repasser en Privé.",
       "members": "Seuls le propriétaire et les membres sélectionnés peuvent créer des agents sur cet environnement."
     },
+    "visibility_members_title": "Partager avec des membres",
+    "visibility_members_search": "Rechercher des membres",
+    "visibility_members_none": "Aucun autre membre dans l’espace de travail.",
+    "visibility_members_no_match": "Aucun membre ne correspond.",
+    "visibility_members_edit": "Modifier",
+    "visibility_members_count_one": "{{count}} membre",
+    "visibility_members_count_other": "{{count}} membres",
     "visibility_toast_updated": "Visibilité définie sur {{visibility}}",
     "visibility_toast_failed": "Échec de la mise à jour de la visibilité",
     "visibility_revoke_dialog": {

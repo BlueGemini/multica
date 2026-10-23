@@ -172,16 +172,27 @@
       "public": "公开",
       "members": "指定成员"
     },
+    "visibility_choice": {
+      "private": "私有",
+      "public": "公开",
+      "members": "指定成员"
+    },
     "visibility_hint": {
       "private": "仅你可以在此运行时上创建智能体。",
       "public": "工作区内任何成员都可以在此运行时上创建智能体。",
-      "members": "所选成员可以在此运行时创建智能体。请至少选择一位成员。"
+      "members": "仅你和所选成员可以在此运行时上创建智能体。"
     },
     "visibility_hint_readonly": {
       "private": "仅运行时所有者可以在此运行时上创建智能体，也只有他们能切换为「公开」。",
       "public": "工作区内任何成员都可以在此运行时上创建智能体。只有运行时所有者能切回「私有」。",
       "members": "仅所有者和所选成员可以在此运行时创建智能体。"
     },
+    "visibility_members_title": "共享给成员",
+    "visibility_members_search": "搜索成员",
+    "visibility_members_none": "工作区暂无其他成员。",
+    "visibility_members_no_match": "没有匹配的成员。",
+    "visibility_members_edit": "编辑",
+    "visibility_members_count_other": "{{count}} 位成员",
     "visibility_toast_updated": "可见性已设为\"{{visibility}}\"",
     "visibility_toast_failed": "更新可见性失败",
     "visibility_revoke_dialog": {

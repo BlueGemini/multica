@@ -5,9 +5,7 @@ import {
   Trash2,
   ChevronRight,
   Cpu,
-  Globe,
   Lock,
-  Users,
 } from "lucide-react";
 import { toast } from "sonner";
 import { useQuery } from "@tanstack/react-query";
@@ -20,7 +18,6 @@ import type {
 import { useAuthStore } from "@multica/core/auth";
 import { useWorkspaceId } from "@multica/core/hooks";
 import { memberListOptions, agentListOptions } from "@multica/core/workspace/queries";
-import { useUpdateRuntime } from "@multica/core/runtimes/mutations";
 import {
   deriveRuntimeHealth,
   isRuntimeUsableForUser,
@@ -32,7 +29,6 @@ import {
   useWorkspacePresenceMap,
 } from "@multica/core/agents";
 import { useWorkspacePaths } from "@multica/core/paths";
-import { Checkbox } from "@multica/ui/components/ui/checkbox";
 import { Button } from "@multica/ui/components/ui/button";
 import {
   Tooltip,
@@ -47,11 +43,7 @@ import { HealthBadge } from "./shared";
 import { ProviderLogo } from "./provider-logo";
 import { UsageSection } from "./usage-section";
 import { DeleteRuntimeDialog } from "./delete-runtime-dialog";
-import {
-  RevokeRuntimeAccessDialog,
-  parseRuntimeAccessRevocationPlan,
-  type RuntimeAccessRevocationPlan,
-} from "./revoke-runtime-access-dialog";
+import { RuntimeAccessEditor, RuntimeAccessReadout } from "./runtime-access-editor";
 import { DeleteRuntimeProfileDialog } from "./delete-runtime-profile-dialog";
 import { runtimeRowLabel } from "./runtime-machines";
 import { useT, useTimeAgo } from "../../i18n";
@@ -510,12 +502,9 @@ function DiagnosticsCard({
             {t(($) => $.detail.diagnostics_visibility)}
           </div>
           {canEditVisibility ? (
-            <VisibilityEditor
-              key={`${runtime.id}:${runtime.visibility}:${(runtime.shared_with ?? []).join(",")}`}
-              runtime={runtime}
-            />
+            <RuntimeAccessEditor runtime={runtime} />
           ) : (
-            <VisibilityReadout runtime={runtime} />
+            <RuntimeAccessReadout runtime={runtime} />
           )}
         </div>
         {canDelete && (
@@ -539,112 +528,5 @@ function DiagnosticsCard({
         )}
       </div>
     </div>
-  );
-}
-
-function runtimeAccessScope(runtime: AgentRuntime): "private" | "public" | "members" {
-  return runtime.visibility === "public" ? "public" :
-    (runtime.shared_with?.length ?? 0) > 0 ? "members" : "private";
-}
-
-function VisibilityReadout({ runtime }: { runtime: AgentRuntime }) {
-  const { t } = useT("runtimes");
-  const scope = runtimeAccessScope(runtime);
-  const Icon = scope === "public" ? Globe : scope === "members" ? Users : Lock;
-  return (
-    <Tooltip>
-      <TooltipTrigger render={
-        <span className="inline-flex items-center gap-1.5 rounded-md border bg-muted/30 px-2 py-1.5 text-caption">
-          <Icon className="h-3 w-3 text-muted-foreground" />
-          <span className="font-medium">{t(($) => $.detail.visibility_label[scope])}</span>
-        </span>
-      } />
-      <TooltipContent>{t(($) => $.detail.visibility_hint_readonly[scope])}</TooltipContent>
-    </Tooltip>
-  );
-}
-
-// Draft-first, like agent access: changing scope never saves a partial grant.
-function VisibilityEditor({ runtime }: { runtime: AgentRuntime }) {
-  const { t } = useT("runtimes");
-  const { t: tc } = useT("common");
-  const wsId = useWorkspaceId();
-  const { data: members = [] } = useQuery(memberListOptions(wsId));
-  const updateRuntime = useUpdateRuntime(wsId);
-  const current = runtimeAccessScope(runtime);
-  const [scope, setScope] = useState(current);
-  const [selected, setSelected] = useState(runtime.shared_with ?? []);
-  const [revokePlan, setRevokePlan] = useState<RuntimeAccessRevocationPlan | null>(null);
-  const [revokeOpen, setRevokeOpen] = useState(false);
-  const [revokeMembers, setRevokeMembers] = useState<string[]>([]);
-  const persisted = runtime.shared_with ?? [];
-  const dirty = scope !== current || (scope === "members" &&
-    (selected.length !== persisted.length || selected.some((id) => !persisted.includes(id))));
-  const disabled = updateRuntime.isPending || revokeOpen;
-
-  const save = () => {
-    const sharedWith = scope === "members" ? selected : [];
-    updateRuntime.mutate(
-      { runtimeId: runtime.id, patch: {
-        visibility: scope === "public" ? "public" : "private",
-        shared_with: sharedWith,
-      } },
-      {
-        onSuccess: () => toast.success(t(($) => $.detail.visibility_toast_updated, {
-          visibility: t(($) => $.detail.visibility_label[scope]),
-        })),
-        onError: (err) => {
-          const plan = parseRuntimeAccessRevocationPlan(err);
-          if (plan) {
-            setRevokeMembers(sharedWith);
-            setRevokePlan(plan);
-            setRevokeOpen(true);
-            return;
-          }
-          toast.error(err instanceof Error && err.message ? err.message : t(($) => $.detail.visibility_toast_failed));
-        },
-      },
-    );
-  };
-
-  return (
-    <>
-      <fieldset disabled={disabled} className="space-y-2">
-        <legend className="sr-only">{t(($) => $.detail.diagnostics_visibility)}</legend>
-        {(["private", "public", "members"] as const).map((choice) => {
-          const Icon = choice === "public" ? Globe : choice === "members" ? Users : Lock;
-          return (
-            <label key={choice} className="flex min-h-9 cursor-pointer items-center gap-2 rounded-md px-2 hover:bg-muted">
-              <input type="radio" name={`runtime-access-${runtime.id}`} value={choice}
-                checked={scope === choice} onChange={() => setScope(choice)}
-                className="accent-foreground" />
-              <Icon className="size-3.5 text-muted-foreground" aria-hidden="true" />
-              <span className="text-caption font-medium">{t(($) => $.detail.visibility_label[choice])}</span>
-            </label>
-          );
-        })}
-        <p className="text-caption text-muted-foreground">{t(($) => $.detail.visibility_hint[scope])}</p>
-        {scope === "members" ? (
-          <div className="max-h-48 overflow-y-auto rounded-md border">
-            {members.filter((member) => member.user_id !== runtime.owner_id).map((member) => (
-              <label key={member.user_id} className="flex min-h-10 cursor-pointer items-center gap-2 px-2 hover:bg-muted">
-                <Checkbox checked={selected.includes(member.user_id)} disabled={disabled}
-                  onCheckedChange={(checked) => setSelected((ids) => checked === true
-                    ? [...ids, member.user_id] : ids.filter((id) => id !== member.user_id))} />
-                <ActorAvatar actorType="member" actorId={member.user_id} size="sm" />
-                <span className="truncate text-caption">{member.name}</span>
-              </label>
-            ))}
-          </div>
-        ) : null}
-        <Button type="button" size="sm" onClick={save}
-          disabled={disabled || !dirty || (scope === "members" && selected.length === 0)}
-          aria-busy={updateRuntime.isPending}>
-          {tc(($) => $.save)}
-        </Button>
-      </fieldset>
-      <RevokeRuntimeAccessDialog open={revokeOpen} onOpenChange={setRevokeOpen}
-        runtime={runtime} wsId={wsId} initialPlan={revokePlan} sharedWith={revokeMembers} />
-    </>
   );
 }

@@ -19,34 +19,41 @@ test("runtime owner can save specific members and revoke their access", async ({
     await page.setViewportSize({ width: 1280, height: 900 });
     await page.goto(`/${workspace.slug}/runtimes/${runtimeId}`);
     await page.getByRole("row", { name: /Studio Mac Built-in/ }).click();
-    await expect(page.getByRole("radio", { name: "Private", exact: true })).toBeChecked();
+    const scope = (name: string) => page.getByRole("button", { name, exact: true });
+    const patched = () => page.waitForResponse((response) => response.url().endsWith(`/api/runtimes/${runtimeId}`) && response.request().method() === "PATCH");
+    await expect(scope("Private")).toHaveAttribute("aria-pressed", "true");
     await page.screenshot({ path: testInfo.outputPath("runtime-private.png"), fullPage: true });
-    await page.getByRole("radio", { name: "Specific members" }).check();
+
+    // Choosing members opens a draft picker; nothing persists until Save.
+    await scope("Members").click();
     await expect(page.getByRole("button", { name: "Save", exact: true })).toBeDisabled();
     await page.getByRole("checkbox", { name: "Alice" }).check();
-    const saved = page.waitForResponse((response) => response.url().endsWith(`/api/runtimes/${runtimeId}`) && response.request().method() === "PATCH");
+    await page.screenshot({ path: testInfo.outputPath("runtime-member-picker.png"), fullPage: true });
+    const saved = patched();
     await page.getByRole("button", { name: "Save", exact: true }).click();
     expect((await saved).status()).toBe(200);
     await page.reload();
-    await expect(page.getByRole("radio", { name: "Specific members" })).toBeChecked();
-    await expect(page.getByRole("checkbox", { name: "Alice" })).toBeChecked();
+    await expect(scope("Members")).toHaveAttribute("aria-pressed", "true");
+    await expect(page.getByRole("button", { name: /Alice.*Edit/ })).toBeVisible();
     await page.screenshot({ path: testInfo.outputPath("runtime-shared.png"), fullPage: true });
-    await page.getByRole("radio", { name: "Private", exact: true }).check();
-    const revoked = page.waitForResponse((response) => response.url().endsWith(`/api/runtimes/${runtimeId}`) && response.request().method() === "PATCH");
-    await page.getByRole("button", { name: "Save", exact: true }).click();
+
+    // Private applies in one click.
+    const revoked = patched();
+    await scope("Private").click();
     expect((await revoked).status()).toBe(200);
     await page.reload();
-    await expect(page.getByRole("radio", { name: "Private", exact: true })).toBeChecked();
-    await page.getByRole("radio", { name: "Specific members" }).check();
+    await expect(scope("Private")).toHaveAttribute("aria-pressed", "true");
+
+    await scope("Members").click();
     await page.getByRole("checkbox", { name: "Alice" }).check();
-    const sharedAgain = page.waitForResponse((response) => response.url().endsWith(`/api/runtimes/${runtimeId}`) && response.request().method() === "PATCH");
+    const sharedAgain = patched();
     await page.getByRole("button", { name: "Save", exact: true }).click();
     expect((await sharedAgain).status()).toBe(200);
     await api.removeMember(memberId);
-    await expect(page.getByRole("radio", { name: "Private", exact: true })).toBeChecked({ timeout: 15000 });
+    await expect(scope("Private")).toHaveAttribute("aria-pressed", "true", { timeout: 15000 });
     await api.addMemberByEmail(`runtime-member-${run}@localhost`);
     await page.reload();
-    await expect(page.getByRole("radio", { name: "Private", exact: true })).toBeChecked();
+    await expect(scope("Private")).toHaveAttribute("aria-pressed", "true");
   } finally {
     await api.deleteWorkspace();
   }

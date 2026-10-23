@@ -172,16 +172,27 @@
       "public": "公開",
       "members": "指定メンバー"
     },
+    "visibility_choice": {
+      "private": "非公開",
+      "public": "公開",
+      "members": "メンバー"
+    },
     "visibility_hint": {
       "private": "あなたのみが、このランタイムでエージェントを作成できます。",
       "public": "ワークスペースのメンバーなら誰でも、このランタイムでエージェントを作成できます。",
-      "members": "選択したメンバーがこのランタイムでエージェントを作成できます。1 人以上選択してください。"
+      "members": "あなたと選択したメンバーだけがこのランタイムでエージェントを作成できます。"
     },
     "visibility_hint_readonly": {
       "private": "このランタイムでエージェントを作成できるのは所有者だけで、公開に切り替えられるのも所有者だけです。",
       "public": "ワークスペースのメンバーなら誰でも、このランタイムでエージェントを作成できます。非公開に戻せるのは所有者だけです。",
       "members": "所有者と選択したメンバーのみ、このランタイムでエージェントを作成できます。"
     },
+    "visibility_members_title": "メンバーと共有",
+    "visibility_members_search": "メンバーを検索",
+    "visibility_members_none": "ワークスペースに他のメンバーはいません。",
+    "visibility_members_no_match": "一致するメンバーはいません。",
+    "visibility_members_edit": "編集",
+    "visibility_members_count_other": "{{count}} 人のメンバー",
     "visibility_toast_updated": "公開範囲を {{visibility}} に設定しました",
     "visibility_toast_failed": "公開範囲を更新できませんでした",
     "visibility_revoke_dialog": {
