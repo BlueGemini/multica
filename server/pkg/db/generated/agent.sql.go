@@ -4938,6 +4938,33 @@ func (q *Queries) HasTaskForIssue(ctx context.Context, issueID pgtype.UUID) (boo
 	return exists, err
 }
 
+const isTaskSessionRetired = `-- name: IsTaskSessionRetired :one
+SELECT EXISTS (
+    SELECT 1 FROM agent_task_queue r
+    WHERE r.agent_id = $1
+      AND r.retired_session_id = $2::text
+) AS retired
+`
+
+type IsTaskSessionRetiredParams struct {
+	AgentID   pgtype.UUID `json:"agent_id"`
+	SessionID string      `json:"session_id"`
+}
+
+// Whether any run of this agent explicitly retired session_id. The
+// manual-retry claim path resumes from its exact source task instead of
+// GetLastTaskSession / the chat pointer, so it must consult the retired set
+// itself; without this a retry of an older, resume-safe failed run revives a
+// session a later run already proved undrivable (MUL-8188). Session ids are
+// opaque runtime-issued ids, so (agent, session) identifies the transcript
+// whether the runs were issue or chat tasks.
+func (q *Queries) IsTaskSessionRetired(ctx context.Context, arg IsTaskSessionRetiredParams) (bool, error) {
+	row := q.db.QueryRow(ctx, isTaskSessionRetired, arg.AgentID, arg.SessionID)
+	var retired bool
+	err := row.Scan(&retired)
+	return retired, err
+}
+
 const linkTaskToIssue = `-- name: LinkTaskToIssue :exec
 UPDATE agent_task_queue
 SET issue_id = $2

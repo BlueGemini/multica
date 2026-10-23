@@ -51,32 +51,54 @@ func TestShouldRetireSilentResume(t *testing.T) {
 	}
 }
 
+// fakeAwakeClock is an awake-time source the test advances by hand. A host
+// suspend is simply wall time passing while this clock stands still.
+type fakeAwakeClock struct {
+	mu  sync.Mutex
+	now time.Duration
+}
+
+func (c *fakeAwakeClock) read() time.Duration {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.now
+}
+
+func (c *fakeAwakeClock) advance(d time.Duration) {
+	c.mu.Lock()
+	c.now += d
+	c.mu.Unlock()
+}
+
 func TestTaskOutputObserver(t *testing.T) {
 	t.Parallel()
 
 	var nilObs *taskOutputObserver
-	nilObs.begin(time.Now())
+	nilObs.begin()
 	nilObs.markOutput()
-	if _, ok := nilObs.silentFor(time.Now()); ok {
+	if _, ok := nilObs.silentFor(); ok {
 		t.Fatal("nil observer must report not-silent")
 	}
 
-	o := &taskOutputObserver{}
-	if _, ok := o.silentFor(time.Now()); ok {
+	clock := &fakeAwakeClock{now: time.Hour}
+	o := &taskOutputObserver{clock: clock.read}
+	if _, ok := o.silentFor(); ok {
 		t.Fatal("never-started observer must report not-silent")
 	}
-	start := time.Unix(1000, 0)
-	o.begin(start)
-	if d, ok := o.silentFor(start.Add(7 * time.Minute)); !ok || d != 7*time.Minute {
+	o.begin()
+	clock.advance(7 * time.Minute)
+	if d, ok := o.silentFor(); !ok || d != 7*time.Minute {
 		t.Fatalf("silentFor = %s, %v; want 7m, true", d, ok)
 	}
 	o.markOutput()
-	if _, ok := o.silentFor(start.Add(8 * time.Minute)); ok {
+	clock.advance(time.Minute)
+	if _, ok := o.silentFor(); ok {
 		t.Fatal("observer with output must report not-silent")
 	}
 	// A new execution (fresh-session retry) resets the observation.
-	o.begin(start.Add(9 * time.Minute))
-	if _, ok := o.silentFor(start.Add(10 * time.Minute)); !ok {
+	o.begin()
+	clock.advance(time.Minute)
+	if _, ok := o.silentFor(); !ok {
 		t.Fatal("begin must reset the output flag")
 	}
 
@@ -86,6 +108,41 @@ func TestTaskOutputObserver(t *testing.T) {
 	}
 	if taskOutputObserverFromContext(context.Background()) != nil {
 		t.Fatal("empty context must yield a nil observer")
+	}
+}
+
+// TestTaskOutputObserverIgnoresHostSleep is the suspend regression the review
+// asked for: a resume starts, the host sleeps for an hour (wall time passes,
+// awake time does not), the user wakes it and cancels within a minute. That
+// run was silent for one awake minute, not 61, and must not retire a healthy
+// session. Mirrors the idle-watchdog fix (MUL-7851 / #9201).
+func TestTaskOutputObserverIgnoresHostSleep(t *testing.T) {
+	t.Parallel()
+
+	clock := &fakeAwakeClock{}
+	o := &taskOutputObserver{clock: clock.read}
+	o.begin()
+	clock.advance(30 * time.Second)
+	// Host suspended for an hour here: wall time passes, awakeclock does not
+	// move, so there is nothing to advance. The user cancels 30s after waking.
+	clock.advance(30 * time.Second)
+
+	silent, wasSilent := o.silentFor()
+	if !wasSilent || silent != time.Minute {
+		t.Fatalf("silentFor = %s, %v; want 1m of awake silence", silent, wasSilent)
+	}
+	if shouldRetireSilentResume("cancelled", "ses_ok", silent, wasSilent) {
+		t.Fatal("a run cancelled one awake minute after resuming must not retire its session, however long the host slept")
+	}
+}
+
+func TestTaskOutputObserverDefaultsToAwakeClock(t *testing.T) {
+	t.Parallel()
+
+	o := &taskOutputObserver{}
+	o.begin()
+	if d, ok := o.silentFor(); !ok || d < 0 || d > time.Minute {
+		t.Fatalf("silentFor on the real awake clock = %s, %v; want a small non-negative duration", d, ok)
 	}
 }
 

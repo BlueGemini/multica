@@ -4,6 +4,8 @@ import (
 	"context"
 	"sync"
 	"time"
+
+	"github.com/multica-ai/multica/server/pkg/awakeclock"
 )
 
 // silentResumeRetireThreshold is how long a RESUMED run must have gone without
@@ -27,21 +29,41 @@ const silentResumeRetireThreshold = 5 * time.Minute
 // when it started and whether it produced any agent output. Unlike
 // taskPhaseRecorder (diagnostic-only by contract) it exists to drive the
 // silent-resume retirement decision.
+//
+// Silence is measured on awakeclock, not wall time: a laptop that suspends
+// right after a resume and is woken and cancelled later must not have its slept
+// time counted as the session failing to answer — on Windows Go's monotonic
+// clock keeps counting through sleep, which would permanently retire a healthy
+// conversation. Same reasoning as the idle watchdog (MUL-7851 / #9201).
 type taskOutputObserver struct {
+	// clock returns awake-time readings; nil means awakeclock.Now. Tests
+	// inject a fake to simulate host suspend.
+	clock func() time.Duration
+
 	mu       sync.Mutex
-	started  time.Time
+	started  time.Duration
+	begun    bool
 	observed bool
+}
+
+func (o *taskOutputObserver) now() time.Duration {
+	if o.clock != nil {
+		return o.clock()
+	}
+	return awakeclock.Now()
 }
 
 // begin marks the start of a backend execution. Each execution (including a
 // fresh-session retry) resets the observation so the decision always concerns
 // the run whose result is being classified.
-func (o *taskOutputObserver) begin(now time.Time) {
+func (o *taskOutputObserver) begin() {
 	if o == nil {
 		return
 	}
+	now := o.now()
 	o.mu.Lock()
 	o.started = now
+	o.begun = true
 	o.observed = false
 	o.mu.Unlock()
 }
@@ -55,18 +77,24 @@ func (o *taskOutputObserver) markOutput() {
 	o.mu.Unlock()
 }
 
-// silentFor reports how long the current execution has run without output.
-// ok is false when the execution never started or did produce output.
-func (o *taskOutputObserver) silentFor(now time.Time) (time.Duration, bool) {
+// silentFor reports how much AWAKE time the current execution has run
+// without output. ok is false when the execution never started or did
+// produce output.
+func (o *taskOutputObserver) silentFor() (time.Duration, bool) {
 	if o == nil {
 		return 0, false
 	}
+	now := o.now()
 	o.mu.Lock()
 	defer o.mu.Unlock()
-	if o.started.IsZero() || o.observed {
+	if !o.begun || o.observed {
 		return 0, false
 	}
-	return now.Sub(o.started), true
+	silent := now - o.started
+	if silent < 0 {
+		silent = 0
+	}
+	return silent, true
 }
 
 type taskOutputObserverContextKey struct{}

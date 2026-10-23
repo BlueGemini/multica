@@ -8867,7 +8867,7 @@ func (d *Daemon) runTask(ctx context.Context, task Task, provider string, slot i
 	// next trigger starts fresh instead of re-entering the same hang; the
 	// cancel-ack (or the fail callback on daemon shutdown) carries it.
 	if retiredSessionID == "" {
-		silent, wasSilent := outputObserver.silentFor(time.Now())
+		silent, wasSilent := outputObserver.silentFor()
 		if shouldRetireSilentResume(result.Status, task.PriorSessionID, silent, wasSilent) {
 			taskLog.Warn("resumed session produced no output before cancellation; retiring it so the next run starts fresh",
 				"session_id", task.PriorSessionID,
@@ -9348,7 +9348,7 @@ func (d *Daemon) executeAndDrain(ctx context.Context, backend agent.Backend, pro
 	defer d.runningTasks.Add(-1)
 	phaseRecorder.Mark(taskPhaseRuntimeStarted)
 	outputObserver := taskOutputObserverFromContext(ctx)
-	outputObserver.begin(time.Now())
+	outputObserver.begin()
 	taskLog.Debug("backend started, draining messages")
 
 	// Only negotiated sessions may claim additions. Stop and join delivery
