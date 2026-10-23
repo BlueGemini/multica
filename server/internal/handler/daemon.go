@@ -5699,6 +5699,11 @@ type TaskCancelAckRequest struct {
 	// preserved worktree is the only pointer left to the agent's work.
 	ErrorMessage  string `json:"error_message,omitempty"`
 	FailureReason string `json:"failure_reason,omitempty"`
+	// RetiredSessionID: the session this run resumed and then produced no
+	// output on before it was cancelled — a session the runtime cannot drive
+	// (MUL-8188). Recorded so later triggers start fresh instead of resuming
+	// into the same hang. Older daemons never send it.
+	RetiredSessionID string `json:"retired_session_id,omitempty"`
 }
 
 func (h *Handler) AckTaskCancelled(w http.ResponseWriter, r *http.Request) {
@@ -5719,6 +5724,7 @@ func (h *Handler) AckTaskCancelled(w http.ResponseWriter, r *http.Request) {
 	req.FailureReason = util.SanitizeTextForPostgres(req.FailureReason)
 	req.BranchName = util.SanitizeTextForPostgres(req.BranchName)
 	req.DurableWorkDir = util.SanitizeTextForPostgres(req.DurableWorkDir)
+	req.RetiredSessionID = util.SanitizeTextForPostgres(req.RetiredSessionID)
 
 	// Terminal deliveries first, failing LOUD on persistence errors: these
 	// fields are the only pointer to a cancelled task's work, and the daemon
@@ -5770,6 +5776,17 @@ func (h *Handler) AckTaskCancelled(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		delivered = true
+	}
+	if retired := strings.TrimSpace(req.RetiredSessionID); retired != "" {
+		// Fail loud like the deliveries above: the daemon retries the ack,
+		// and a dropped write leaves the undrivable session resumable.
+		// Not a client-visible field, so no rebroadcast is needed.
+		if err := h.TaskService.RetireCancelledTaskSession(r.Context(), task.ID, retired); err != nil {
+			slog.Error("cancel ack: retire session failed",
+				"task_id", taskID, "error", err)
+			writeError(w, http.StatusInternalServerError, "failed to retire session")
+			return
+		}
 	}
 	if delivered {
 		// The task:cancelled broadcast fired at cancel time, before this ack —
