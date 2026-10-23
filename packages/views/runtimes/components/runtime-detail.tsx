@@ -7,6 +7,7 @@ import {
   Cpu,
   Globe,
   Lock,
+  Users,
 } from "lucide-react";
 import { toast } from "sonner";
 import { useQuery } from "@tanstack/react-query";
@@ -31,6 +32,7 @@ import {
   useWorkspacePresenceMap,
 } from "@multica/core/agents";
 import { useWorkspacePaths } from "@multica/core/paths";
+import { Checkbox } from "@multica/ui/components/ui/checkbox";
 import { Button } from "@multica/ui/components/ui/button";
 import {
   Tooltip,
@@ -508,7 +510,10 @@ function DiagnosticsCard({
             {t(($) => $.detail.diagnostics_visibility)}
           </div>
           {canEditVisibility ? (
-            <VisibilityEditor runtime={runtime} />
+            <VisibilityEditor
+              key={`${runtime.id}:${runtime.visibility}:${(runtime.shared_with ?? []).join(",")}`}
+              runtime={runtime}
+            />
           ) : (
             <VisibilityReadout runtime={runtime} />
           )}
@@ -537,72 +542,66 @@ function DiagnosticsCard({
   );
 }
 
-// VisibilityReadout renders a static "Private" / "Public" pill for everyone
-// who is not the runtime owner — workspace admins included (MUL-6126). Its
-// tooltip is phrased in the third person for that reason; the editor's own
-// hints stay in the second person. The description used to sit under the
-// chip; it now lives in the hover tooltip so the Diagnostics column stays
-// compact and matches the surrounding sections. Older backends that omit the
-// field render as "Private" to match the strict default.
+function runtimeAccessScope(runtime: AgentRuntime): "private" | "public" | "members" {
+  return runtime.visibility === "public" ? "public" :
+    (runtime.shared_with?.length ?? 0) > 0 ? "members" : "private";
+}
+
 function VisibilityReadout({ runtime }: { runtime: AgentRuntime }) {
   const { t } = useT("runtimes");
-  const visibility = runtime.visibility === "public" ? "public" : "private";
-  const Icon = visibility === "public" ? Globe : Lock;
+  const scope = runtimeAccessScope(runtime);
+  const Icon = scope === "public" ? Globe : scope === "members" ? Users : Lock;
   return (
     <Tooltip>
-      <TooltipTrigger
-        render={
-          <span className="inline-flex items-center gap-1.5 rounded-md border bg-muted/30 px-2 py-1.5 text-caption">
-            <Icon className="h-3 w-3 text-muted-foreground" />
-            <span className="font-medium">
-              {t(($) => $.detail.visibility_label[visibility])}
-            </span>
-          </span>
-        }
-      />
-      <TooltipContent>
-        {t(($) => $.detail.visibility_hint_readonly[visibility])}
-      </TooltipContent>
+      <TooltipTrigger render={
+        <span className="inline-flex items-center gap-1.5 rounded-md border bg-muted/30 px-2 py-1.5 text-caption">
+          <Icon className="h-3 w-3 text-muted-foreground" />
+          <span className="font-medium">{t(($) => $.detail.visibility_label[scope])}</span>
+        </span>
+      } />
+      <TooltipContent>{t(($) => $.detail.visibility_hint_readonly[scope])}</TooltipContent>
     </Tooltip>
   );
 }
 
-// VisibilityEditor lets the runtime owner flip public↔private. Owner only —
-// the PATCH endpoint refuses a workspace admin here (canSetRuntimeVisibility);
-// this is a UI gate, not a security boundary. Per-choice description text lives in the hover
-// tooltip so the two buttons stay a tight icon+label pair instead of the
-// previous two-line block that competed with the surrounding cards.
+// Draft-first, like agent access: changing scope never saves a partial grant.
 function VisibilityEditor({ runtime }: { runtime: AgentRuntime }) {
   const { t } = useT("runtimes");
+  const { t: tc } = useT("common");
   const wsId = useWorkspaceId();
+  const { data: members = [] } = useQuery(memberListOptions(wsId));
   const updateRuntime = useUpdateRuntime(wsId);
-  const current = runtime.visibility === "public" ? "public" : "private";
+  const current = runtimeAccessScope(runtime);
+  const [scope, setScope] = useState(current);
+  const [selected, setSelected] = useState(runtime.shared_with ?? []);
   const [revokePlan, setRevokePlan] = useState<RuntimeAccessRevocationPlan | null>(null);
   const [revokeOpen, setRevokeOpen] = useState(false);
+  const [revokeMembers, setRevokeMembers] = useState<string[]>([]);
+  const persisted = runtime.shared_with ?? [];
+  const dirty = scope !== current || (scope === "members" &&
+    (selected.length !== persisted.length || selected.some((id) => !persisted.includes(id))));
+  const disabled = updateRuntime.isPending || revokeOpen;
 
-  const flip = (next: "private" | "public") => {
-    if (next === current) return;
+  const save = () => {
+    const sharedWith = scope === "members" ? selected : [];
     updateRuntime.mutate(
-      { runtimeId: runtime.id, patch: { visibility: next } },
+      { runtimeId: runtime.id, patch: {
+        visibility: scope === "public" ? "public" : "private",
+        shared_with: sharedWith,
+      } },
       {
-        onSuccess: () =>
-          toast.success(
-            t(($) => $.detail.visibility_toast_updated, {
-              visibility: t(($) => $.detail.visibility_label[next]),
-            }),
-          ),
+        onSuccess: () => toast.success(t(($) => $.detail.visibility_toast_updated, {
+          visibility: t(($) => $.detail.visibility_label[scope]),
+        })),
         onError: (err) => {
           const plan = parseRuntimeAccessRevocationPlan(err);
           if (plan) {
+            setRevokeMembers(sharedWith);
             setRevokePlan(plan);
             setRevokeOpen(true);
             return;
           }
-          toast.error(
-            err instanceof Error && err.message
-              ? err.message
-              : t(($) => $.detail.visibility_toast_failed),
-          );
+          toast.error(err instanceof Error && err.message ? err.message : t(($) => $.detail.visibility_toast_failed));
         },
       },
     );
@@ -610,70 +609,42 @@ function VisibilityEditor({ runtime }: { runtime: AgentRuntime }) {
 
   return (
     <>
-      <div className="inline-flex items-center gap-0.5 rounded-md bg-muted p-0.5">
-        <VisibilityChoice
-          active={current === "private"}
-          icon={<Lock className="h-3 w-3" />}
-          label={t(($) => $.detail.visibility_label.private)}
-          tooltip={t(($) => $.detail.visibility_hint.private)}
-          disabled={updateRuntime.isPending}
-          onClick={() => flip("private")}
-        />
-        <VisibilityChoice
-          active={current === "public"}
-          icon={<Globe className="h-3 w-3" />}
-          label={t(($) => $.detail.visibility_label.public)}
-          tooltip={t(($) => $.detail.visibility_hint.public)}
-          disabled={updateRuntime.isPending}
-          onClick={() => flip("public")}
-        />
-      </div>
-      <RevokeRuntimeAccessDialog
-        open={revokeOpen}
-        onOpenChange={setRevokeOpen}
-        runtime={runtime}
-        wsId={wsId}
-        initialPlan={revokePlan}
-      />
+      <fieldset disabled={disabled} className="space-y-2">
+        <legend className="sr-only">{t(($) => $.detail.diagnostics_visibility)}</legend>
+        {(["private", "public", "members"] as const).map((choice) => {
+          const Icon = choice === "public" ? Globe : choice === "members" ? Users : Lock;
+          return (
+            <label key={choice} className="flex min-h-9 cursor-pointer items-center gap-2 rounded-md px-2 hover:bg-muted">
+              <input type="radio" name={`runtime-access-${runtime.id}`} value={choice}
+                checked={scope === choice} onChange={() => setScope(choice)}
+                className="accent-foreground" />
+              <Icon className="size-3.5 text-muted-foreground" aria-hidden="true" />
+              <span className="text-caption font-medium">{t(($) => $.detail.visibility_label[choice])}</span>
+            </label>
+          );
+        })}
+        <p className="text-caption text-muted-foreground">{t(($) => $.detail.visibility_hint[scope])}</p>
+        {scope === "members" ? (
+          <div className="max-h-48 overflow-y-auto rounded-md border">
+            {members.filter((member) => member.user_id !== runtime.owner_id).map((member) => (
+              <label key={member.user_id} className="flex min-h-10 cursor-pointer items-center gap-2 px-2 hover:bg-muted">
+                <Checkbox checked={selected.includes(member.user_id)} disabled={disabled}
+                  onCheckedChange={(checked) => setSelected((ids) => checked === true
+                    ? [...ids, member.user_id] : ids.filter((id) => id !== member.user_id))} />
+                <ActorAvatar actorType="member" actorId={member.user_id} size="sm" />
+                <span className="truncate text-caption">{member.name}</span>
+              </label>
+            ))}
+          </div>
+        ) : null}
+        <Button type="button" size="sm" onClick={save}
+          disabled={disabled || !dirty || (scope === "members" && selected.length === 0)}
+          aria-busy={updateRuntime.isPending}>
+          {tc(($) => $.save)}
+        </Button>
+      </fieldset>
+      <RevokeRuntimeAccessDialog open={revokeOpen} onOpenChange={setRevokeOpen}
+        runtime={runtime} wsId={wsId} initialPlan={revokePlan} sharedWith={revokeMembers} />
     </>
-  );
-}
-
-function VisibilityChoice({
-  active,
-  icon,
-  label,
-  tooltip,
-  disabled,
-  onClick,
-}: {
-  active: boolean;
-  icon: React.ReactNode;
-  label: string;
-  tooltip: string;
-  disabled: boolean;
-  onClick: () => void;
-}) {
-  return (
-    <Tooltip>
-      <TooltipTrigger
-        render={
-          <button
-            type="button"
-            onClick={onClick}
-            disabled={disabled}
-            className={`inline-flex items-center gap-1.5 rounded-xs px-2 py-1 text-caption font-medium transition-colors ${
-              active
-                ? "bg-background text-foreground shadow-sm"
-                : "text-muted-foreground hover:text-foreground"
-            } ${disabled ? "cursor-not-allowed opacity-60" : ""}`}
-          >
-            <span className="shrink-0">{icon}</span>
-            <span>{label}</span>
-          </button>
-        }
-      />
-      <TooltipContent>{tooltip}</TooltipContent>
-    </Tooltip>
   );
 }

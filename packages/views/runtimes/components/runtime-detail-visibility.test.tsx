@@ -226,7 +226,7 @@ describe("RuntimeDetail visibility section", () => {
 
   it("shows owner-editable visibility choices when the caller owns the runtime", () => {
     renderDetail(makeRuntime({ owner_id: "user-me" }));
-    expect(screen.getByText("Visibility")).toBeInTheDocument();
+    expect(screen.getByRole("group", { name: "Visibility" })).toBeInTheDocument();
     expect(screen.getByText("Private")).toBeInTheDocument();
     expect(screen.getByText("Public")).toBeInTheDocument();
   });
@@ -240,10 +240,11 @@ describe("RuntimeDetail visibility section", () => {
     renderDetail(makeRuntime({ visibility: "public" }));
 
     fireEvent.click(screen.getByText("Private"));
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
 
-    expect(await screen.findByText("Make this Runtime private?")).toBeInTheDocument();
+    expect(await screen.findByText("Restrict runtime access?")).toBeInTheDocument();
     expect(screen.getByText("Teammate Agent")).toBeInTheDocument();
-    expect(screen.getByText(/Your own agents and runs are unaffected/)).toBeInTheDocument();
+    expect(screen.getByText(/Agents and runs that keep access are unaffected/)).toBeInTheDocument();
     expect(screen.getByText(/pause active autopilots assigned to those agents/)).toBeInTheDocument();
   });
 
@@ -295,9 +296,35 @@ describe("RuntimeDetail visibility section", () => {
   it("flips visibility to public when the owner clicks the Public choice", async () => {
     renderDetail(makeRuntime({ owner_id: "user-me", visibility: "private" }));
     fireEvent.click(screen.getByText("Public"));
+    expect(mockUpdateRuntime).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
     await waitFor(() =>
-      expect(mockUpdateRuntime).toHaveBeenCalledWith("rt-1", { visibility: "public" }),
+      expect(mockUpdateRuntime).toHaveBeenCalledWith("rt-1", { visibility: "public", shared_with: [] }),
     );
+  });
+
+  it("saves the selected members only after explicit confirmation", async () => {
+    mockQueryData.members = [
+      { user_id: "user-me", role: "member", name: "Me" },
+      { user_id: "user-alice", role: "member", name: "Alice" },
+      { user_id: "user-bob", role: "member", name: "Bob" },
+    ];
+    renderDetail(makeRuntime({}));
+    fireEvent.click(screen.getByRole("radio", { name: "Specific members" }));
+    expect(screen.getByRole("button", { name: "Save" })).toBeDisabled();
+    fireEvent.click(screen.getByRole("checkbox", { name: "Alice" }));
+    expect(mockUpdateRuntime).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(mockUpdateRuntime).toHaveBeenCalledWith("rt-1", {
+      visibility: "private", shared_with: ["user-alice"],
+    }));
+  });
+
+  it("shows a shared recipient the read-only scope and runtime usage", () => {
+    renderDetail(makeRuntime({ owner_id: "someone-else", shared_with: ["user-me"] }));
+    expect(screen.getByText("Specific members")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Save" })).not.toBeInTheDocument();
+    expect(screen.getByTestId("usage-section")).toBeInTheDocument();
   });
 
   it("renders a read-only visibility chip when the caller cannot edit", () => {
