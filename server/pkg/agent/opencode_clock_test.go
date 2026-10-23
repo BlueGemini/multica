@@ -26,6 +26,11 @@ func TestOpenCodeClockExport(t *testing.T) {
 			if errors.Is(err, ErrOpenCodeClockSkew) != tc.wantSkew || (!tc.wantSkew && err != nil) {
 				t.Fatalf("check = %v, want skew=%v", err, tc.wantSkew)
 			}
+			native := fmt.Sprintf(`{"info":{"id":"ses-test","time":{"updated":%d}},"messages":[{"id":"msg-test","type":"user","time":{"created":%d},"text":"sensitive body"}]}`, tc.updated, tc.created)
+			err = checkOpenCodeClockExport(strings.NewReader(native), "ses-test", now)
+			if errors.Is(err, ErrOpenCodeClockSkew) != tc.wantSkew || (!tc.wantSkew && err != nil) {
+				t.Fatalf("native export check = %v, want skew=%v", err, tc.wantSkew)
+			}
 		})
 	}
 }
@@ -36,6 +41,8 @@ func TestOpenCodeClockExportRejectsUnverifiedData(t *testing.T) {
 		`{"info":{"id":"other","time":{"updated":1}},"messages":[]}`,
 		`{"info":{"id":"ses-test","time":{"updated":1}},"messages":[{}]}`,
 		`{"info":{"id":"ses-test","time":{"updated":1}},"messages":[{"info":{"time":{"created":"secret"}}}]}`,
+		`{"info":{"id":"ses-test","time":{"updated":1}},"messages":[{"time":{"created":"secret"}}]}`,
+		`{"info":{"id":"ses-test","time":{"updated":1}},"messages":[{"time":{"created":1},"info":{"time":{"created":1}}}]}`,
 		`{"info":{"id":"ses-test","time":{"updated":1}},"messages":[]} trailing secret`,
 	} {
 		err := checkOpenCodeClockExport(strings.NewReader(raw), "ses-test", 1000)

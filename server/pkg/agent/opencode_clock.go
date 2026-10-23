@@ -17,11 +17,11 @@ var errOpenCodeClockExport = errors.New("OpenCode session clock check could not 
 
 const openCodeClockExportMaxBytes = 32 << 20
 
-// CheckOpenCodeResumeClock checks the verified local 1.18.30 export contract.
-// Other contracts return an error so callers can distinguish compatibility
-// degradation from a verified safe transcript. It never reads the runtime DB.
+// CheckOpenCodeResumeClock attempts a clock check on every built-in OpenCode
+// version. The export command and timestamp schema establish compatibility;
+// version detection only selects the CLI syntax. It never reads the runtime DB.
 func CheckOpenCodeResumeClock(ctx context.Context, cfg Config, opts ExecOptions) error {
-	if !cfg.BuiltinRuntime || cfg.CLIVersion != "1.18.30" || len(cfg.LaunchPrefix) != 0 {
+	if !cfg.BuiltinRuntime || len(cfg.LaunchPrefix) != 0 {
 		return errors.New("OpenCode session clock check does not support this runtime contract")
 	}
 	for _, arg := range opts.CustomArgs {
@@ -32,6 +32,10 @@ func CheckOpenCodeResumeClock(ctx context.Context, cfg Config, opts ExecOptions)
 		switch flag {
 		case "--server", "--attach", "--session", "-s", "--continue", "-c", "--fork":
 			return errors.New("OpenCode session clock check cannot verify custom connection or session arguments")
+		case "--standalone":
+			if arg != "--standalone" {
+				return errors.New("OpenCode session clock check cannot verify custom connection or session arguments")
+			}
 		}
 	}
 	if opts.ResumeSessionID == "" || strings.HasPrefix(opts.ResumeSessionID, "-") {
@@ -41,38 +45,65 @@ func CheckOpenCodeResumeClock(ctx context.Context, cfg Config, opts ExecOptions)
 	if err != nil {
 		return err
 	}
-	env, err := openCodeEnvironment(cfg, opts)
+	// Export needs the same storage selection and project root, but does not
+	// need the task's managed MCP servers or their credentials.
+	env, err := openCodeEnvironment(cfg, ExecOptions{Cwd: opts.Cwd})
 	if err != nil {
 		return err
 	}
 	probeCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
-	cmd := cfg.commandAt(execPath).exec(probeCtx, "export", opts.ResumeSessionID, "--sanitize")
-	hideAgentWindow(cmd)
-	cmd.Dir, cmd.Env = opts.Cwd, env
-	// Export errors and sanitized bodies can still contain private metadata.
-	// Neither stdout nor stderr belongs in daemon logs.
-	cmd.Stderr = io.Discard
-	reader, writer := io.Pipe()
-	cmd.Stdout = writer
-	finished := make(chan error, 1)
 	checkedAt := time.Now().UnixMilli()
-	go func() {
-		err := runOwned(cmd, cfg.Logger)
-		_ = writer.CloseWithError(err)
-		finished <- err
-	}()
-	limited := &io.LimitedReader{R: reader, N: openCodeClockExportMaxBytes + 1}
-	checkErr := checkOpenCodeClockExport(limited, opts.ResumeSessionID, checkedAt)
-	if checkErr != nil || limited.N == 0 {
-		cancel()
+	args := []string{"export", opts.ResumeSessionID}
+	if opencodeUsesV2Contract(cfg) {
+		args = []string{"session", "export", opts.ResumeSessionID}
+		if _, standalone := opencodeConnectionFromArgs(opts.CustomArgs); standalone {
+			args = append(args, "--standalone")
+		}
 	}
-	_ = reader.Close()
-	waitErr := <-finished
-	if waitErr != nil || limited.N == 0 {
-		return errOpenCodeClockExport
+	args = append(args, "--sanitize")
+	check := func(args []string) (error, bool) {
+		attemptCtx, stop := context.WithCancel(probeCtx)
+		defer stop()
+		cmd := cfg.commandAt(execPath).exec(attemptCtx, args...)
+		hideAgentWindow(cmd)
+		cmd.Dir, cmd.Env = opts.Cwd, env
+		// Neither transcript data nor private error details enter daemon logs.
+		// Keep only a bounded stderr tail to recognize an unsupported flag.
+		stderr := &tailBuffer{max: 4096}
+		cmd.Stderr = stderr
+		reader, writer := io.Pipe()
+		cmd.Stdout = writer
+		finished := make(chan error, 1)
+		go func() {
+			err := runOwned(cmd, cfg.Logger)
+			_ = writer.CloseWithError(err)
+			finished <- err
+		}()
+		limited := &io.LimitedReader{R: reader, N: openCodeClockExportMaxBytes + 1}
+		checkErr := checkOpenCodeClockExport(limited, opts.ResumeSessionID, checkedAt)
+		if checkErr != nil || limited.N == 0 {
+			stop()
+		}
+		_ = reader.Close()
+		waitErr := <-finished
+		if waitErr != nil || limited.N == 0 {
+			text := strings.ToLower(string(stderr.Bytes()))
+			unsupported := strings.Contains(text, "unknown argument: sanitize") ||
+				strings.Contains(text, "unknown arguments: sanitize") ||
+				strings.Contains(text, "unexpected flag: --sanitize") ||
+				strings.Contains(text, "unrecognized option '--sanitize'")
+			return errOpenCodeClockExport, waitErr != nil && unsupported && probeCtx.Err() == nil
+		}
+		return checkErr, false
 	}
-	return checkErr
+	err, unsupportedSanitize := check(args)
+	if unsupportedSanitize {
+		// Older CLIs can export the same timestamp schema without --sanitize.
+		// Parse only metadata in memory; never store or log the raw transcript.
+		err, _ = check(args[:len(args)-1])
+	}
+	return err
 }
 
 // Walk tokens instead of decoding the transcript into structs or RawMessages:
@@ -93,7 +124,7 @@ func checkOpenCodeClockExport(reader io.Reader, sessionID string, checkedAt int6
 			return errOpenCodeClockExport
 		}
 		switch path {
-		case "", ".info", ".info.time", ".messages[]", ".messages[].info", ".messages[].info.time":
+		case "", ".info", ".info.time", ".messages[]", ".messages[].info", ".messages[].info.time", ".messages[].time":
 			if token != json.Delim('{') {
 				return errOpenCodeClockExport
 			}
@@ -107,7 +138,7 @@ func checkOpenCodeClockExport(reader io.Reader, sessionID string, checkedAt int6
 				return errOpenCodeClockExport
 			}
 			matched = true
-		case ".info.time.updated", ".messages[].info.time.created":
+		case ".info.time.updated", ".messages[].info.time.created", ".messages[].time.created":
 			number, ok := token.(json.Number)
 			if !ok {
 				return errOpenCodeClockExport

@@ -72,7 +72,7 @@ exit 1
 				agentVersions:  make(map[string]string),
 				cfg:            Config{WorkspacesRoot: t.TempDir(), AgentTimeout: 5 * time.Second, ServerBaseURL: srv.URL, Agents: map[string]AgentEntry{"opencode": {Path: bin}}},
 			}
-			d.setAgentVersion("opencode", "1.18.30")
+			d.setAgentVersion("opencode", "1.18.31")
 			d.runner = taskRunnerFunc(d.runTask)
 			fail := "false"
 			if failLaunch {
@@ -139,7 +139,7 @@ func TestOpenCodeClockGateUnverifiedPreservesResume(t *testing.T) {
 	logger := slog.New(slog.NewJSONHandler(&logs, nil))
 	task := Task{PriorSessionID: "ses-old"}
 	carrier := execenv.TaskContextForEnv{PriorSessionResumed: true}
-	retired := gateOpenCodeResumeToSaneClock(context.Background(), &task, &carrier, "opencode", agent.Config{BuiltinRuntime: true, CLIVersion: "opencode v2.0.10"}, "", nil, logger)
+	retired := gateOpenCodeResumeToSaneClock(context.Background(), &task, &carrier, "opencode", agent.Config{ExecutablePath: filepath.Join(t.TempDir(), "missing"), BuiltinRuntime: true, CLIVersion: "opencode v2.0.10"}, "", nil, logger)
 	if retired != "" || task.PriorSessionID != "ses-old" || !carrier.PriorSessionResumed || task.PriorSessionResumeUnavailable {
 		t.Fatal("unverified runtime changed resume state")
 	}
