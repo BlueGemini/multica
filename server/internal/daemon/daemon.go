@@ -9283,6 +9283,13 @@ func (d *Daemon) repairWorktreeDelivery(ctx context.Context, backend agent.Backe
 	// just did; the prompt is self-contained for the backends that cannot.
 	opts.ResumeSessionID = result.SessionID
 	opts.ResumeContinuityNotice = ""
+	// No additional messages during housekeeping. The repair turn's reply is
+	// discarded (mergeWorktreeRepairResult keeps the task's own), so a
+	// message accepted here would be acknowledged as delivered and its answer
+	// lost. Left unclaimed, the server settles it as turn_ended when the task
+	// ends, so its receipt honestly reads "run ended before delivery" and the
+	// author can resend it (MUL-8139 review).
+	opts.EnableTaskSupplement = false
 	if opts.Timeout <= 0 || opts.Timeout > worktreeRepairTimeout {
 		opts.Timeout = worktreeRepairTimeout
 	}

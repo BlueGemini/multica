@@ -188,6 +188,57 @@ func TestCheckDeliveryRepairsASquashThatKeptTheUsersEdits(t *testing.T) {
 	})
 }
 
+// MUL-8139 review: the same file carries both sides. The user's uncommitted
+// edit changed one line; the agent, working on a checkout without it, changed
+// another. Path-level checks see "both touched it" — only the content shows the
+// user's line would be reverted, so no repair may be offered.
+func TestCheckDeliveryDoesNotOfferARepairThatRevertsAUserEditInTheSameFile(t *testing.T) {
+	t.Parallel()
+	repo := newTestRepo(t)
+	writeFile(t, filepath.Join(repo, "tracked.txt"), "user=old\nagent=old\n")
+	gitRun(t, repo, "add", "-A")
+	gitRun(t, repo, "commit", "-m", "two independent settings")
+	head := gitRun(t, repo, "rev-parse", "HEAD")
+	writeFile(t, filepath.Join(repo, "tracked.txt"), "user=NEW\nagent=old\n")
+	wt := prepareTurn(t, repo, "MUL-9404", turnOneTask)
+
+	gitRun(t, wt.Path, "checkout", "--quiet", "--force", "--detach", head)
+	writeFile(t, filepath.Join(wt.Path, "tracked.txt"), "user=old\nagent=NEW\n")
+	gitRun(t, wt.Path, "add", "-A")
+	gitRun(t, wt.Path, "commit", "-m", "agent edit without the user's edit")
+
+	if problem := wt.CheckDelivery(); problem != nil {
+		t.Fatalf("CheckDelivery offered a repair that would revert user=NEW: %s", problem.Reason)
+	}
+	if _, err := wt.Finalize(worktreeTestLogger()); err == nil {
+		t.Fatal("Finalize must still refuse this delivery")
+	}
+	_ = removeLocalWorktreeDir(repo, wt.Path, worktreeTestLogger())
+}
+
+// The legitimate same-file case stays repairable: the agent built on the
+// user's edit, changed another line of the same file, then squashed the
+// baseline away. Its file already contains the user's change. (Edits on
+// touching lines conflict in the three-way check and are refused instead —
+// the safe direction, covered by the same-file revert test above.)
+func TestCheckDeliveryRepairsASquashThatAlsoEditedTheUsersFile(t *testing.T) {
+	t.Parallel()
+	repo := newTestRepo(t)
+	writeFile(t, filepath.Join(repo, "tracked.txt"), "user=old\nctx1\nctx2\nctx3\nagent=old\n")
+	gitRun(t, repo, "add", "-A")
+	gitRun(t, repo, "commit", "-m", "two independent settings")
+	writeFile(t, filepath.Join(repo, "tracked.txt"), "user=NEW\nctx1\nctx2\nctx3\nagent=old\n")
+	wt := prepareTurn(t, repo, "MUL-9404", turnOneTask)
+
+	writeFile(t, filepath.Join(wt.Path, "tracked.txt"), "user=NEW\nctx1\nctx2\nctx3\nagent=NEW\n")
+	gitRun(t, wt.Path, "add", "-A")
+	gitRun(t, wt.Path, "commit", "-m", "work")
+	gitRun(t, wt.Path, "reset", "--soft", wt.BaseCommit+"^")
+	gitRun(t, wt.Path, "commit", "-m", "squashed")
+
+	requireRepairable(t, repo, wt, "no longer contains", map[string]string{"tracked.txt": "user=NEW\nctx1\nctx2\nctx3\nagent=NEW"})
+}
+
 // The MUL-6881 case stays a plain refusal: a run that reset back to the user's
 // own HEAD discarded what the baseline carried, and re-committing that tree on
 // top of the baseline would deliver a revert of the user's edits.

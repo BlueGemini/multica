@@ -1753,77 +1753,132 @@ func (w *LocalWorktree) CheckDelivery() *DeliveryProblem {
 }
 
 // repairWouldRevertBase reports whether re-committing the worktree's current
-// tree on top of BaseCommit would undo something BaseCommit carries — the
-// user's replayed edits, or an earlier turn's work — that tip never had.
+// files on top of BaseCommit could lose something BaseCommit carries — the
+// user's replayed edits, or an earlier turn's work — that the agent's files do
+// not.
 //
 // RepairSteps keeps the agent's files exactly as they are. That is right for a
-// squash (the tree still carries everything; only the ancestry dropped the
+// squash (the files still carry everything; only the ancestry dropped the
 // baseline) and wrong for work done on a line that never saw the baseline's
 // content: a detached checkout of the user's HEAD, say, when the baseline holds
-// their uncommitted edits. Delivered on top of the baseline, that tree is a
-// silent revert of those edits — the loss MUL-6881 guards against — so such a
-// delivery is left to Finalize's plain refusal instead of being repaired.
+// their uncommitted edits. Delivered on top of the baseline, those files are a
+// silent revert of the edits — the loss MUL-6881 guards against.
 //
-// The test is per path: anything BaseCommit changed relative to its common
-// ancestor with tip must also be changed in tip. Conservative by design — an
-// agent that deliberately restored such a file to its old content is refused
-// too — and fails closed when git cannot answer.
+// So the repair is offered only when the agent's files provably already contain
+// every change BaseCommit made relative to its common ancestor with tip
+// (mergeBase). Per path BaseCommit changed:
+//
+//   - the agent's file equals BaseCommit's: kept as-is;
+//   - otherwise a three-way merge (base = mergeBase, ours = the agent's file,
+//     theirs = BaseCommit's) must be clean AND leave the agent's file
+//     unchanged — i.e. BaseCommit's change is already in it, and the agent
+//     only added to it. A merge that would change the agent's file means the
+//     change is missing; repairing would deliver its revert (MUL-8139 review).
+//
+// Anything else — a deletion on either side, a symlink or submodule, a binary
+// file, a conflict, git failing to answer — refuses the repair. That includes
+// an agent edit on a line touching one the baseline changed, which merge-file
+// reports as a conflict even when the agent did build on the baseline.
+// Conservative by design: Finalize then makes its usual refusal and nothing is
+// lost.
 func (w *LocalWorktree) repairWouldRevertBase(tip string) bool {
 	mergeBase, err := runGitTrimmed(w.GitRoot, "merge-base", tip, w.BaseCommit)
 	if err != nil || mergeBase == "" {
-		return true // Unrelated histories: nothing to compare against.
+		return true // Unrelated histories: nothing to prove against.
 	}
-	baseChanged, err := changedPaths(w.GitRoot, mergeBase, w.BaseCommit)
+	if mergeBase == w.BaseCommit {
+		return false // tip already descends from the baseline: nothing to lose.
+	}
+	out, err := runGitStdout(w.GitRoot, "diff", "--name-only", "--no-renames", "-z", mergeBase, w.BaseCommit)
 	if err != nil {
 		return true
 	}
-	if len(baseChanged) == 0 {
-		return false
-	}
-	// Compare against what Finalize would deliver: the working tree, so
-	// uncommitted leftovers count. `git diff <commit>` without a second commit
-	// compares that commit against the worktree's files.
-	tipChanged, err := changedPaths(w.Path, mergeBase, "")
-	if err != nil {
-		return true
-	}
-	for path := range baseChanged {
-		if _, ok := tipChanged[path]; !ok {
+	scratch := ""
+	defer func() {
+		if scratch != "" {
+			_ = os.RemoveAll(scratch)
+		}
+	}()
+	for _, path := range strings.Split(out, "\x00") {
+		if path == "" {
+			continue
+		}
+		baseBlob, ok := regularBlob(w.GitRoot, w.BaseCommit, path)
+		if !ok {
+			return true // Deleted, or not a plain file, on the baseline side.
+		}
+		info, err := os.Lstat(filepath.Join(w.Path, filepath.FromSlash(path)))
+		if err != nil || !info.Mode().IsRegular() {
+			return true // The agent's side dropped it, or it is not a plain file.
+		}
+		ours, err := os.ReadFile(filepath.Join(w.Path, filepath.FromSlash(path)))
+		if err != nil {
+			return true
+		}
+		if string(ours) == baseBlob {
+			continue
+		}
+		ancestor := ""
+		if blob, ok := regularBlob(w.GitRoot, mergeBase, path); ok {
+			ancestor = blob
+		} else if exists, _ := pathInCommit(w.GitRoot, mergeBase, path); exists {
+			return true // Present but not a plain file in the ancestor.
+		}
+		if scratch == "" {
+			if scratch, err = os.MkdirTemp("", "multica-repair-check-"); err != nil {
+				scratch = ""
+				return true
+			}
+		}
+		merged, clean := mergeFileContents(scratch, string(ours), ancestor, baseBlob)
+		if !clean || merged != string(ours) {
 			return true
 		}
 	}
 	return false
 }
 
-// changedPaths lists the paths that differ between from and to (or, when to is
-// empty, between from and the working tree of dir, untracked files included).
-func changedPaths(dir, from, to string) (map[string]struct{}, error) {
-	args := []string{"diff", "--name-only", "--no-renames", "-z", from}
-	if to != "" {
-		args = append(args, to)
+// regularBlob returns the content of path in commit when it is a regular
+// (non-symlink, non-submodule) text file there. ok is false otherwise,
+// including when the path does not exist or holds binary content.
+func regularBlob(gitRoot, commit, path string) (string, bool) {
+	entry, err := runGitStdout(gitRoot, "ls-tree", "-z", commit, "--", path)
+	if err != nil || entry == "" {
+		return "", false
 	}
-	out, err := runGitStdout(dir, args...)
+	mode, _, _ := strings.Cut(entry, " ")
+	if mode != "100644" && mode != "100755" {
+		return "", false
+	}
+	content, err := runGitStdout(gitRoot, "cat-file", "blob", commit+":"+path)
+	if err != nil || strings.ContainsRune(content, 0) {
+		return "", false
+	}
+	return content, true
+}
+
+func pathInCommit(gitRoot, commit, path string) (bool, error) {
+	entry, err := runGitStdout(gitRoot, "ls-tree", "-z", commit, "--", path)
+	return entry != "", err
+}
+
+// mergeFileContents runs `git merge-file -p ours base theirs` on scratch copies
+// and reports the merged content and whether it merged without conflicts.
+// merge-file works on plain files, so it needs no repository and is available
+// in every git the daemon supports.
+func mergeFileContents(scratch, ours, base, theirs string) (string, bool) {
+	paths := make([]string, 3)
+	for i, content := range []string{ours, base, theirs} {
+		paths[i] = filepath.Join(scratch, strconv.Itoa(i))
+		if err := os.WriteFile(paths[i], []byte(content), 0o600); err != nil {
+			return "", false
+		}
+	}
+	merged, err := runGitStdout(scratch, "merge-file", "-p", paths[0], paths[1], paths[2])
 	if err != nil {
-		return nil, err
+		return "", false // Non-zero exit: conflicts, or merge-file failed.
 	}
-	paths := map[string]struct{}{}
-	for _, p := range strings.Split(out, "\x00") {
-		if p != "" {
-			paths[p] = struct{}{}
-		}
-	}
-	if to == "" {
-		untracked, err := runGitStdout(dir, "ls-files", "--others", "--exclude-standard", "-z")
-		if err != nil {
-			return nil, err
-		}
-		for _, p := range strings.Split(untracked, "\x00") {
-			if p != "" {
-				paths[p] = struct{}{}
-			}
-		}
-	}
-	return paths, nil
+	return merged, true
 }
 
 // headAttachedTo reports whether the worktree's HEAD is the symbolic ref of
