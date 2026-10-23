@@ -1096,8 +1096,9 @@ func (s *AutopilotService) dispatchRunOnly(ctx context.Context, ap db.Autopilot,
 // longer a run failure — a review that blocks the issue is a normal result,
 // not an autopilot fault, and counting it as one also skewed the failure-rate
 // auto-pause. Only two issue transitions still settle an active run here:
-//   - done / in_review: the work was delivered (covers runs whose issue never
-//     gets an agent task, e.g. a member assignee).
+//   - done / in_review: the work was delivered. Only applies when no
+//     dispatch task is still in flight (covers runs whose issue never gets an
+//     agent task, e.g. a member assignee); otherwise the task outcome decides.
 //   - cancelled: someone cancelled the issue before any task finished, so the
 //     run fails with "issue cancelled" instead of hanging forever.
 //
@@ -1129,6 +1130,20 @@ func (s *AutopilotService) SyncRunFromIssue(ctx context.Context, issue db.Issue)
 
 	switch effectiveStatus {
 	case "done", "in_review":
+		// The first dispatch's outcome decides the run. While that dispatch
+		// (or its auto-retry) is still in flight, an early delivery status —
+		// often set by the agent itself mid-run — must not complete the run,
+		// or a crash right after would be hidden. This branch only settles
+		// runs whose issue never got a dispatch task (e.g. a member assignee)
+		// or whose dispatch ended without a completed/failed outcome.
+		chain, err := s.loadDispatchChain(ctx, issue.ID)
+		if err != nil {
+			slog.Warn("failed to load autopilot dispatch chain", "run_id", util.UUIDToString(run.ID), "error", err)
+			return
+		}
+		if chain.active() {
+			return
+		}
 		updatedRun, err := s.completeAutopilotRun(ctx, db.UpdateAutopilotRunCompletedParams{
 			ID: run.ID,
 		})
@@ -1205,6 +1220,9 @@ func (s *AutopilotService) SyncRunFromTask(ctx context.Context, task db.AgentTas
 // later issue status change (blocked, cancelled, ...) no longer touches the
 // run. (MUL-8200)
 //
+// Only the run's dispatch chain counts (see loadDispatchChain): tasks
+// started by @mentions or comments on the same issue are ignored.
+//
 // A task that fails terminally before the run is settled fails the run. create_issue tasks are linked through issue_id rather than
 // autopilot_run_id, so SyncRunFromTask cannot see them directly. Without this
 // the run would hang in `issue_created` forever — and because the failure-rate
@@ -1232,22 +1250,28 @@ func (s *AutopilotService) SyncRunFromLinkedIssueTask(ctx context.Context, task 
 	if err != nil {
 		return // no active run linked to this issue
 	}
-	if task.Status == "completed" {
-		s.completeRunFromLinkedIssueTask(ctx, run, task)
-		return
-	}
-	// A still-active task — typically the auto-retry FailTask just enqueued —
-	// means the dispatch isn't terminal yet; wait for the final attempt.
-	hasActive, err := s.Queries.HasActiveTaskForIssue(ctx, task.IssueID)
+	// Only the autopilot's own dispatch (and its auto-retries) settles the
+	// run. Other tasks on the issue — an @mention, a comment reply — say
+	// nothing about whether the autopilot's execution succeeded.
+	chain, err := s.loadDispatchChain(ctx, task.IssueID)
 	if err != nil {
-		slog.Warn("failed to check active tasks for autopilot issue failure",
+		slog.Warn("failed to load autopilot dispatch chain",
 			"issue_id", util.UUIDToString(task.IssueID),
 			"task_id", util.UUIDToString(task.ID),
 			"error", err,
 		)
 		return
 	}
-	if hasActive {
+	if !chain.contains(task.ID) {
+		return
+	}
+	if task.Status == "completed" {
+		s.completeRunFromLinkedIssueTask(ctx, run, task)
+		return
+	}
+	// A still-active attempt — typically the auto-retry FailTask just
+	// enqueued — means the dispatch isn't terminal yet; wait for it.
+	if chain.active() {
 		return
 	}
 	autopilot, err := s.Queries.GetAutopilot(ctx, run.AutopilotID)
@@ -1295,6 +1319,64 @@ func (s *AutopilotService) completeRunFromLinkedIssueTask(ctx context.Context, r
 	}
 	s.captureAutopilotRunCompleted(autopilot, updatedRun)
 	s.publishRunDone(util.UUIDToString(autopilot.WorkspaceID), updatedRun, "completed")
+}
+
+// autopilotDispatchChain is the create_issue run's own dispatch: the first
+// non-retry task on the linked issue plus its auto-retry descendants
+// (retry_of_task_id lineage).
+type autopilotDispatchChain struct {
+	tasks []db.AgentTaskQueue
+}
+
+func (c autopilotDispatchChain) contains(id pgtype.UUID) bool {
+	for _, t := range c.tasks {
+		if t.ID == id {
+			return true
+		}
+	}
+	return false
+}
+
+// active reports whether any attempt in the chain is not yet terminal.
+func (c autopilotDispatchChain) active() bool {
+	for _, t := range c.tasks {
+		switch t.Status {
+		case "completed", "failed", "cancelled":
+		default:
+			return true
+		}
+	}
+	return false
+}
+
+// loadDispatchChain identifies the dispatch chain for a create_issue run's
+// linked issue. The autopilot's dispatch is the first task the issue ever
+// gets: it is enqueued by the issue:created assignment listener right after
+// the run links the issue, before anyone can comment on or mention into it.
+// An empty chain means the issue never received an agent task.
+func (s *AutopilotService) loadDispatchChain(ctx context.Context, issueID pgtype.UUID) (autopilotDispatchChain, error) {
+	tasks, err := s.Queries.ListTasksByIssue(ctx, issueID)
+	if err != nil {
+		return autopilotDispatchChain{}, err
+	}
+	// ListTasksByIssue is newest first; walk oldest first so the root and
+	// each retry's parent are seen before the retry itself.
+	inChain := map[pgtype.UUID]bool{}
+	var chain autopilotDispatchChain
+	for i := len(tasks) - 1; i >= 0; i-- {
+		t := tasks[i]
+		switch {
+		case len(chain.tasks) == 0 && !t.RetryOfTaskID.Valid:
+			// Root: the oldest non-retry task on the issue.
+		case t.RetryOfTaskID.Valid && inChain[t.RetryOfTaskID]:
+			// Auto-retry of an attempt already in the chain.
+		default:
+			continue
+		}
+		inChain[t.ID] = true
+		chain.tasks = append(chain.tasks, t)
+	}
+	return chain, nil
 }
 
 func taskFailureReasonForAutopilotRun(task db.AgentTaskQueue) string {

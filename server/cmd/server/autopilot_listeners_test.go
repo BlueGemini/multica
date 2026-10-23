@@ -8,6 +8,8 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/multica-ai/multica/server/internal/events"
 	"github.com/multica-ai/multica/server/internal/service"
+	dbfx "github.com/multica-ai/multica/server/internal/testutil"
+	"github.com/multica-ai/multica/server/internal/util"
 	db "github.com/multica-ai/multica/server/pkg/db/generated"
 )
 
@@ -404,6 +406,94 @@ func TestAutopilotCreateIssueCancelledBeforeTaskFailsRun(t *testing.T) {
 	if !run.FailureReason.Valid || run.FailureReason.String != "issue cancelled" {
 		t.Fatalf("expected failure reason %q, got %+v", "issue cancelled", run.FailureReason)
 	}
+}
+
+// TestAutopilotCreateIssueEarlyDeliveryWaitsForTaskOutcome: an issue moved to
+// in_review/done while the dispatch task still runs must not complete the run;
+// the task's failure decides it. (MUL-8200 review)
+func TestAutopilotCreateIssueEarlyDeliveryWaitsForTaskOutcome(t *testing.T) {
+	for _, status := range []string{"in_review", "done"} {
+		t.Run(status, func(t *testing.T) {
+			ctx := context.Background()
+			f := dispatchCreateIssueAutopilot(t, "Create-issue early delivery "+status)
+			runTaskWithBudget(t, f.queries, f.taskID, 1)
+			setLinkedIssueStatus(t, f, status)
+			before, err := f.queries.GetAutopilotRun(ctx, f.run.ID)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if before.Status != "issue_created" {
+				t.Errorf("issue became %s while first task is still running: run=%s, want issue_created", status, before.Status)
+			}
+			if _, err := f.taskSvc.FailTask(ctx, f.taskID, "runtime exited after setting issue status", "", "", "", "agent_error", false, "", ""); err != nil {
+				t.Fatal(err)
+			}
+			requireRunStatus(t, f, "failed")
+		})
+	}
+}
+
+// TestAutopilotCreateIssueUnrelatedMentionDoesNotSettleRun: a mention task on
+// the same issue completing must not stand in for the autopilot's own
+// dispatch. (MUL-8200 review)
+func TestAutopilotCreateIssueUnrelatedMentionDoesNotSettleRun(t *testing.T) {
+	ctx := context.Background()
+	f := dispatchCreateIssueAutopilot(t, "Create-issue unrelated mention")
+	runTaskWithBudget(t, f.queries, f.taskID, 1)
+	first, err := f.queries.GetAgentTask(ctx, f.taskID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	fixture := dbfx.New(testPool, testWorkspaceID, testUserID)
+	otherAgent := fixture.Agent(t, "Other mentioned agent", util.UUIDToString(first.RuntimeID))
+	comment := fixture.Comment(t, util.UUIDToString(f.run.IssueID), "Please answer a quick question")
+	issue, err := f.queries.GetIssue(ctx, f.run.IssueID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	other, err := f.taskSvc.EnqueueTaskForMention(ctx, issue, parseUUID(otherAgent), parseUUID(comment), service.OriginNamed)
+	if err != nil {
+		t.Fatal(err)
+	}
+	fixture.Cleanup(t, "DELETE FROM agent_task_queue WHERE id = $1", other.ID)
+	runTaskWithBudget(t, f.queries, other.ID, 1)
+	if _, err := f.taskSvc.CompleteTask(ctx, other.ID, []byte(`{"output":"Answer to the quick question"}`), "", "", "", false, "", ""); err != nil {
+		t.Fatal(err)
+	}
+	before, err := f.queries.GetAutopilotRun(ctx, f.run.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if before.Status != "issue_created" {
+		t.Errorf("unrelated mention completed while original task is running: run=%s, want issue_created", before.Status)
+	}
+	if _, err := f.taskSvc.FailTask(ctx, f.taskID, "original autopilot task crashed", "", "", "", "agent_error", false, "", ""); err != nil {
+		t.Fatal(err)
+	}
+	requireRunStatus(t, f, "failed")
+}
+
+// TestAutopilotCreateIssueRetryCompletionCompletesRun: an auto-retry of the
+// dispatch task is part of the dispatch chain, so its success completes the run.
+func TestAutopilotCreateIssueRetryCompletionCompletesRun(t *testing.T) {
+	ctx := context.Background()
+	f := dispatchCreateIssueAutopilot(t, "Create-issue retry completion listener")
+
+	runTaskWithBudget(t, f.queries, f.taskID, 2)
+	if _, err := f.taskSvc.FailTask(ctx, f.taskID, "runtime went offline", "", "", "", "timeout", false, "", ""); err != nil {
+		t.Fatalf("FailTask: %v", err)
+	}
+	requireRunStatus(t, f, "issue_created")
+
+	var retryID pgtype.UUID
+	if err := testPool.QueryRow(ctx, `SELECT id FROM agent_task_queue WHERE retry_of_task_id = $1`, f.taskID).Scan(&retryID); err != nil {
+		t.Fatalf("load retry task: %v", err)
+	}
+	runTaskWithBudget(t, f.queries, retryID, 2)
+	if _, err := f.taskSvc.CompleteTask(ctx, retryID, []byte(`{"output":"done"}`), "", "", "", false, "", ""); err != nil {
+		t.Fatalf("CompleteTask retry: %v", err)
+	}
+	requireRunStatus(t, f, "completed")
 }
 
 // TestAutopilotDispatchSkipsWhenRuntimeOffline locks in the MUL-1899
