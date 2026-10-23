@@ -145,3 +145,58 @@ func TestOpencodeErrorMessageShapes(t *testing.T) {
 		t.Fatalf("1.x error: status = %q errMsg = %q, want failed / rate limited", res.status, res.errMsg)
 	}
 }
+
+// TestOpencodeV2RecoveredVoidStepCompletes: a void step the run recovers from
+// must not fail a 2.x run just because the recovering step never reports its
+// step_finish (review on #9463). Mirrors the 1.x
+// TestOpencodeProcessEventsEmptyStepMidRunRecovers for the 2.x stream shape.
+func TestOpencodeV2RecoveredVoidStepCompletes(t *testing.T) {
+	t.Parallel()
+
+	cases := map[string][]string{
+		"new step_start then text": {v2TermStepStart, v2TermStepFinishVoid, v2TermStepStart, v2TermText},
+		"bare text after void":     {v2TermStepStart, v2TermStepFinishVoid, v2TermText},
+		"tool after void":          {v2TermStepStart, v2TermStepFinishVoid, v2TermStepStart, v2TermToolUse},
+	}
+	for name, lines := range cases {
+		lines := lines
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			res := runV2TermStream(t, v2TermConfig(), lines...)
+			if res.status != "completed" {
+				t.Fatalf("status = %q (err %q), want completed after recovery", res.status, res.errMsg)
+			}
+		})
+	}
+
+	// A void step that is still the last thing the stream saw keeps failing,
+	// even after an open step_start with nothing in it.
+	res := runV2TermStream(t, v2TermConfig(), v2TermStepStart, v2TermStepFinishVoid, v2TermStepStart)
+	if res.status != "failed" || !strings.Contains(res.errMsg, "empty step") {
+		t.Fatalf("void then empty open step: status = %q errMsg = %q, want empty-step failure", res.status, res.errMsg)
+	}
+}
+
+// TestOpencodeV1VoidStepThenBareTextStillFails pins that the recovery rule is
+// 2.x-only: on 1.x a recovering step must still close with step_finish.
+func TestOpencodeV1VoidStepThenBareTextStillFails(t *testing.T) {
+	t.Parallel()
+
+	cfg := Config{Logger: slog.Default(), BuiltinRuntime: true, CLIVersion: "1.18.32"}
+	res := runV2TermStream(t, cfg, v2TermStepStart, v2TermStepFinishVoid, v2TermText)
+	if res.status != "failed" || !strings.Contains(res.errMsg, "empty step") {
+		t.Fatalf("status = %q errMsg = %q, want 1.x empty-step failure unchanged", res.status, res.errMsg)
+	}
+}
+
+// TestOpencodeV2NeverClaimsStreamLevelCompletion: on 2.x an intermediate
+// step_finish is not proof the run finished, so sawTerminalSignal stays false
+// and Execute keeps failing a broken prompt write.
+func TestOpencodeV2NeverClaimsStreamLevelCompletion(t *testing.T) {
+	t.Parallel()
+
+	res := runV2TermStream(t, v2TermConfig(), v2TermStepStart, v2TermToolUse, v2TermStepFinishTools, v2TermText)
+	if res.status != "completed" || res.sawTerminalSignal {
+		t.Fatalf("status = %q sawTerminalSignal = %v, want completed without stream-level proof", res.status, res.sawTerminalSignal)
+	}
+}

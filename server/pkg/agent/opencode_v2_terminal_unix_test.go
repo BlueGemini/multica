@@ -79,3 +79,41 @@ func TestOpencodeV2ExecuteExitIsTerminal(t *testing.T) {
 		})
 	}
 }
+
+// TestOpencodeV2BrokenPromptWriteFails: a 2.x CLI that closes stdin before the
+// prompt is delivered, then streams a tool step plus final text and exits 0,
+// must fail on the prompt write (review on #9463). The prompt is far larger
+// than the pipe buffer so the write cannot complete.
+func TestOpencodeV2BrokenPromptWriteFails(t *testing.T) {
+	t.Parallel()
+
+	var script strings.Builder
+	script.WriteString("#!/bin/sh\nexec 0<&-\n")
+	for _, l := range []string{v2TermStepStart, v2TermToolUse, v2TermStepFinishTools, v2TermText} {
+		script.WriteString("printf '%s\\n' '" + l + "'\n")
+	}
+	script.WriteString("exit 0\n")
+	fakePath := filepath.Join(t.TempDir(), "opencode")
+	writeTestExecutable(t, fakePath, []byte(script.String()))
+
+	cfg := v2TermConfig()
+	cfg.ExecutablePath = fakePath
+	backend, err := New("opencode", cfg)
+	if err != nil {
+		t.Fatalf("new opencode backend: %v", err)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	session, err := backend.Execute(ctx, strings.Repeat("undelivered prompt\n", 100000), ExecOptions{Cwd: t.TempDir(), Timeout: 5 * time.Second})
+	if err != nil {
+		t.Fatalf("execute: %v", err)
+	}
+	go func() {
+		for range session.Messages {
+		}
+	}()
+	res := <-session.Result
+	if res.Status != "failed" || !strings.Contains(res.Error, "prompt write failed") {
+		t.Fatalf("status = %q error = %q, want failed prompt delivery", res.Status, res.Error)
+	}
+}

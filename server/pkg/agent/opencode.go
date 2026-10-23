@@ -467,6 +467,10 @@ func (b *opencodeBackend) processEvents(r io.Reader, ch chan<- Message) eventRes
 	stepProducedOutput := false // current step emitted text, a tool call, or reported usage
 	lastStepVoid := false       // the most recently closed step produced nothing at all
 
+	// exitIsTerminal: on 2.x the process outcome, not step bracketing, is the
+	// terminal signal. See the EOF check below for why.
+	exitIsTerminal := opencodeUsesV2Contract(b.cfg)
+
 	scanner := newAgentStreamScanner(r)
 
 	for scanner.Scan() {
@@ -492,10 +496,20 @@ func (b *opencodeBackend) processEvents(r io.Reader, ch chan<- Message) eventRes
 			b.handleTextEvent(event, ch, &output)
 			if event.Part.Text != "" {
 				stepProducedOutput = true
+				// On 2.x the step this text belongs to may never close, so the
+				// void-step guard would otherwise keep judging the run by an
+				// earlier empty step it already recovered from. 1.x still waits
+				// for that step's step_finish to clear the flag.
+				if exitIsTerminal {
+					lastStepVoid = false
+				}
 			}
 		case "tool_use":
 			b.handleToolUseEvent(event, ch)
 			stepProducedOutput = true
+			if exitIsTerminal {
+				lastStepVoid = false // same recovery rule as text above
+			}
 			if event.Part.Metadata == nil || !event.Part.Metadata.ProviderExecuted {
 				stepHasContinuationTool = true
 			}
@@ -563,8 +577,9 @@ func (b *opencodeBackend) processEvents(r io.Reader, ch chan<- Message) eventRes
 	// write, and error events / scanner errors fail it here. Only the two
 	// step-bracketing guards are waived; the void-step guard still applies,
 	// because a step that actually closed with nothing in it is no less dead
-	// on 2.x. 1.x and custom runtimes keep every guard unchanged.
-	exitIsTerminal := opencodeUsesV2Contract(b.cfg)
+	// on 2.x — unless later text or a tool call shows the run recovered from
+	// it (cleared in the loop above). 1.x and custom runtimes keep every guard
+	// unchanged.
 	noTerminalSignal := false
 	if finalStatus == "completed" {
 		switch {
@@ -584,13 +599,17 @@ func (b *opencodeBackend) processEvents(r io.Reader, ch chan<- Message) eventRes
 	}
 
 	return eventResult{
-		status:            finalStatus,
-		errMsg:            finalError,
-		output:            output.String(),
-		sessionID:         sessionID,
-		usage:             usage,
-		noTerminalSignal:  noTerminalSignal,
-		sawTerminalSignal: sawStepFinish && !noTerminalSignal,
+		status:           finalStatus,
+		errMsg:           finalError,
+		output:           output.String(),
+		sessionID:        sessionID,
+		usage:            usage,
+		noTerminalSignal: noTerminalSignal,
+		// On 2.x a step_finish proves only that an intermediate step closed —
+		// the final one routinely never reports — so the stream never carries
+		// positive proof of completion there, and a failed prompt write must
+		// keep failing the run (Execute keys that on this field).
+		sawTerminalSignal: sawStepFinish && !noTerminalSignal && !exitIsTerminal,
 	}
 }
 
