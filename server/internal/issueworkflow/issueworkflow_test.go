@@ -263,11 +263,12 @@ func TestBriefNamesStepCommandsAndHandlers(t *testing.T) {
 		"- `implement` Implement — hands off to Forge\n",
 		"- `code_review` Code review — hands off to Lin (project lead)   ← current\n",
 		"- `done` Done\n",
-		"Step done      → multica issue status MUL-7 done\n",
-		// Each move names who the target step hands off to.
-		"Needs changes  → multica issue status MUL-7 implement — hands off to Forge\n",
-		"\nYour moves:\n",
-		"Can't proceed  → multica issue status MUL-7 blocked",
+		"- Done → set status `done`.\n",
+		// The server, not the agent, assigns the next step's handler.
+		"- Needs rework → set status `implement`. Forge is assigned and starts automatically.\n",
+		"\nWhen your step ends:\n",
+		"Set a status with `multica issue status MUL-7 <status>`.\n",
+		"- Stuck → set status `blocked` and comment why.\n",
 	} {
 		if !strings.Contains(brief, want) {
 			t.Fatalf("brief is missing %q:\n%s", want, brief)
@@ -317,7 +318,7 @@ func TestBriefForObserverLeavesTheStepToItsAssignee(t *testing.T) {
 	if !strings.Contains(brief, `MUL-7 is at the "code_review" step and is assigned to Forge. You are not its assignee`) {
 		t.Fatalf("observer brief must name the assignee and leave them the step:\n%s", brief)
 	}
-	for _, leak := range []string{"Step instructions", "Step done", "Needs changes", "Can't proceed"} {
+	for _, leak := range []string{"Step instructions", "When your step ends", "- Done", "- Needs rework", "- Stuck", "Set a status with"} {
 		if strings.Contains(brief, leak) {
 			t.Fatalf("observer brief must not carry %q:\n%s", leak, brief)
 		}
@@ -377,7 +378,7 @@ func TestBriefPrintsBuiltInKeysOnce(t *testing.T) {
 	if !strings.Contains(brief, "- `todo`\n") || strings.Contains(brief, "`todo` todo") {
 		t.Fatalf("a built-in step should print its key once:\n%s", brief)
 	}
-	if !strings.Contains(brief, "Step done      → multica issue status MUL-1 done\n") {
+	if !strings.Contains(brief, "- Done → set status `done`.\n") {
 		t.Fatalf("the last own step should suggest done:\n%s", brief)
 	}
 }
@@ -386,7 +387,7 @@ func TestBriefWithoutBlockedPointsAtTheBackStatus(t *testing.T) {
 	def := withHandoffs(Definition{Name: "Lean", Steps: stepsFor(ArrangeKeys([]string{"implement", "code_review"}))},
 		[]Step{{StatusKey: "code_review", Handler: Handler{Type: HandlerProjectLead}, BackStatusKey: "implement"}})
 	brief := Brief(BriefInput{Workflow: def, StatusKey: "code_review", IssueIdentifier: "MUL-2"})
-	if strings.Contains(brief, "MUL-2 blocked") || !strings.Contains(brief, "Can't proceed  → comment why, then run Needs changes\n") || !strings.Contains(brief, "Needs changes  → multica issue status MUL-2 implement\n") {
+	if strings.Contains(brief, "MUL-2 blocked") || !strings.Contains(brief, "- Stuck → comment why, then set status `implement`.\n") || !strings.Contains(brief, "- Needs rework → set status `implement`.\n") {
 		t.Fatalf("a workflow without blocked should not suggest it:\n%s", brief)
 	}
 }

@@ -706,33 +706,35 @@ func Brief(in BriefInput) string {
 		b.WriteString("\nMoving the issue into a step that hands off reassigns it to that step's handler and starts their run.\n")
 		return b.String()
 	}
-	// Each move names who the target step hands off to, so the list needs no
-	// preamble about handoffs.
-	handsOffTo := func(key string) string {
+	// Each outcome says which status to set and what the server then does on
+	// its own: entering a step with a handler reassigns the issue and starts
+	// that handler's run, so the agent never assigns anyone itself.
+	takesOver := func(key string) string {
 		target, ok := in.Workflow.Step(key)
 		if !ok || in.HandlerName == nil {
 			return ""
 		}
 		if who := briefLine(in.HandlerName(target)); who != "" {
-			return " — hands off to " + who
+			return " " + who + " is assigned and starts automatically."
 		}
 		return ""
 	}
-	b.WriteString("\nYour moves:\n")
+	b.WriteString("\nWhen your step ends:\n")
 	if next := in.Workflow.NextStatus(in.StatusKey); next != "" {
-		fmt.Fprintf(&b, "Step done      → multica issue status %s %s%s\n", in.IssueIdentifier, next, handsOffTo(next))
+		fmt.Fprintf(&b, "- Done → set status `%s`.%s\n", next, takesOver(next))
 	}
 	if step.BackStatusKey != "" {
-		fmt.Fprintf(&b, "Needs changes  → multica issue status %s %s%s\n", in.IssueIdentifier, step.BackStatusKey, handsOffTo(step.BackStatusKey))
+		fmt.Fprintf(&b, "- Needs rework → set status `%s`.%s\n", step.BackStatusKey, takesOver(step.BackStatusKey))
 	}
 	switch {
 	case in.Workflow.Has(issuestatus.Blocked):
-		fmt.Fprintf(&b, "Can't proceed  → multica issue status %s blocked, then comment why\n", in.IssueIdentifier)
+		fmt.Fprintf(&b, "- Stuck → set status `%s` and comment why.\n", issuestatus.Blocked)
 	case step.BackStatusKey != "":
-		b.WriteString("Can't proceed  → comment why, then run Needs changes\n")
+		fmt.Fprintf(&b, "- Stuck → comment why, then set status `%s`.\n", step.BackStatusKey)
 	default:
-		b.WriteString("Can't proceed  → comment why and leave the status as it is\n")
+		b.WriteString("- Stuck → comment why and leave the status as it is.\n")
 	}
+	fmt.Fprintf(&b, "Set a status with `multica issue status %s <status>`.\n", in.IssueIdentifier)
 	if in.LegacyRuntimeRules {
 		// An older daemon's brief still says to set in_progress first and
 		// in_review on delivery, and checks the status on exit in those terms.

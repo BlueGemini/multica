@@ -645,12 +645,12 @@ func writeWorkflowIssue(b *strings.Builder, ctx TaskContextForEnv) {
 func writeIssueStatusRulesForWorkflow(b *strings.Builder, ctx TaskContextForEnv) {
 	b.WriteString("**Issue status — this issue follows its project workflow** (skip any status call your Agent Identity forbids)\n\n")
 	b.WriteString("`[Project workflow]` in the per-turn message is this issue's status contract: its statuses, the step it is at, and the commands that finish that step. Move this issue only with its commands.\n\n")
-	b.WriteString("- You finished the work of your step → run its Step done command. Entering a step that hands off reassigns the issue and starts that handler's run.\n")
-	b.WriteString("- What you received needs rework at an earlier step → run its Needs changes command, when it has one.\n")
+	b.WriteString("- You finished the work of your step → make its Done move. The server assigns the next step's handler and starts their run; do not assign anyone yourself.\n")
+	b.WriteString("- What you received needs rework at an earlier step → make its Needs rework move, when it has one.\n")
 	b.WriteString("- The issue's work continues beyond this turn — you dispatched sub-issues, or delivered one part with more underway → leave it at its current step.\n")
-	b.WriteString("- You cannot proceed without something you are missing → follow its Can't proceed line, and post a comment explaining the blocker unless your Agent Identity forbids issue comments.\n")
+	b.WriteString("- You cannot proceed without something you are missing → make its Stuck move, and post a comment explaining the blocker unless your Agent Identity forbids issue comments.\n")
 	if ctx.IsSquadLeader {
-		b.WriteString("- Squad leader: dispatching members is not delivery — a dispatch turn leaves the parent at its current step, and you run Step done only on the later turn (a member update or stage-barrier re-trigger) where you confirm the overall goal is met.\n")
+		b.WriteString("- Squad leader: dispatching members is not delivery — a dispatch turn leaves the parent at its current step, and you make the Done move only on the later turn (a member update or stage-barrier re-trigger) where you confirm the overall goal is met.\n")
 	}
 	b.WriteString("- Your turn produced none of the issue's own deliverable — you answered a question or consulted on work owned elsewhere → write nothing, at any point; questions, discussion, and acknowledgements never touch status. This no-write default is what keeps concurrent runs from flapping the board.\n\n")
 }

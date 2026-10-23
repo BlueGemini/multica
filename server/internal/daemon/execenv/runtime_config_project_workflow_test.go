@@ -38,7 +38,7 @@ func TestBriefWithProjectWorkflowDropsBuiltInStatusRules(t *testing.T) {
 			"5. Before exiting, confirm the issue sits where things actually stand: you ran the matching command from `[Project workflow]`",
 			"**Issue status — this issue follows its project workflow**",
 			"Move this issue only with its commands.",
-			"run its Step done command",
+			"make its Done move. The server assigns the next step's handler",
 			"— flip status. This issue's statuses and commands are in `[Project workflow]`; for other issues, an invalid status errors with the full valid list.",
 			// The duplicate-mark bullet still rides on the status command.
 			"--duplicate-of",
@@ -72,7 +72,7 @@ func TestBriefWithProjectWorkflowDropsBuiltInStatusRules(t *testing.T) {
 func TestBriefWithProjectWorkflowKeepsSquadLeaderDispatchRule(t *testing.T) {
 	t.Parallel()
 	leader := buildMetaSkillContent("claude", TaskContextForEnv{IssueID: "issue-1", HasProjectWorkflow: true, IsSquadLeader: true})
-	if !strings.Contains(leader, "a dispatch turn leaves the parent at its current step, and you run Step done only on the later turn") {
+	if !strings.Contains(leader, "a dispatch turn leaves the parent at its current step, and you make the Done move only on the later turn") {
 		t.Errorf("leader workflow brief must keep dispatch-is-not-delivery in workflow terms\n---\n%s", leader)
 	}
 	member := buildMetaSkillContent("claude", TaskContextForEnv{IssueID: "issue-1", HasProjectWorkflow: true})
