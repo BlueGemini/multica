@@ -1,12 +1,16 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import {
-  createLiveEndFollow,
-  FOLLOW_EDGE_THRESHOLD,
-  LINE_SCROLL_PX,
-  type LiveEndFollow,
-} from "../../common/task-transcript/transcript-follow";
+import { useCallback, useEffect, useMemo, useRef, useState, type RefObject } from "react";
+import { flushSync } from "react-dom";
+import type { VirtuosoHandle } from "react-virtuoso";
+import { CHAT_LIVE_END_THRESHOLD, createChatFollow, distanceFromBottom, type ScrollMetrics } from "./chat-follow";
+
+export { distanceFromBottom, type ScrollMetrics } from "./chat-follow";
+
+interface ReaderAnchor {
+  itemIndex: number;
+  offset: number;
+}
 
 // Bottom-stick for the chat list.
 //
@@ -15,35 +19,12 @@ import {
 // composer shrinks the list's viewport — neither changes the count, so the
 // list has to re-pin itself while the reader is at the live end.
 //
-// Reader intent comes from the shared live-end latch (transcript-follow.ts):
-// scroll position and direction alone cannot separate a reader leaving the
-// live end from the browser moving the viewport on its own (a scrollTop clamp
-// after the composer collapses, scroll anchoring), so the latch judges intent
-// from accumulated input deltas and releases only past FOLLOW_EDGE_THRESHOLD —
-// the same forgiveness the list grants Virtuoso via `atBottomThreshold`.
-//
-// Input is staged, and only the list's own scroll promotes it: rows contain
-// nested scrollers (capped `overflow-auto` code blocks) whose wheel/touch
-// events bubble here without moving the list, and on a conversation shorter
-// than the viewport nothing scrolls at all. Unconsumed input must not release
-// the follow. The same rule works in reverse for keys: any scroll key from
-// anywhere in the container stages intent, and if the browser answers it by
-// scrolling the list (focus on a row control page-scrolls the nearest
-// scrollable ancestor), the scroll confirms it — the reader is never pinned
-// back over their own keypress.
-
-export interface ScrollMetrics {
-  scrollTop: number;
-  scrollHeight: number;
-  clientHeight: number;
-}
-
-export function distanceFromBottom(m: ScrollMetrics): number {
-  return Math.max(0, m.scrollHeight - m.scrollTop - m.clientHeight);
-}
+// Input stays eligible across rendering frames; a matching change in the
+// list's own scrollTop confirms it. Content growth changes distance from the
+// bottom without reader motion, so that distance never attributes input.
 
 export function isAtLiveEnd(m: ScrollMetrics): boolean {
-  return distanceFromBottom(m) <= FOLLOW_EDGE_THRESHOLD;
+  return distanceFromBottom(m) <= CHAT_LIVE_END_THRESHOLD;
 }
 
 /**
@@ -90,8 +71,10 @@ const LIVE_END_SETTLE_MS = 120;
 const REVEAL_DEADLINE_MS = 1000;
 
 export interface StickToBottom {
-  /** For `followOutput`: the reader is still following the live end. */
+  /** The synchronous latch also guards callbacks retained by Virtuoso. */
   isFollowing(): boolean;
+  /** Literal false disables Virtuoso's internal resize-follow branches too. */
+  followOutput: false | ((atBottom: boolean) => "auto" | false);
   /** Wire to Virtuoso's `totalListHeightChanged`: the content resized. */
   onContentHeightChanged(): void;
   /**
@@ -110,7 +93,7 @@ export interface StickToBottom {
  * (streaming) must be reported through `onContentHeightChanged`, because a
  * ResizeObserver on the container never sees its scroll extent.
  *
- * `pinToLiveEnd` applies the correction and MUST scroll through Virtuoso
+ * Corrections MUST scroll through Virtuoso
  * (`scrollToIndex` at the last row), never by writing `scrollTop` here. In a
  * virtualised list `scrollHeight` covers unrendered rows with an ESTIMATE, so
  * `scrollHeight - clientHeight` is not the bottom. Jumping there drops
@@ -125,25 +108,59 @@ export interface StickToBottom {
  */
 export function useStickToBottom(
   scrollEl: HTMLElement | null,
-  pinToLiveEnd: () => void,
+  virtuosoRef: RefObject<VirtuosoHandle | null>,
   active = true,
+  fetchingOlderMessages = false,
 ): StickToBottom {
-  const followRef = useRef<LiveEndFollow | null>(null);
+  const followRef = useRef<ReturnType<typeof createChatFollow> | null>(null);
   if (followRef.current === null) {
-    followRef.current = createLiveEndFollow();
+    followRef.current = createChatFollow();
   }
   const follow = followRef.current;
-  // followOutput reads this latch in the same render, so an effect would update
-  // it too late. Retained exit callbacks must also stop before the list unmounts.
-  follow.setActive(active);
   const activeRef = useRef(active);
   activeRef.current = active;
+  const [following, setFollowing] = useState(true);
+  const followingRef = useRef(true);
+  const readerAnchor = useRef<ReaderAnchor | null>(null);
+  const correctingReader = useRef(false);
 
-  const pinRef = useRef(pinToLiveEnd);
-  pinRef.current = pinToLiveEnd;
   const pin = useCallback(() => {
-    if (activeRef.current) pinRef.current();
-  }, []);
+    if (!activeRef.current || !follow.isFollowing()) return;
+    const before = scrollEl?.scrollTop;
+    virtuosoRef.current?.scrollToIndex({ index: "LAST", align: "end" });
+    // Some requests land synchronously, others wait for row measurements.
+    // Record only an observed programmatic move, never an assumed target.
+    if (scrollEl && scrollEl.scrollTop !== before) follow.syncPosition(scrollEl.scrollTop);
+  }, [scrollEl, virtuosoRef, follow]);
+
+  const scrollToReader = useCallback((behavior: "auto" | "smooth") => {
+    if (!readerAnchor.current || !scrollEl) return;
+    const row = scrollEl.querySelector<HTMLElement>("[data-index][data-item-index]");
+    if (!row) return;
+    const firstItemIndex = Number(row.dataset.itemIndex) - Number(row.dataset.index);
+    const before = scrollEl.scrollTop;
+    // DOM item indexes include firstItemIndex; scrollToIndex is relative.
+    // An absolute saved anchor also survives prepending older history.
+    virtuosoRef.current?.scrollToIndex({
+      index: readerAnchor.current.itemIndex - firstItemIndex,
+      align: "start",
+      offset: readerAnchor.current.offset,
+      behavior,
+    });
+    if (scrollEl.scrollTop !== before) follow.syncPosition(scrollEl.scrollTop);
+  }, [follow, scrollEl, virtuosoRef]);
+
+  const publishFollowing = useCallback(() => {
+    const next = follow.isFollowing();
+    if (next === followingRef.current) return;
+    followingRef.current = next;
+    // Run before Virtuoso's bubble-phase scroll listener can resize-follow.
+    flushSync(() => setFollowing(next));
+    if (next) {
+      readerAnchor.current = null;
+      correctingReader.current = false;
+    }
+  }, [follow]);
 
   // Polled rather than driven off Virtuoso's callbacks: `atBottomStateChange`
   // still reads true from before the rows existed, `itemsRendered` reports
@@ -183,28 +200,28 @@ export function useStickToBottom(
   // so it can never promote staged reader input.
   const onResize = useCallback(() => {
     if (!activeRef.current || !scrollEl) return;
-    if (follow.onResize(distanceFromBottom(scrollEl))) pin();
+    if (follow.onResize(scrollEl)) pin();
   }, [scrollEl, follow, pin]);
 
   useEffect(() => {
     if (!active || !scrollEl) return;
 
-    // Mirror of the transcript dialog's wiring with the live end at the
-    // BOTTOM: away from it is up, so every input sign flips.
-    let inputFrame: number | null = null;
-    const stageInput = (delta: number) => {
+    follow.syncPosition(scrollEl.scrollTop);
+    const stageInput = (delta: number, event: Event) => {
       if (!activeRef.current) return;
-      follow.input(delta);
-      if (inputFrame !== null) cancelAnimationFrame(inputFrame);
-      inputFrame = requestAnimationFrame(() => {
-        inputFrame = null;
-        follow.endInputFrame();
-      });
+      if (event.defaultPrevented || nestedScrollerConsumes(event.target, scrollEl, delta)
+        || (delta < 0 && scrollEl.scrollTop <= 0)) {
+        follow.clearInput();
+        return;
+      }
+      follow.input(delta, () => !event.defaultPrevented);
     };
     const onWheel = (e: WheelEvent) => {
-      const scale =
-        e.deltaMode === 1 ? LINE_SCROLL_PX : e.deltaMode === 2 ? scrollEl.clientHeight : 1;
-      stageInput(-e.deltaY * scale);
+      if (e.ctrlKey || Math.abs(e.deltaX) > Math.abs(e.deltaY)) {
+        follow.clearInput();
+        return;
+      }
+      if (e.deltaY) stageInput(e.deltaY, e);
     };
     let touchId: number | null = null;
     let lastTouchY: number | null = null;
@@ -222,7 +239,7 @@ export function useStickToBottom(
       const touch = trackedTouch(e.touches);
       if (!touch) return;
       // Finger moving down scrolls the content up (away from the live end).
-      if (lastTouchY !== null) stageInput(touch.clientY - lastTouchY);
+      if (lastTouchY !== null) stageInput(lastTouchY - touch.clientY, e);
       lastTouchY = touch.clientY;
     };
     const onTouchEnd = (e: TouchEvent) => {
@@ -230,40 +247,50 @@ export function useStickToBottom(
       touchId = null;
       lastTouchY = null;
       follow.touchEnd();
+      onResize();
     };
-    // No target guard: this container is not focusable, so scroll keys always
-    // arrive from a focused row control, and the browser answers them by
-    // scrolling the nearest scrollable ancestor — this list. Staging makes
-    // that safe in the other direction too: a key a control consumed (Space
-    // activating a button, Home in a text field) never scrolls the list, so
-    // the staged intent is never promoted.
     const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "ArrowUp") stageInput(LINE_SCROLL_PX);
-      else if (e.key === "ArrowDown") stageInput(-LINE_SCROLL_PX);
-      else if (e.key === "PageUp") stageInput(scrollEl.clientHeight);
-      else if (e.key === "PageDown") stageInput(-scrollEl.clientHeight);
-      // Shift+Space pages UP — away from the live end.
-      else if (e.key === " ")
-        stageInput(e.shiftKey ? scrollEl.clientHeight : -scrollEl.clientHeight);
-      else if (e.key === "Home") stageInput(scrollEl.scrollHeight);
-      else if (e.key === "End") stageInput(-scrollEl.scrollHeight);
+      if (e.defaultPrevented || e.isComposing || keyboardControlConsumes(e)) {
+        follow.clearInput();
+        return;
+      }
+      if (["ArrowUp", "PageUp", "Home"].includes(e.key)) stageInput(-1, e);
+      else if (["ArrowDown", "PageDown"].includes(e.key)) stageInput(1, e);
+      else if (e.key === " ") stageInput(e.shiftKey ? -1 : 1, e);
+      else if (e.key === "End") {
+        follow.resume();
+        publishFollowing();
+        pin();
+      }
     };
     const onPointerDown = (e: MouseEvent) => {
       follow.pointerDown(e.target === scrollEl);
     };
     const onPointerUp = () => {
       follow.pointerUp();
+      onResize();
     };
-    let atEdge = isAtLiveEnd(scrollEl);
     const onScroll = () => {
       if (!activeRef.current) return;
-      const nowAtEdge = isAtLiveEnd(scrollEl);
-      if (nowAtEdge !== atEdge) {
-        atEdge = nowAtEdge;
-        follow.onAtEdgeChange(nowAtEdge);
+      const { pin: shouldPin, readerMoved, moved } = follow.onScroll(scrollEl);
+      const changed = follow.isFollowing() !== followingRef.current;
+      if (!follow.isFollowing() && readerMoved) readerAnchor.current = captureReaderAnchor(scrollEl);
+      publishFollowing();
+      if (!follow.isFollowing()) {
+        if (readerMoved && (changed || correctingReader.current)) {
+          // Cancel the outstanding index request. Smooth at the current
+          // position completes immediately instead of opening an auto retry.
+          correctingReader.current = false;
+          scrollToReader("smooth");
+        } else if (!readerMoved && moved > 1) {
+          // Virtuoso may have queued resize-follow before the prop became
+          // false. Keep the latest reader row when that old request lands.
+          // Ignore its own one-pixel target rounding.
+          correctingReader.current = true;
+          scrollToReader("auto");
+        }
       }
-      // The list itself moved: this is what promotes staged input.
-      if (follow.onScroll(distanceFromBottom(scrollEl))) pin();
+      if (shouldPin) pin();
     };
 
     // The composer growing (or banners appearing) shrinks the container's box
@@ -271,7 +298,7 @@ export function useStickToBottom(
     // `onContentHeightChanged`.
     const observer = new ResizeObserver(onResize);
     observer.observe(scrollEl);
-    scrollEl.addEventListener("scroll", onScroll, { passive: true });
+    scrollEl.addEventListener("scroll", onScroll, { passive: true, capture: true });
     scrollEl.addEventListener("wheel", onWheel, { passive: true });
     scrollEl.addEventListener("touchstart", onTouchStart, { passive: true });
     scrollEl.addEventListener("touchmove", onTouchMove, { passive: true });
@@ -282,10 +309,9 @@ export function useStickToBottom(
     window.addEventListener("mouseup", onPointerUp, { capture: true });
 
     return () => {
-      if (inputFrame !== null) cancelAnimationFrame(inputFrame);
-      follow.endInputFrame();
+      follow.clearInput();
       observer.disconnect();
-      scrollEl.removeEventListener("scroll", onScroll);
+      scrollEl.removeEventListener("scroll", onScroll, { capture: true });
       scrollEl.removeEventListener("wheel", onWheel);
       scrollEl.removeEventListener("touchstart", onTouchStart);
       scrollEl.removeEventListener("touchmove", onTouchMove);
@@ -299,14 +325,43 @@ export function useStickToBottom(
       follow.pointerUp();
       follow.touchEnd();
     };
-  }, [active, scrollEl, follow, pin, onResize]);
+  }, [active, scrollEl, follow, pin, onResize, publishFollowing, scrollToReader]);
 
   return useMemo(
     () => ({
-      isFollowing: () => follow.isFollowing(),
+      isFollowing: () => active && follow.isFollowing(),
+      followOutput: !active || !following || fetchingOlderMessages ? false :
+        (atBottom: boolean) => activeRef.current && atBottom && follow.isFollowing() ? "auto" as const : false,
       onContentHeightChanged: onResize,
       hasReachedLiveEnd,
     }),
-    [follow, onResize, hasReachedLiveEnd],
+    [active, following, fetchingOlderMessages, follow, onResize, hasReachedLiveEnd],
   );
+}
+
+function captureReaderAnchor(scrollEl: HTMLElement): ReaderAnchor | null {
+  const viewportTop = scrollEl.getBoundingClientRect().top + scrollEl.clientTop;
+  const row = Array.from(scrollEl.querySelectorAll<HTMLElement>("[data-index][data-item-index]"))
+    .find((item) => item.getBoundingClientRect().bottom > viewportTop);
+  return row ? {
+    itemIndex: Number(row.dataset.itemIndex),
+    offset: viewportTop - row.getBoundingClientRect().top,
+  } : null;
+}
+
+function nestedScrollerConsumes(target: EventTarget | null, root: HTMLElement, delta: number) {
+  for (let el = target instanceof Element ? target : null; el && el !== root; el = el.parentElement) {
+    const style = getComputedStyle(el);
+    if (!/(auto|scroll|overlay)/.test(style.overflowY)) continue;
+    const canScroll = delta < 0 ? el.scrollTop > 0 : el.scrollTop < el.scrollHeight - el.clientHeight;
+    if (canScroll || ["contain", "none"].includes(style.overscrollBehaviorY)) return true;
+  }
+  return false;
+}
+
+function keyboardControlConsumes(event: KeyboardEvent) {
+  const target = event.target instanceof Element ? event.target : null;
+  if (event.metaKey || event.altKey || (event.ctrlKey && !["Home", "End"].includes(event.key))) return true;
+  if (target?.closest("input, textarea, select, [contenteditable]:not([contenteditable='false']), [role='textbox'], [role='combobox'], [role='listbox'], [role='slider'], [role='spinbutton'], [role='menu'], [role='tree']")) return true;
+  return event.key === " " && !event.shiftKey && !!target?.closest("button, [role='button'], a[href]");
 }
