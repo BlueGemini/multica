@@ -151,7 +151,7 @@ const squadParentStatusOwnedInWorkflow = `6. **Own the parent issue status — t
    the commands in ` + "`" + `[Project workflow]` + "`" + `. The parent stays at its
    current step while members work — a successful dispatch is not completion.
    On later turns, do not move it for routine progress updates. When you
-   confirm the overall goal is met, make that block's Done move — this
+   confirm the overall goal is met, run that block's Step done command — this
    responsibility is itself the standing instruction that authorizes that
    change, so do it even when no comment asked you to.`
 

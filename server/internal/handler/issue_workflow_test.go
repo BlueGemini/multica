@@ -359,7 +359,7 @@ func TestStatusChangeHandsOffOnDefaultProject(t *testing.T) {
 		t.Fatalf("handoff note = %q, want none: the brief rides the claim", tasks[0].HandoffNote.String)
 	}
 	brief := claimBriefForTest(t, issueID, tasks[0])
-	for _, want := range []string{"Implement it and open a PR.", "This project's workflow — Default (Workflow handoff project)", "- Done → set status `"} {
+	for _, want := range []string{"Implement it and open a PR.", "This project's workflow — Default (Workflow handoff project)", "Step done      → multica issue status"} {
 		if !strings.Contains(brief, want) {
 			t.Fatalf("claim brief is missing %q:\n%s", want, brief)
 		}
@@ -801,7 +801,7 @@ func TestClaimCarriesProjectWorkflow(t *testing.T) {
 		"This project's workflow — Default (Workflow claim project)",
 		"Implement it and open a PR.",
 		"   ← current",
-		"- Done → set status `",
+		"Step done      → multica issue status",
 	} {
 		if !strings.Contains(brief, want) {
 			t.Fatalf("assignee brief is missing %q:\n%s", want, brief)
@@ -811,7 +811,7 @@ func TestClaimCarriesProjectWorkflow(t *testing.T) {
 	// Any other agent on the issue — mentioned in a comment, say — gets the
 	// statuses and is told to leave them to the assignee.
 	other := claimBriefForTest(t, issueID, db.AgentTaskQueue{AgentID: util.MustParseUUID(dbfx.Agent(t, "Workflow observer", handlerTestRuntimeID(t)))})
-	if !strings.Contains(other, "You are not its assignee") || strings.Contains(other, "- Done →") || strings.Contains(other, "Implement it and open a PR.") {
+	if !strings.Contains(other, "You are not its assignee") || strings.Contains(other, "Step done") || strings.Contains(other, "Implement it and open a PR.") {
 		t.Fatalf("observer brief must leave the step to its assignee:\n%s", other)
 	}
 
@@ -882,7 +882,7 @@ func TestPreviewIssueWorkflowBriefUsesTheDraft(t *testing.T) {
 		"status_key": "in_progress", "handler": map[string]any{"type": "agent", "id": agentID}, "instructions": "Draft step.",
 		"project_id": projectID,
 	}).Want(http.StatusOK).JSON(&got)
-	for _, want := range []string{"Default (Workflow brief project)", "Draft step.", "← current", "- Done → set status `in_review`."} {
+	for _, want := range []string{"Default (Workflow brief project)", "Draft step.", "← current", "in_review\nCan't proceed"} {
 		if !strings.Contains(got.Brief, want) {
 			t.Fatalf("draft brief is missing %q:\n%s", want, got.Brief)
 		}

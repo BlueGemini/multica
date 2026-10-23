@@ -67,7 +67,7 @@ func TestOwningLeaderInWorkflowMovesOnlyByWorkflowCommands(t *testing.T) {
 		for _, want := range []string{
 			// The ownership grant and its standing wrap-up authorization survive.
 			"Own the parent issue status — through its project workflow.",
-			"make that block's Done move",
+			"run that block's Step done command",
 			"do it even when no comment asked you to",
 			// Dispatch is not delivery, in workflow terms, in both halves.
 			"The parent stays at its current step while members work",
@@ -101,8 +101,8 @@ func TestGuestLeaderProtocolIgnoresWorkflow(t *testing.T) {
 	if squadOperatingProtocolFor(false, leaderWorkflowCurrentDaemon) != squadOperatingProtocolFor(false, leaderNoWorkflow) || squadOperatingProtocolFor(false, leaderWorkflowLegacyDaemon) != squadOperatingProtocolFor(false, leaderNoWorkflow) {
 		t.Fatal("guest leader protocol must not vary with the project workflow")
 	}
-	if strings.Contains(squadOperatingProtocolFor(false, leaderWorkflowCurrentDaemon), "Done move") {
-		t.Fatal("guest leader protocol must not hand out the Done move")
+	if strings.Contains(squadOperatingProtocolFor(false, leaderWorkflowCurrentDaemon), "Step done") {
+		t.Fatal("guest leader protocol must not hand out the Step done move")
 	}
 }
 
