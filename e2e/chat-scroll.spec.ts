@@ -111,6 +111,94 @@ for (const dpr of [1, 1.25, 2]) {
       expect(await distance(page)).toBeGreaterThan(120);
     });
 
+    test("unattributed navigation keeps its position and becomes the latest reader anchor", async ({ page }) => {
+      await page.mouse.move(700, 300);
+      await page.mouse.wheel(0, -1200);
+      await expect(page.locator("#chat-scroll")).toHaveAttribute("data-following", "false");
+      // Expire the upward input candidate before navigating in that direction.
+      await page.waitForTimeout(350);
+      const upAnchor = await page.locator("#chat-scroll").evaluate((el) => {
+        el.scrollBy(0, -300);
+        const top = el.getBoundingClientRect().top;
+        const row = Array.from(el.querySelectorAll<HTMLElement>("[data-item-index]"))
+          .find((item) => item.getBoundingClientRect().bottom > top)!;
+        return { index: row.dataset.itemIndex!, offset: row.getBoundingClientRect().top - top };
+      });
+      await page.waitForTimeout(50);
+      await page.evaluate(() => window.chatScrollFixture.grow(23));
+      // Measuring newly exposed rows can change scrollTop; the logical view holds.
+      await expect.poll(() => page.locator("#chat-scroll").evaluate((el, anchor) => {
+        const row = el.querySelector<HTMLElement>(`[data-item-index="${anchor.index}"]`);
+        return row ? Math.abs(row.getBoundingClientRect().top - el.getBoundingClientRect().top - anchor.offset) : Infinity;
+      }, upAnchor)).toBeLessThanOrEqual(1);
+      const target = await page.locator("#chat-scroll").evaluate((el) => {
+        el.scrollBy(0, 300);
+        return el.scrollTop;
+      });
+      await page.waitForTimeout(200);
+      expect(Math.abs(await position(page) - target)).toBeLessThanOrEqual(1);
+      // A genuinely late LAST request must restore the new navigation target.
+      await page.evaluate(() => window.chatScrollFixture.landOldPin());
+      await expect.poll(async () => Math.abs(await position(page) - target)).toBeLessThanOrEqual(1);
+      // Navigation also wins after a recovery, while its retry may be pending.
+      const nextTarget = await page.locator("#chat-scroll").evaluate((el) => {
+        el.scrollBy(0, 300);
+        return el.scrollTop;
+      });
+      await page.waitForTimeout(200);
+      await page.evaluate(() => window.chatScrollFixture.grow(23));
+      await page.waitForTimeout(200);
+      expect(Math.abs(await position(page) - nextTarget)).toBeLessThanOrEqual(1);
+      await expect(page.locator("#chat-scroll")).toHaveAttribute("data-following", "false");
+    });
+
+    test("Tab navigation to the last row remains available immediately after release", async ({ page }) => {
+      await page.mouse.move(700, 300);
+      await page.mouse.wheel(0, -300);
+      await expect(page.locator("#chat-scroll")).toHaveAttribute("data-following", "false");
+      await page.locator("input").last().evaluate((el) => el.focus({ preventScroll: true }));
+      // Chromium includes the nested code scroller in keyboard navigation.
+      await page.keyboard.press("Tab");
+      await expect(page.locator("pre").last()).toBeFocused();
+      await page.keyboard.press("Tab");
+      await expect(page.locator("[data-row-end]").last()).toBeFocused();
+      await expect.poll(() => distance(page)).toBeLessThanOrEqual(4);
+      await page.evaluate(() => window.chatScrollFixture.grow(80));
+      await expect.poll(() => distance(page)).toBeGreaterThan(70);
+      await expect(page.locator("#chat-scroll")).toHaveAttribute("data-following", "false");
+    });
+
+    test("unattributed navigation to the bottom remains available after the old request expires", async ({ page }) => {
+      await page.mouse.move(700, 300);
+      await page.mouse.wheel(0, -300);
+      await expect(page.locator("#chat-scroll")).toHaveAttribute("data-following", "false");
+      // A size change inside the window must not extend its deadline.
+      await page.waitForTimeout(700);
+      await page.evaluate(() => window.chatScrollFixture.grow(13));
+      await page.waitForTimeout(600);
+      await page.locator("#chat-scroll").evaluate((el) => { el.scrollTop = el.scrollHeight; });
+      await expect.poll(() => distance(page)).toBeLessThanOrEqual(4);
+      const parked = await position(page);
+      await page.evaluate(() => window.chatScrollFixture.grow(30));
+      await page.waitForTimeout(200);
+      expect(Math.abs(await position(page) - parked)).toBeLessThanOrEqual(1);
+      await expect(page.locator("#chat-scroll")).toHaveAttribute("data-following", "false");
+    });
+
+    for (const modifier of ["Control", "Meta"]) {
+      test(`${modifier}+F allows browser navigation to the bottom inside the recovery window`, async ({ page }) => {
+        await page.locator("#chat-scroll").focus();
+        await page.mouse.move(700, 300);
+        await page.mouse.wheel(0, -300);
+        await expect(page.locator("#chat-scroll")).toHaveAttribute("data-following", "false");
+        await page.keyboard.press(`${modifier}+f`);
+        // Simulate the browser revealing a match; its find UI is outside the DOM.
+        await page.locator("#chat-scroll").evaluate((el) => { el.scrollTop = el.scrollHeight; });
+        await expect.poll(() => distance(page)).toBeLessThanOrEqual(4);
+        await expect(page.locator("#chat-scroll")).toHaveAttribute("data-following", "false");
+      });
+    }
+
     test("nested scrolling, consumed keys and zoom input leave following enabled", async ({ page }) => {
       const code = page.locator("pre").last();
       await code.evaluate((el) => { el.scrollTop = 60; });
@@ -119,7 +207,7 @@ for (const dpr of [1, 1.25, 2]) {
       await expect(page.locator("#chat-scroll")).toHaveAttribute("data-following", "true");
       await code.evaluate((el) => { el.scrollTop = 0; });
       await page.mouse.wheel(0, -100);
-      await page.locator("button").last().focus();
+      await page.getByRole("button", { name: "Row action", exact: true }).last().focus();
       await page.keyboard.press("Space");
       await page.keyboard.press("Home");
       await page.locator("input").last().focus();

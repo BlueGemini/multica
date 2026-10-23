@@ -40,13 +40,14 @@ function Fixture() {
       computeItemKey={(_, row) => row.id}
       followOutput={follow.followOutput} totalListHeightChanged={follow.onContentHeightChanged}
       itemContent={(_, row) => <div data-chat-live-end={row.id === rows[rows.length - 1]?.id ? "" : undefined}
-        style={{ height: row.height, background: row.id % 2 ? "#eee" : "white" }}>
+        style={{ height: row.height, position: "relative", background: row.id % 2 ? "#eee" : "white" }}>
         <div>Message {row.id}</div>
         <button onKeyDown={(event) => { if (event.key === "Home") event.preventDefault(); }}>Row action</button>
         <input aria-label="Draft" defaultValue="editable text" />
         <pre style={{ height: 60, width: 300, margin: 0, overflowY: "auto", overscrollBehaviorY: "contain" }}>
           {Array.from({ length: 30 }, (_, i) => `code line ${i}`).join("\n")}
         </pre>
+        <button data-row-end style={{ position: "absolute", bottom: 0 }}>End of row</button>
       </div>}
     />}
   </div>;

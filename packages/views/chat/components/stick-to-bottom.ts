@@ -10,6 +10,7 @@ export { distanceFromBottom, type ScrollMetrics } from "./chat-follow";
 interface ReaderAnchor {
   itemIndex: number;
   offset: number;
+  firstItemIndex: number;
 }
 
 // Bottom-stick for the chat list.
@@ -70,6 +71,10 @@ const LIVE_END_SETTLE_MS = 120;
 // reveal whatever Virtuoso has: a shift beats a blank chat.
 const REVEAL_DEADLINE_MS = 1000;
 
+// Virtuoso 4.18.7 keeps an outstanding index request alive for at most 1200ms.
+// Recovery only covers that request, never the reader's whole paused session.
+const RELEASE_RECOVERY_MS = 1200;
+
 export interface StickToBottom {
   /** The synchronous latch also guards callbacks retained by Virtuoso. */
   isFollowing(): boolean;
@@ -123,6 +128,7 @@ export function useStickToBottom(
   const followingRef = useRef(true);
   const readerAnchor = useRef<ReaderAnchor | null>(null);
   const correctingReader = useRef(false);
+  const releaseRecoveryUntil = useRef(0);
 
   const pin = useCallback(() => {
     if (!activeRef.current || !follow.isFollowing()) return;
@@ -154,6 +160,7 @@ export function useStickToBottom(
     const next = follow.isFollowing();
     if (next === followingRef.current) return;
     followingRef.current = next;
+    releaseRecoveryUntil.current = next ? 0 : Date.now() + RELEASE_RECOVERY_MS;
     // Run before Virtuoso's bubble-phase scroll listener can resize-follow.
     flushSync(() => setFollowing(next));
     if (next) {
@@ -201,7 +208,14 @@ export function useStickToBottom(
   const onResize = useCallback(() => {
     if (!activeRef.current || !scrollEl) return;
     if (follow.onResize(scrollEl)) pin();
-  }, [scrollEl, follow, pin]);
+    else if (!follow.isFollowing() && readerAnchor.current && Date.now() < releaseRecoveryUntil.current) {
+      // While released requests settle, size changes can also trigger
+      // Virtuoso's upward-scroll compensation. Anchor this known layout
+      // change, without treating arbitrary scroll events as old requests.
+      correctingReader.current = true;
+      scrollToReader("auto");
+    }
+  }, [scrollEl, follow, pin, scrollToReader]);
 
   useEffect(() => {
     if (!active || !scrollEl) return;
@@ -249,7 +263,21 @@ export function useStickToBottom(
       follow.touchEnd();
       onResize();
     };
+    const onNavigation = () => {
+      if (follow.isFollowing()) return;
+      // Focus and browser find can legitimately scroll all the way to the
+      // bottom even inside the recovery window. Their navigation takes over.
+      releaseRecoveryUntil.current = 0;
+      follow.clearInput();
+      if (correctingReader.current) {
+        readerAnchor.current = captureReaderAnchor(scrollEl);
+        correctingReader.current = false;
+        scrollToReader("smooth");
+      }
+    };
     const onKeyDown = (e: KeyboardEvent) => {
+      if (!e.defaultPrevented && !e.isComposing
+        && (e.key === "Tab" || ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "f"))) onNavigation();
       if (e.defaultPrevented || e.isComposing || keyboardControlConsumes(e)) {
         follow.clearInput();
         return;
@@ -277,17 +305,42 @@ export function useStickToBottom(
       if (!follow.isFollowing() && readerMoved) readerAnchor.current = captureReaderAnchor(scrollEl);
       publishFollowing();
       if (!follow.isFollowing()) {
+        if (correctingReader.current && readerAnchor.current) {
+          const anchor = readerAnchor.current;
+          const rendered = scrollEl.querySelector<HTMLElement>("[data-index][data-item-index]");
+          const firstItemIndex = rendered && Number(rendered.dataset.itemIndex) - Number(rendered.dataset.index);
+          if (firstItemIndex !== null && firstItemIndex !== anchor.firstItemIndex
+            && Date.now() < releaseRecoveryUntil.current) {
+            // A prepend can commit between the LAST landing and recovery.
+            // Rebase that specific request once its new DOM indexes arrive.
+            anchor.firstItemIndex = firstItemIndex;
+            scrollToReader("auto");
+            return;
+          }
+        }
         if (readerMoved && (changed || correctingReader.current)) {
           // Cancel the outstanding index request. Smooth at the current
           // position completes immediately instead of opening an auto retry.
           correctingReader.current = false;
           scrollToReader("smooth");
-        } else if (!readerMoved && moved > 1) {
+        } else if (!readerMoved && moved > 1
+          && Date.now() < releaseRecoveryUntil.current && isAtLiveEnd(scrollEl)) {
           // Virtuoso may have queued resize-follow before the prop became
-          // false. Keep the latest reader row when that old request lands.
-          // Ignore its own one-pixel target rounding.
+          // false. Only recover a late landing at the bottom, within its
+          // lifetime; allow other browser/programmatic navigation to proceed.
           correctingReader.current = true;
           scrollToReader("auto");
+        } else if (!readerMoved && Math.abs(moved) > 1) {
+          const anchor = captureReaderAnchor(scrollEl);
+          // Prepending changes the virtual origin and scrollTop together.
+          // Keep the saved logical row through that layout adjustment.
+          if (anchor && anchor.firstItemIndex === readerAnchor.current?.firstItemIndex) {
+            readerAnchor.current = anchor;
+            if (correctingReader.current) {
+              correctingReader.current = false;
+              scrollToReader("smooth");
+            }
+          }
         }
       }
       if (shouldPin) pin();
@@ -305,6 +358,7 @@ export function useStickToBottom(
     scrollEl.addEventListener("touchend", onTouchEnd, { passive: true });
     scrollEl.addEventListener("touchcancel", onTouchEnd, { passive: true });
     scrollEl.addEventListener("keydown", onKeyDown);
+    scrollEl.addEventListener("focusin", onNavigation);
     scrollEl.addEventListener("mousedown", onPointerDown);
     window.addEventListener("mouseup", onPointerUp, { capture: true });
 
@@ -318,6 +372,7 @@ export function useStickToBottom(
       scrollEl.removeEventListener("touchend", onTouchEnd);
       scrollEl.removeEventListener("touchcancel", onTouchEnd);
       scrollEl.removeEventListener("keydown", onKeyDown);
+      scrollEl.removeEventListener("focusin", onNavigation);
       scrollEl.removeEventListener("mousedown", onPointerDown);
       window.removeEventListener("mouseup", onPointerUp, { capture: true });
       // The scroller can detach mid-drag; a stuck held-mouse flag would
@@ -346,6 +401,7 @@ function captureReaderAnchor(scrollEl: HTMLElement): ReaderAnchor | null {
   return row ? {
     itemIndex: Number(row.dataset.itemIndex),
     offset: viewportTop - row.getBoundingClientRect().top,
+    firstItemIndex: Number(row.dataset.itemIndex) - Number(row.dataset.index),
   } : null;
 }
 
