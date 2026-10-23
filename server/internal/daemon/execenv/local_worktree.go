@@ -1768,6 +1768,8 @@ func (w *LocalWorktree) CheckDelivery() *DeliveryProblem {
 // every change BaseCommit made relative to its common ancestor with tip
 // (mergeBase). Per path BaseCommit changed:
 //
+//   - the agent's file mode must equal BaseCommit's: a user's chmod +x is a
+//     change the content comparison alone cannot see;
 //   - the agent's file equals BaseCommit's: kept as-is;
 //   - otherwise a three-way merge (base = mergeBase, ours = the agent's file,
 //     theirs = BaseCommit's) must be clean AND leave the agent's file
@@ -1775,7 +1777,9 @@ func (w *LocalWorktree) CheckDelivery() *DeliveryProblem {
 //     only added to it. A merge that would change the agent's file means the
 //     change is missing; repairing would deliver its revert (MUL-8139 review).
 //
-// Anything else — a deletion on either side, a symlink or submodule, a binary
+// The agent's side is read from the tree `git add -A` would stage, i.e. what
+// RepairSteps actually commits. Anything else — a deletion on either side, a
+// symlink or submodule, a binary
 // file, a conflict, git failing to answer — refuses the repair. That includes
 // an agent edit on a line touching one the baseline changed, which merge-file
 // reports as a conflict even when the agent did build on the baseline.
@@ -1793,6 +1797,14 @@ func (w *LocalWorktree) repairWouldRevertBase(tip string) bool {
 	if err != nil {
 		return true
 	}
+	// Judge the agent's side as the repair will commit it: RepairSteps starts
+	// with `git add -A`, so the tree that stages — content after filters, and
+	// the file mode git records (core.filemode decides whether the worktree's
+	// executable bit or the index's mode wins) — is what reaches the branch.
+	agentTree, err := stagedWorktreeTree(w.Path)
+	if err != nil {
+		return true
+	}
 	scratch := ""
 	defer func() {
 		if scratch != "" {
@@ -1807,15 +1819,15 @@ func (w *LocalWorktree) repairWouldRevertBase(tip string) bool {
 		if !ok {
 			return true // Deleted, or not a plain file, on the baseline side.
 		}
-		info, err := os.Lstat(filepath.Join(w.Path, filepath.FromSlash(path)))
-		if err != nil || !info.Mode().IsRegular() {
+		baseMode := treeEntryMode(w.GitRoot, w.BaseCommit, path)
+		if baseMode != treeEntryMode(w.GitRoot, agentTree, path) {
+			return true // A mode change (chmod +x, say) the agent's files lack.
+		}
+		ours, ok := regularBlob(w.GitRoot, agentTree, path)
+		if !ok {
 			return true // The agent's side dropped it, or it is not a plain file.
 		}
-		ours, err := os.ReadFile(filepath.Join(w.Path, filepath.FromSlash(path)))
-		if err != nil {
-			return true
-		}
-		if string(ours) == baseBlob {
+		if ours == baseBlob {
 			continue
 		}
 		ancestor := ""
@@ -1830,8 +1842,8 @@ func (w *LocalWorktree) repairWouldRevertBase(tip string) bool {
 				return true
 			}
 		}
-		merged, clean := mergeFileContents(scratch, string(ours), ancestor, baseBlob)
-		if !clean || merged != string(ours) {
+		merged, clean := mergeFileContents(scratch, ours, ancestor, baseBlob)
+		if !clean || merged != ours {
 			return true
 		}
 	}
@@ -1855,6 +1867,38 @@ func regularBlob(gitRoot, commit, path string) (string, bool) {
 		return "", false
 	}
 	return content, true
+}
+
+// treeEntryMode returns the git file mode of path in a commit or tree
+// ("100644", "100755", "120000", ...), or "" when it is absent or git fails.
+func treeEntryMode(gitRoot, treeish, path string) string {
+	entry, err := runGitStdout(gitRoot, "ls-tree", "-z", treeish, "--", path)
+	if err != nil {
+		return ""
+	}
+	mode, _, _ := strings.Cut(entry, " ")
+	return mode
+}
+
+// stagedWorktreeTree returns the tree `git add -A` would stage in dir, built in
+// a private copy of dir's index so neither the agent's index nor its files
+// change. Errors — including a missing index to seed from, without which the
+// recorded modes cannot be predicted — fail the caller closed.
+func stagedWorktreeTree(dir string) (string, error) {
+	tmp, err := os.MkdirTemp("", "multica-repair-index-")
+	if err != nil {
+		return "", err
+	}
+	defer os.RemoveAll(tmp)
+	index := filepath.Join(tmp, "index")
+	if !seedSnapshotIndex(dir, index) {
+		return "", errors.New("execenv: cannot copy the worktree index")
+	}
+	env := []string{"GIT_INDEX_FILE=" + index}
+	if out, err := runGitEnv(dir, env, "add", "-A"); err != nil {
+		return "", fmt.Errorf("execenv: stage worktree in private index: %s: %w", strings.TrimSpace(out), err)
+	}
+	return runGitTrimmedEnv(dir, env, "write-tree")
 }
 
 func pathInCommit(gitRoot, commit, path string) (bool, error) {

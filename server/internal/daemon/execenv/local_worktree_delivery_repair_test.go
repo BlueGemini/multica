@@ -1,7 +1,9 @@
 package execenv
 
 import (
+	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 )
@@ -237,6 +239,67 @@ func TestCheckDeliveryRepairsASquashThatAlsoEditedTheUsersFile(t *testing.T) {
 	gitRun(t, wt.Path, "commit", "-m", "squashed")
 
 	requireRepairable(t, repo, wt, "no longer contains", map[string]string{"tracked.txt": "user=NEW\nctx1\nctx2\nctx3\nagent=NEW"})
+}
+
+// userChmodBaseline commits run.sh without the executable bit, then makes it
+// executable as the user's uncommitted change, which the turn's baseline
+// records as mode 100755. It returns the repo, the pre-chmod HEAD and the turn.
+func userChmodBaseline(t *testing.T) (string, string, *LocalWorktree) {
+	t.Helper()
+	if runtime.GOOS == "windows" {
+		t.Skip("requires Unix executable bits")
+	}
+	repo := newTestRepo(t)
+	gitRun(t, repo, "config", "core.filemode", "true")
+	writeFile(t, filepath.Join(repo, "run.sh"), "#!/bin/sh\nexit 0\n")
+	gitRun(t, repo, "add", "-A")
+	gitRun(t, repo, "commit", "-m", "script before the user's chmod")
+	head := gitRun(t, repo, "rev-parse", "HEAD")
+	if err := os.Chmod(filepath.Join(repo, "run.sh"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	wt := prepareTurn(t, repo, "MUL-9404", turnOneTask)
+	if entry := gitRun(t, repo, "ls-tree", wt.BaseCommit, "--", "run.sh"); !strings.HasPrefix(entry, "100755 ") {
+		t.Fatalf("baseline did not record the user's chmod: %s", entry)
+	}
+	return repo, head, wt
+}
+
+// MUL-8139 review: a mode-only change carries no content difference, so a
+// content check alone would offer a repair that delivers run.sh as 100644 —
+// a silent revert of the user's chmod +x.
+func TestCheckDeliveryDoesNotOfferARepairThatRevertsAUsersChmod(t *testing.T) {
+	t.Parallel()
+	repo, head, wt := userChmodBaseline(t)
+	gitRun(t, wt.Path, "checkout", "--quiet", "--force", "--detach", head)
+	writeFile(t, filepath.Join(wt.Path, "agent.txt"), "agent's separate change\n")
+	gitRun(t, wt.Path, "add", "-A")
+	gitRun(t, wt.Path, "commit", "-m", "agent work without the user's chmod")
+
+	if problem := wt.CheckDelivery(); problem != nil {
+		t.Fatalf("CheckDelivery offered a repair that would revert run.sh to 100644: %s", problem.Reason)
+	}
+	if _, err := wt.Finalize(worktreeTestLogger()); err == nil {
+		t.Fatal("Finalize must still refuse this delivery")
+	}
+	_ = removeLocalWorktreeDir(repo, wt.Path, worktreeTestLogger())
+}
+
+// A squash keeps the executable bit in the agent's files, so it stays
+// repairable, and the delivered script is still 100755.
+func TestCheckDeliveryRepairsASquashThatKeptTheUsersChmod(t *testing.T) {
+	t.Parallel()
+	repo, _, wt := userChmodBaseline(t)
+	writeFile(t, filepath.Join(wt.Path, "agent.txt"), "work\n")
+	gitRun(t, wt.Path, "add", "-A")
+	gitRun(t, wt.Path, "commit", "-m", "work")
+	gitRun(t, wt.Path, "reset", "--soft", wt.BaseCommit+"^")
+	gitRun(t, wt.Path, "commit", "-m", "squashed")
+
+	requireRepairable(t, repo, wt, "no longer contains", map[string]string{"agent.txt": "work"})
+	if entry := gitRun(t, repo, "ls-tree", wt.Branch, "--", "run.sh"); !strings.HasPrefix(entry, "100755 ") {
+		t.Fatalf("delivered run.sh lost the user's executable bit: %s", entry)
+	}
 }
 
 // The MUL-6881 case stays a plain refusal: a run that reset back to the user's
