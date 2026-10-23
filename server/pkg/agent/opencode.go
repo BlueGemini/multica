@@ -550,14 +550,29 @@ func (b *opencodeBackend) processEvents(r io.Reader, ch chan<- Message) eventRes
 	// all means the run did not finish: its provider stream died and
 	// `opencode run` exited without emitting an error event. Fail closed on
 	// that structural evidence rather than reporting a false-green completion.
+	//
+	// OpenCode 2.x changes which of these shapes are evidence. Its CLI stops
+	// consuming step events as soon as the session settles, so the final step's
+	// step_finish is routinely never written (GH #8892, #9456): a completed
+	// text-only turn arrives as `step_start, text` → EOF, and a tool turn can
+	// end as `…, step_finish(tool-calls), text` → EOF with no new step_start.
+	// At the same time 2.x no longer exits quietly on a dead provider stream: a
+	// reset, truncated or empty stream surfaces an `error` event and a non-zero
+	// exit. So on 2.x the process outcome is the terminal signal — the caller
+	// already fails a non-zero exit, a cancellation/timeout and a failed prompt
+	// write, and error events / scanner errors fail it here. Only the two
+	// step-bracketing guards are waived; the void-step guard still applies,
+	// because a step that actually closed with nothing in it is no less dead
+	// on 2.x. 1.x and custom runtimes keep every guard unchanged.
+	exitIsTerminal := opencodeUsesV2Contract(b.cfg)
 	noTerminalSignal := false
 	if finalStatus == "completed" {
 		switch {
-		case openStep:
+		case openStep && !exitIsTerminal:
 			finalStatus = "failed"
 			finalError = "opencode stream ended without a terminal signal (step still open at EOF)"
 			noTerminalSignal = true
-		case awaitingContinuation:
+		case awaitingContinuation && !exitIsTerminal:
 			finalStatus = "failed"
 			finalError = "opencode stream ended without a terminal signal (last step required a continuation that never started)"
 			noTerminalSignal = true
@@ -815,9 +830,16 @@ type opencodeToolState struct {
 }
 
 // opencodeError represents an error event from opencode.
+//
+// 1.x reports `{"name": …, "data": {"message": …}}`; 2.x reports a flat
+// `{"type": "provider.invalid-output", "message": …}`. Both are decoded so a
+// 2.x failure surfaces its real cause instead of "unknown opencode error".
 type opencodeError struct {
 	Name string           `json:"name,omitempty"`
 	Data *opencodeErrData `json:"data,omitempty"`
+	// 2.x shape.
+	Type string `json:"type,omitempty"`
+	Msg  string `json:"message,omitempty"`
 }
 
 // Message returns the human-readable error message.
@@ -825,10 +847,16 @@ func (e *opencodeError) Message() string {
 	if e.Data != nil && e.Data.Message != "" {
 		return e.Data.Message
 	}
+	if e.Msg != "" {
+		if e.Type != "" {
+			return e.Type + ": " + e.Msg
+		}
+		return e.Msg
+	}
 	if e.Name != "" {
 		return e.Name
 	}
-	return ""
+	return e.Type
 }
 
 type opencodeErrData struct {
