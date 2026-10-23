@@ -264,7 +264,9 @@ func TestBriefNamesStepCommandsAndHandlers(t *testing.T) {
 		"- `code_review` Code review — hands off to Lin (project lead)   ← current\n",
 		"- `done` Done\n",
 		"Step done      → multica issue status MUL-7 done\n",
-		"Needs changes  → multica issue status MUL-7 implement\n",
+		// Each move names who the target step hands off to.
+		"Needs changes  → multica issue status MUL-7 implement — hands off to Forge\n",
+		"\nYour moves:\n",
 		"Can't proceed  → multica issue status MUL-7 blocked",
 	} {
 		if !strings.Contains(brief, want) {
@@ -384,7 +386,7 @@ func TestBriefWithoutBlockedPointsAtTheBackStatus(t *testing.T) {
 	def := withHandoffs(Definition{Name: "Lean", Steps: stepsFor(ArrangeKeys([]string{"implement", "code_review"}))},
 		[]Step{{StatusKey: "code_review", Handler: Handler{Type: HandlerProjectLead}, BackStatusKey: "implement"}})
 	brief := Brief(BriefInput{Workflow: def, StatusKey: "code_review", IssueIdentifier: "MUL-2"})
-	if strings.Contains(brief, "MUL-2 blocked") || !strings.Contains(brief, "no blocked status") || !strings.Contains(brief, "Needs changes") {
+	if strings.Contains(brief, "MUL-2 blocked") || !strings.Contains(brief, "Can't proceed  → comment why, then run Needs changes\n") || !strings.Contains(brief, "Needs changes  → multica issue status MUL-2 implement\n") {
 		t.Fatalf("a workflow without blocked should not suggest it:\n%s", brief)
 	}
 }

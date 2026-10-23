@@ -706,20 +706,32 @@ func Brief(in BriefInput) string {
 		b.WriteString("\nMoving the issue into a step that hands off reassigns it to that step's handler and starts their run.\n")
 		return b.String()
 	}
-	b.WriteString("\nHand off by changing the status — moving the issue into a step that hands off reassigns it to that step's handler and starts their run:\n")
+	// Each move names who the target step hands off to, so the list needs no
+	// preamble about handoffs.
+	handsOffTo := func(key string) string {
+		target, ok := in.Workflow.Step(key)
+		if !ok || in.HandlerName == nil {
+			return ""
+		}
+		if who := briefLine(in.HandlerName(target)); who != "" {
+			return " — hands off to " + who
+		}
+		return ""
+	}
+	b.WriteString("\nYour moves:\n")
 	if next := in.Workflow.NextStatus(in.StatusKey); next != "" {
-		fmt.Fprintf(&b, "Step done      → multica issue status %s %s\n", in.IssueIdentifier, next)
+		fmt.Fprintf(&b, "Step done      → multica issue status %s %s%s\n", in.IssueIdentifier, next, handsOffTo(next))
 	}
 	if step.BackStatusKey != "" {
-		fmt.Fprintf(&b, "Needs changes  → multica issue status %s %s\n", in.IssueIdentifier, step.BackStatusKey)
+		fmt.Fprintf(&b, "Needs changes  → multica issue status %s %s%s\n", in.IssueIdentifier, step.BackStatusKey, handsOffTo(step.BackStatusKey))
 	}
 	switch {
 	case in.Workflow.Has(issuestatus.Blocked):
 		fmt.Fprintf(&b, "Can't proceed  → multica issue status %s blocked, then comment why\n", in.IssueIdentifier)
 	case step.BackStatusKey != "":
-		b.WriteString("Can't proceed  → this workflow has no blocked status: comment why, then use the \"Needs changes\" command above\n")
+		b.WriteString("Can't proceed  → comment why, then run Needs changes\n")
 	default:
-		b.WriteString("Can't proceed  → this workflow has no blocked status: comment why and leave the status as it is\n")
+		b.WriteString("Can't proceed  → comment why and leave the status as it is\n")
 	}
 	if in.LegacyRuntimeRules {
 		// An older daemon's brief still says to set in_progress first and
