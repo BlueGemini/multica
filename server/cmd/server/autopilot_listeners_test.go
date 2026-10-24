@@ -595,6 +595,138 @@ func TestAutopilotCreateIssueMentionEnqueuedBeforeDispatch(t *testing.T) {
 	requireRunStatus(t, f, "failed")
 }
 
+// TestAutopilotCreateIssueDeliveryBetweenEnqueueAndLink: in_review lands after
+// the dispatch task is queued but before its link is written; the task's
+// failure must still fail the run. (MUL-8200 third review)
+func TestAutopilotCreateIssueDeliveryBetweenEnqueueAndLink(t *testing.T) {
+	ctx := context.Background()
+	fixture := dbfx.New(testPool, testWorkspaceID, testUserID)
+	runtimeID := fixture.Runtime(t, "Link window runtime")
+	agentID := fixture.Agent(t, "Link window assignee", runtimeID)
+	queries := db.New(testPool)
+	bus := events.New()
+	taskSvc := service.NewTaskService(queries, testPool, nil, bus)
+	apSvc := service.NewAutopilotService(queries, testPool, bus, taskSvc)
+	registerAutopilotListeners(bus, apSvc)
+	ap, err := queries.CreateAutopilot(ctx, db.CreateAutopilotParams{
+		WorkspaceID: parseUUID(testWorkspaceID), Title: "Link window autopilot",
+		AssigneeType: "agent", AssigneeID: parseUUID(agentID), Status: "active",
+		ExecutionMode: "create_issue", IssueTitleTemplate: pgtype.Text{String: "Link window issue", Valid: true},
+		CreatedByType: "member", CreatedByID: parseUUID(testUserID),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	fixture.Cleanup(t, "DELETE FROM autopilot WHERE id = $1", ap.ID)
+	var f linkedIssueAutopilotFixture
+	// The task is committed and announced before EnqueueTaskForIssue returns.
+	// A status request may be handled here before linkDispatchTask runs.
+	bus.Subscribe(protocol.EventTaskQueued, func(e events.Event) {
+		taskID := parseUUID(e.Payload.(map[string]any)["task_id"].(string))
+		task, err := queries.GetAgentTask(ctx, taskID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		run, err := queries.GetAutopilotRunByIssue(ctx, task.IssueID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if run.TaskID.Valid {
+			t.Fatal("did not exercise the pre-link window")
+		}
+		fixture.Cleanup(t, "DELETE FROM issue WHERE id = $1", task.IssueID)
+		fixture.Cleanup(t, "DELETE FROM comment WHERE issue_id = $1", task.IssueID)
+		fixture.Cleanup(t, "DELETE FROM agent_task_queue WHERE issue_id = $1", task.IssueID)
+		f = linkedIssueAutopilotFixture{taskSvc: taskSvc, autopilotSvc: apSvc, queries: queries, run: &run, taskID: taskID}
+		runTaskWithBudget(t, queries, taskID, 1)
+		setLinkedIssueStatus(t, f, "in_review")
+	})
+	if _, err := apSvc.DispatchAutopilot(ctx, ap, seedAutopilotScheduleTrigger(t, queries, ap), "schedule", nil); err != nil {
+		t.Fatal(err)
+	}
+	if f.run == nil {
+		t.Fatal("queued event was not observed")
+	}
+	if _, err := taskSvc.FailTask(ctx, f.taskID, "failed after early delivery", "", "", "", "agent_error", false, "", ""); err != nil {
+		t.Fatal(err)
+	}
+	requireRunStatus(t, f, "failed")
+}
+
+// TestAutopilotCreateIssueWebhookRecoveryLinksDispatch: a webhook-recovered
+// dispatch (crash before enqueue or before link) still settles the run from
+// its task outcome. (MUL-8200 third review)
+func TestAutopilotCreateIssueWebhookRecoveryLinksDispatch(t *testing.T) {
+	for _, taskWasEnqueued := range []bool{false, true} {
+		name := "before_enqueue"
+		if taskWasEnqueued {
+			name = "after_enqueue_before_link"
+		}
+		t.Run(name, func(t *testing.T) {
+			ctx := context.Background()
+			f := dispatchCreateIssueAutopilot(t, "Webhook recovery "+name)
+			fixture := dbfx.New(testPool, testWorkspaceID, testUserID)
+			// Reproduce the durable state left by a worker crash after issue
+			// creation, either before enqueue or just before recording the link.
+			fixture.Exec(t, "UPDATE autopilot_run SET task_id = NULL, source = 'webhook', webhook_delivery_id = id WHERE id = $1", f.run.ID)
+			if !taskWasEnqueued {
+				fixture.Exec(t, "DELETE FROM agent_task_queue WHERE id = $1", f.taskID)
+			}
+			ap, err := f.queries.GetAutopilot(ctx, f.run.AutopilotID)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if _, err := f.autopilotSvc.DispatchAutopilotForWebhookDelivery(ctx, ap, f.run.TriggerID, nil, f.run.ID); err != nil {
+				t.Fatal(err)
+			}
+			tasks, err := f.queries.ListTasksByIssue(ctx, f.run.IssueID)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(tasks) != 1 {
+				t.Fatalf("recovery produced %d tasks, want one", len(tasks))
+			}
+			runTaskWithBudget(t, f.queries, tasks[0].ID, 1)
+			if _, err := f.taskSvc.FailTask(ctx, tasks[0].ID, "recovered dispatch failed", "", "", "", "agent_error", false, "", ""); err != nil {
+				t.Fatal(err)
+			}
+			requireRunStatus(t, f, "failed")
+		})
+	}
+}
+
+// TestAutopilotCreateIssuePreUpgradeRunObservesTaskFailure: an active run
+// dispatched before task_id was recorded still fails from its dispatch task.
+// (MUL-8200 third review)
+func TestAutopilotCreateIssuePreUpgradeRunObservesTaskFailure(t *testing.T) {
+	ctx := context.Background()
+	f := dispatchCreateIssueAutopilot(t, "Pre-upgrade running autopilot")
+	fixture := dbfx.New(testPool, testWorkspaceID, testUserID)
+	fixture.Exec(t, "UPDATE autopilot_run SET task_id = NULL WHERE id = $1", f.run.ID)
+	runTaskWithBudget(t, f.queries, f.taskID, 1)
+	if _, err := f.taskSvc.FailTask(ctx, f.taskID, "pre-upgrade dispatch failed", "", "", "", "agent_error", false, "", ""); err != nil {
+		t.Fatal(err)
+	}
+	requireRunStatus(t, f, "failed")
+}
+
+// TestAutopilotCreateIssueDeliveryWithoutDispatchTask: with no dispatch task
+// yet, in_review waits while the issue is agent-assigned (enqueue pending) and
+// completes the run once the issue belongs to a member. (MUL-8200)
+func TestAutopilotCreateIssueDeliveryWithoutDispatchTask(t *testing.T) {
+	f := dispatchCreateIssueAutopilot(t, "Create-issue delivery without dispatch task")
+	fixture := dbfx.New(testPool, testWorkspaceID, testUserID)
+	fixture.Exec(t, "UPDATE autopilot_run SET task_id = NULL WHERE id = $1", f.run.ID)
+	fixture.Exec(t, "DELETE FROM agent_task_queue WHERE id = $1", f.taskID)
+
+	setLinkedIssueStatus(t, f, "in_review")
+	requireRunStatus(t, f, "issue_created")
+
+	fixture.Exec(t, "UPDATE issue SET assignee_type = 'member', assignee_id = $2 WHERE id = $1", f.run.IssueID, parseUUID(testUserID))
+	setLinkedIssueStatus(t, f, "done")
+	requireRunStatus(t, f, "completed")
+}
+
 // TestAutopilotDispatchSkipsWhenRuntimeOffline locks in the MUL-1899
 // admission gate: when the assignee agent's runtime is not online we must
 // record a `skipped` autopilot_run with a failure_reason and NOT enqueue an

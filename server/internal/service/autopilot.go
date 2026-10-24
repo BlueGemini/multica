@@ -367,14 +367,18 @@ func (s *AutopilotService) ensureWebhookCreateIssueTask(ctx context.Context, aut
 		if err != nil {
 			return fmt.Errorf("dispatch for webhook delivery: resolve squad leader: %w", err)
 		}
-		if _, err := s.TaskSvc.EnqueueTaskForSquadLeader(ctx, issue, leader.ID, autopilot.AssigneeID, pgtype.UUID{}, OriginDerived); err != nil {
+		task, err := s.TaskSvc.EnqueueTaskForSquadLeader(ctx, issue, leader.ID, autopilot.AssigneeID, pgtype.UUID{}, OriginDerived)
+		if err != nil {
 			return fmt.Errorf("dispatch for webhook delivery: repair squad task: %w", err)
 		}
+		s.linkDispatchTask(ctx, &run, task)
 		return nil
 	}
-	if _, err := s.TaskSvc.EnqueueTaskForIssue(ctx, issue); err != nil {
+	task, err := s.TaskSvc.EnqueueTaskForIssue(ctx, issue)
+	if err != nil {
 		return fmt.Errorf("dispatch for webhook delivery: repair issue task: %w", err)
 	}
+	s.linkDispatchTask(ctx, &run, task)
 	return nil
 }
 
@@ -1099,9 +1103,10 @@ func (s *AutopilotService) dispatchRunOnly(ctx context.Context, ap db.Autopilot,
 // not an autopilot fault, and counting it as one also skewed the failure-rate
 // auto-pause. Only two issue transitions still settle an active run here:
 //   - done / in_review: the work was delivered. While the run's dispatch
-//     task is in flight this waits; once it is terminal its completed/failed
-//     outcome decides. Only runs with no dispatch task (e.g. a member
-//     assignee) or a cancelled dispatch complete from the issue status.
+//     task is in flight (or not yet enqueued) this waits; once it is terminal
+//     its completed/failed outcome decides. Only an issue no agent will be
+//     dispatched to (reassigned to a member / unassigned) or a cancelled
+//     dispatch completes from the issue status.
 //   - cancelled: someone cancelled the issue before any task finished, so the
 //     run fails with "issue cancelled" instead of hanging forever.
 //
@@ -1149,8 +1154,16 @@ func (s *AutopilotService) SyncRunFromIssue(ctx context.Context, issue db.Issue)
 		if chain.active() {
 			return
 		}
-		if last, ok := chain.last(); ok && (last.Status == "completed" || last.Status == "failed") {
+		last, ok := chain.last()
+		if ok && (last.Status == "completed" || last.Status == "failed") {
 			s.settleRunFromDispatchTask(ctx, run, last)
+			return
+		}
+		if !ok && issueAwaitsAgentDispatch(issue) {
+			// No dispatch task exists yet but the issue is still assigned to
+			// an agent/squad: the dispatch enqueue is pending (issue:created
+			// fires before the enqueue) or being repaired. Its task outcome
+			// settles the run; do not treat "not yet dispatched" as success.
 			return
 		}
 		updatedRun, err := s.completeAutopilotRun(ctx, db.UpdateAutopilotRunCompletedParams{
@@ -1375,27 +1388,54 @@ func (c autopilotDispatchChain) last() (db.AgentTaskQueue, bool) {
 	return c.tasks[len(c.tasks)-1], true
 }
 
-// loadDispatchChain returns the dispatch chain of a create_issue run. The root
-// is the task dispatchCreateIssue recorded on the run, never inferred from
-// task order: the issue is committed and broadcast before its dispatch task
-// is enqueued, so a mention task can be older than the real dispatch. A run
-// with no recorded task (member assignee, nothing enqueued, or dispatched
-// before the link existed) has an empty chain and settles from issue status.
+// loadDispatchChain returns the dispatch chain of a create_issue run.
+//
+// The root is the task dispatchCreateIssue recorded on the run. The link is
+// written after the enqueue (the task is already visible and announced by
+// then), and runs dispatched before the link existed or repaired after a
+// webhook-worker crash may have none. In that case the root falls back to the
+// oldest non-retry task owned by the dispatch agent — the issue's creator,
+// which dispatchCreateIssue sets to the executing agent/squad leader — and is
+// persisted on the run so later lookups are stable. Tasks of other agents
+// (e.g. a mention enqueued between issue:created and the dispatch enqueue)
+// are never the root. An empty chain means no dispatch task exists yet.
 func (s *AutopilotService) loadDispatchChain(ctx context.Context, run db.AutopilotRun) (autopilotDispatchChain, error) {
-	if !run.TaskID.Valid || !run.IssueID.Valid {
+	if !run.IssueID.Valid {
 		return autopilotDispatchChain{}, nil
 	}
 	tasks, err := s.Queries.ListTasksByIssue(ctx, run.IssueID)
 	if err != nil {
 		return autopilotDispatchChain{}, err
 	}
-	// ListTasksByIssue is newest first; walk oldest first so each retry's
-	// parent is seen before the retry itself.
+	rootID := run.TaskID
+	if !rootID.Valid {
+		issue, err := s.Queries.GetIssue(ctx, run.IssueID)
+		if err != nil {
+			return autopilotDispatchChain{}, err
+		}
+		// ListTasksByIssue is newest first; the last match is the oldest.
+		for _, t := range tasks {
+			if !t.RetryOfTaskID.Valid && issue.CreatorType == "agent" && t.AgentID == issue.CreatorID {
+				rootID = t.ID
+			}
+		}
+		if !rootID.Valid {
+			return autopilotDispatchChain{}, nil
+		}
+		if _, err := s.Queries.SetAutopilotRunDispatchTask(ctx, db.SetAutopilotRunDispatchTaskParams{ID: run.ID, TaskID: rootID}); err != nil {
+			slog.Warn("failed to backfill autopilot dispatch task",
+				"run_id", util.UUIDToString(run.ID),
+				"task_id", util.UUIDToString(rootID),
+				"error", err,
+			)
+		}
+	}
+	// Walk oldest first so each retry's parent is seen before the retry.
 	inChain := map[pgtype.UUID]bool{}
 	var chain autopilotDispatchChain
 	for i := len(tasks) - 1; i >= 0; i-- {
 		t := tasks[i]
-		if t.ID != run.TaskID && !(t.RetryOfTaskID.Valid && inChain[t.RetryOfTaskID]) {
+		if t.ID != rootID && !(t.RetryOfTaskID.Valid && inChain[t.RetryOfTaskID]) {
 			continue
 		}
 		inChain[t.ID] = true
@@ -1404,9 +1444,16 @@ func (s *AutopilotService) loadDispatchChain(ctx context.Context, run db.Autopil
 	return chain, nil
 }
 
+// issueAwaitsAgentDispatch reports whether the linked issue is still assigned
+// to an agent or squad, i.e. an autopilot dispatch task is expected for it.
+func issueAwaitsAgentDispatch(issue db.Issue) bool {
+	return issue.AssigneeType.Valid && (issue.AssigneeType.String == "agent" || issue.AssigneeType.String == "squad")
+}
+
 // linkDispatchTask records the task a create_issue dispatch enqueued on its
-// run. If that task already reached a terminal state before the link landed,
-// its task event saw no chain and was ignored, so settle the run here.
+// run. It is best effort: until it lands, loadDispatchChain resolves the same
+// task through its dispatch-agent fallback, so task events that arrive before
+// the link still settle the run.
 func (s *AutopilotService) linkDispatchTask(ctx context.Context, run *db.AutopilotRun, task db.AgentTaskQueue) {
 	if !task.ID.Valid {
 		return
@@ -1420,20 +1467,8 @@ func (s *AutopilotService) linkDispatchTask(ctx context.Context, run *db.Autopil
 		)
 		return
 	}
-	if n == 0 {
-		return
-	}
-	run.TaskID = task.ID
-	current, err := s.Queries.GetAutopilotRunByIssue(ctx, run.IssueID)
-	if err != nil {
-		return
-	}
-	chain, err := s.loadDispatchChain(ctx, current)
-	if err != nil || chain.active() {
-		return
-	}
-	if last, ok := chain.last(); ok {
-		s.settleRunFromDispatchTask(ctx, current, last)
+	if n > 0 {
+		run.TaskID = task.ID
 	}
 }
 
