@@ -11,6 +11,7 @@ import (
 	dbfx "github.com/multica-ai/multica/server/internal/testutil"
 	"github.com/multica-ai/multica/server/internal/util"
 	db "github.com/multica-ai/multica/server/pkg/db/generated"
+	"github.com/multica-ai/multica/server/pkg/protocol"
 )
 
 // seedAutopilotScheduleTrigger gives an autopilot a schedule trigger recording its
@@ -494,6 +495,104 @@ func TestAutopilotCreateIssueRetryCompletionCompletesRun(t *testing.T) {
 		t.Fatalf("CompleteTask retry: %v", err)
 	}
 	requireRunStatus(t, f, "completed")
+}
+
+// TestAutopilotCreateIssueDeliveryAfterCommittedFailureFailsRun: the dispatch
+// failure is committed but task:failed not yet processed when the issue moves
+// to in_review; the committed failure must win. (MUL-8200 re-review)
+func TestAutopilotCreateIssueDeliveryAfterCommittedFailureFailsRun(t *testing.T) {
+	ctx := context.Background()
+	f := dispatchCreateIssueAutopilot(t, "Delivery racing failure notification")
+	runTaskWithBudget(t, f.queries, f.taskID, 1)
+	observed := false
+	// Failure comments publish after the failed row commits but before task:failed.
+	// Interleave an issue status update in that real callback window.
+	f.taskSvc.Bus.Subscribe(protocol.EventCommentCreated, func(e events.Event) {
+		task, err := f.queries.GetAgentTask(ctx, f.taskID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if task.Status != "failed" {
+			t.Fatalf("expected a committed failure, got %s", task.Status)
+		}
+		observed = true
+		setLinkedIssueStatus(t, f, "in_review")
+	})
+	if _, err := f.taskSvc.FailTask(ctx, f.taskID, "dispatch task crashed", "", "", "", "agent_error", false, "", ""); err != nil {
+		t.Fatal(err)
+	}
+	if !observed {
+		t.Fatal("did not exercise the post-commit/pre-task-event window")
+	}
+	requireRunStatus(t, f, "failed")
+}
+
+// TestAutopilotCreateIssueMentionEnqueuedBeforeDispatch: a mention task
+// enqueued between issue:created and the dispatch enqueue is older than the
+// real dispatch and must still not settle the run. (MUL-8200 re-review)
+func TestAutopilotCreateIssueMentionEnqueuedBeforeDispatch(t *testing.T) {
+	ctx := context.Background()
+	fixture := dbfx.New(testPool, testWorkspaceID, testUserID)
+	runtimeID := fixture.Runtime(t, "Dispatch order runtime")
+	ownerID := fixture.Agent(t, "Autopilot assignee", runtimeID)
+	otherID := fixture.Agent(t, "Early mention agent", runtimeID)
+	queries := db.New(testPool)
+	bus := events.New()
+	taskSvc := service.NewTaskService(queries, testPool, nil, bus)
+	apSvc := service.NewAutopilotService(queries, testPool, bus, taskSvc)
+	registerAutopilotListeners(bus, apSvc)
+	ap, err := queries.CreateAutopilot(ctx, db.CreateAutopilotParams{
+		WorkspaceID: parseUUID(testWorkspaceID), Title: "Dispatch order autopilot",
+		AssigneeType: "agent", AssigneeID: parseUUID(ownerID), Status: "active",
+		ExecutionMode: "create_issue", IssueTitleTemplate: pgtype.Text{String: "Dispatch order issue", Valid: true},
+		CreatedByType: "member", CreatedByID: parseUUID(testUserID),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	fixture.Cleanup(t, "DELETE FROM autopilot WHERE id = $1", ap.ID)
+	var mention db.AgentTaskQueue
+	// The issue is already committed and externally readable at issue:created.
+	// Pause dispatch here to exercise a mention arriving before its later enqueue.
+	bus.Subscribe(protocol.EventIssueCreated, func(e events.Event) {
+		var issueID pgtype.UUID
+		fixture.QueryRow(t, "SELECT id FROM issue WHERE origin_id = $1", ap.ID).Scan(&issueID)
+		fixture.Cleanup(t, "DELETE FROM issue WHERE id = $1", issueID)
+		fixture.Cleanup(t, "DELETE FROM comment WHERE issue_id = $1", issueID)
+		fixture.Cleanup(t, "DELETE FROM agent_task_queue WHERE issue_id = $1", issueID)
+		issue, err := queries.GetIssue(ctx, issueID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		commentID := fixture.Comment(t, util.UUIDToString(issueID), "Quick question for the other agent")
+		mention, err = taskSvc.EnqueueTaskForMention(ctx, issue, parseUUID(otherID), parseUUID(commentID), service.OriginNamed)
+		if err != nil {
+			t.Fatal(err)
+		}
+	})
+	run, err := apSvc.DispatchAutopilot(ctx, ap, seedAutopilotScheduleTrigger(t, queries, ap), "schedule", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var dispatchedID pgtype.UUID
+	fixture.QueryRow(t, "SELECT id FROM agent_task_queue WHERE issue_id = $1 AND agent_id = $2", run.IssueID, ownerID).Scan(&dispatchedID)
+	f := linkedIssueAutopilotFixture{taskSvc: taskSvc, autopilotSvc: apSvc, queries: queries, run: run, taskID: dispatchedID}
+	runTaskWithBudget(t, queries, dispatchedID, 1)
+	runTaskWithBudget(t, queries, mention.ID, 1)
+	if _, err := taskSvc.CompleteTask(ctx, mention.ID, []byte(`{"output":"Quick answer"}`), "", "", "", false, "", ""); err != nil {
+		t.Fatal(err)
+	}
+	state, err := queries.GetAutopilotRun(ctx, run.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if state.Status != "issue_created" {
+		t.Errorf("early unrelated mention completed the run: got %s, want issue_created", state.Status)
+	}
+	if _, err := taskSvc.FailTask(ctx, dispatchedID, "real dispatch failed", "", "", "", "agent_error", false, "", ""); err != nil {
+		t.Fatal(err)
+	}
+	requireRunStatus(t, f, "failed")
 }
 
 // TestAutopilotDispatchSkipsWhenRuntimeOffline locks in the MUL-1899
