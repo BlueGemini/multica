@@ -387,6 +387,14 @@ func (d Definition) handlerlessSpan(key string) handlerlessSpan {
 			return span
 		}
 	}
+	// Nothing but done lies ahead. From a step where work starts, done is the
+	// only way out; from a delivery status such as in_review the work is
+	// already handed in, and done stays a human's call as without a workflow.
+	switch key {
+	case issuestatus.Backlog, issuestatus.Todo, issuestatus.InProgress:
+	default:
+		return span
+	}
 	span.deliver = span.until
 	return span
 }
@@ -811,6 +819,8 @@ func Brief(in BriefInput) string {
 		}
 		if span.deliver != "" {
 			fmt.Fprintf(&b, "Step done      → multica issue status %s %s%s\n", in.IssueIdentifier, span.deliver, handsOffTo(span.deliver))
+		} else {
+			fmt.Fprintf(&b, "Step done      → leave the issue at `%s`; `done` is set by a human\n", in.StatusKey)
 		}
 	default:
 		if next := in.Workflow.NextStatus(in.StatusKey); next != "" {

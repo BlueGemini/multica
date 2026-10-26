@@ -465,6 +465,28 @@ func TestBriefTreatsHandlerlessStepsAsOneSpan(t *testing.T) {
 			wantNot: []string{"Starting work", "in_progress"},
 		},
 		{
+			// Default with a handoff elsewhere: the unconfigured columns keep
+			// the built-in arc — start in_progress, deliver in_review, and a
+			// re-run at in_review leaves done to a human.
+			name:   "Default handoff elsewhere, from todo",
+			def:    blockedOnlyDefault(),
+			status: "todo",
+			want: []string{
+				"Starting work  → multica issue status MUL-7 in_progress\n",
+				"Step done      → multica issue status MUL-7 in_review\n",
+			},
+			wantNot: []string{"MUL-7 done"},
+		},
+		{
+			name:   "Default handoff elsewhere, at in_review",
+			def:    blockedOnlyDefault(),
+			status: "in_review",
+			want: []string{
+				"Step done      → leave the issue at `in_review`; `done` is set by a human\n",
+			},
+			wantNot: []string{"MUL-7 done", "Starting work"},
+		},
+		{
 			name:   "a step that hands off keeps its stage wording",
 			def:    reviewedDefault,
 			status: "in_review",
@@ -505,4 +527,11 @@ func TestBriefKeepsStepWordingForLegacyDaemonsAndObservers(t *testing.T) {
 	if strings.Contains(observer, "Starting work") || strings.Contains(observer, "has no handler") {
 		t.Fatalf("observer brief must not carry the span wording:\n%s", observer)
 	}
+}
+
+// blockedOnlyDefault is the Default workflow with a handoff only on blocked,
+// so every other column is unconfigured.
+func blockedOnlyDefault() Definition {
+	return withHandoffs(Definition{Name: DefaultName, IsDefault: true, Steps: stepsFor(BuiltInDefaultKeys())},
+		[]Step{{StatusKey: "blocked", Handler: Handler{Type: HandlerProjectLead}}})
 }
