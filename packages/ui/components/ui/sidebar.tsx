@@ -335,7 +335,14 @@ function Sidebar({
             <SheetTitle>Sidebar</SheetTitle>
             <SheetDescription>Displays the mobile sidebar.</SheetDescription>
           </SheetHeader>
-          <div className="flex h-full w-full flex-col">{children}</div>
+          {/*
+            On a short screen (phone landscape, a foldable's outer display) a
+            pinned header and footer leave the nav list only a few rows, so
+            the whole sheet scrolls as one column instead.
+          */}
+          <div className="flex h-full w-full flex-col [@media(max-height:640px)]:overflow-y-auto [@media(max-height:640px)]:[&>[data-slot=sidebar-content]]:flex-none">
+            {children}
+          </div>
         </SheetContent>
       </Sheet>
     )
