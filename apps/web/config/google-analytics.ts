@@ -57,7 +57,7 @@ export function sanitizeAnalyticsUrl(raw: string | undefined | null): string {
  * True when the raw URL carries something sanitizeAnalyticsUrl would strip
  * (a non-allowlisted query param or a capability path segment). GA's own
  * history-change page views read the live URL directly, so the component
- * suspends GA entirely while such a URL is current or was just left.
+ * stops GA for this document once the loaded tag may have observed one.
  */
 export function isSensitiveAnalyticsUrl(raw: string | undefined | null): boolean {
   if (!raw) return false;

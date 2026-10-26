@@ -29,23 +29,29 @@ describe("GoogleAnalytics privacy gate", () => {
     window.history.replaceState(null, "", "/");
   });
 
-  it("does not load gtag.js on a URL carrying a credential, and loads it on the next clean page after that", () => {
+  it("waits for a clean URL before first loading the tag", () => {
     window.history.replaceState(null, "", "/wecom/bind?token=secret");
     render(<GoogleAnalytics measurementId={ID} />);
     expect(disabled()).toBe(true);
     expect(gtagScripts()).toHaveLength(0);
 
-    // Leaving the secret URL is still blocked (GA would report it as referrer).
+    // The tag has not observed the sensitive landing URL. It starts only after
+    // history has updated location, and receives a sanitized document referrer.
     window.history.pushState(null, "", "/acme/issues");
-    expect(disabled()).toBe(true);
-    expect(gtagScripts()).toHaveLength(0);
+    expect(disabled()).toBe(false);
+    expect(gtagScripts()).toHaveLength(1);
+    const queued = (window as unknown as { dataLayer: ArrayLike<unknown>[] }).dataLayer;
+    expect(Array.from(queued[1] ?? [])).toEqual([
+      "config", ID,
+      expect.objectContaining({ page_location: expect.stringContaining("/acme/issues") }),
+    ]);
 
     window.history.pushState(null, "", "/acme/projects");
     expect(disabled()).toBe(false);
     expect(gtagScripts()).toHaveLength(1);
   });
 
-  it("loads immediately on a clean URL and disables around secret URLs", () => {
+  it("never re-enables after a sensitive URL, including same-URL history updates", () => {
     window.history.replaceState(null, "", "/about?utm_source=x");
     render(<GoogleAnalytics measurementId={ID} />);
     expect(disabled()).toBe(false);
@@ -55,7 +61,19 @@ describe("GoogleAnalytics privacy gate", () => {
     expect(disabled()).toBe(true);
     window.history.pushState(null, "", "/privacy");
     expect(disabled()).toBe(true);
+    window.history.replaceState({ router: true }, "", "/privacy");
+    expect(disabled()).toBe(true);
     window.history.pushState(null, "", "/download");
+    window.history.pushState(null, "", "/about");
+    expect(disabled()).toBe(true);
+    expect(gtagScripts()).toHaveLength(1);
+  });
+
+  it("continues tracking across clean history changes", () => {
+    window.history.replaceState(null, "", "/about");
+    render(<GoogleAnalytics measurementId={ID} />);
+    window.history.pushState(null, "", "/privacy");
+    window.history.replaceState({ router: true }, "", "/privacy");
     expect(disabled()).toBe(false);
     expect(gtagScripts()).toHaveLength(1);
   });
