@@ -18,6 +18,8 @@ type GaWindow = Window & {
  * Re-enabling it on a later history event can release credential-bearing
  * events, including when the tag's download finished on a sensitive URL.
  * A fresh document can start again, with its landing referrer sanitized.
+ * The same applies to activating a credential-bearing link or form (e.g. a
+ * signed attachment download), which GA reports without a URL change.
  */
 export function installGoogleAnalytics(measurementId: string) {
   const w = window as unknown as GaWindow;
@@ -91,5 +93,54 @@ export function installGoogleAnalytics(measurementId: string) {
   };
   w.addEventListener("popstate", onPopState, true);
 
+  // GA's enhanced measurement also reports the full target URL of outbound
+  // link clicks and file downloads (`link_url`), and the form action of form
+  // submissions (`form_destination`) — without the page URL changing. Signed
+  // attachment downloads (CloudFront / S3 presign / proxy capability) click a
+  // credential-bearing link, so stop before gtag's own listeners see such an
+  // interaction. Window capture runs ahead of any document-level listener.
+  const onLinkInteraction = (event: Event) => {
+    if (!loaded || stopped) return;
+    const href = interactionLinkHref(event);
+    if (href && isSensitiveInteractionUrl(href)) stop();
+  };
+  w.addEventListener("click", onLinkInteraction, true);
+  w.addEventListener("auxclick", onLinkInteraction, true);
+  w.addEventListener(
+    "submit",
+    (event) => {
+      if (!loaded || stopped) return;
+      const form = event.target;
+      if (form instanceof HTMLFormElement && isSensitiveInteractionUrl(form.action)) stop();
+    },
+    true,
+  );
+
   maybeLoad();
+}
+
+// The href of the link an interaction activates, resolved to an absolute URL.
+// composedPath() also reaches anchors inside open shadow roots and SVG links.
+function interactionLinkHref(event: Event): string | null {
+  for (const node of event.composedPath()) {
+    if (!(node instanceof Element)) continue;
+    if (node.localName !== "a" && node.localName !== "area") continue;
+    const raw = node.getAttribute("href") ?? node.getAttribute("xlink:href");
+    if (raw == null) continue;
+    try {
+      return new URL(raw, document.baseURI).href;
+    } catch {
+      // Unparseable: treat as opaque and let the sensitivity check decide.
+      return raw;
+    }
+  }
+  return null;
+}
+
+// Object URLs (CSV / diagram exports) are an opaque same-origin UUID and carry
+// no credential; everything else uses the page-URL rule (non-allowlisted query
+// params, capability paths, or a non-http(s) scheme).
+function isSensitiveInteractionUrl(url: string): boolean {
+  if (url.startsWith("blob:")) return false;
+  return isSensitiveAnalyticsUrl(url);
 }

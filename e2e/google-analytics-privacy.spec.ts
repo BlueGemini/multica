@@ -39,7 +39,8 @@ async function intercept(context: BrowserContext, delayScript = false) {
   await context.route("**/*", async (route) => {
     const request = route.request();
     const url = new URL(request.url());
-    if (url.origin !== origin) {
+    // The synthetic attachment host is the download itself, not a third party.
+    if (url.origin !== origin && url.hostname !== "cdn.example.invalid") {
       external.push(request.url() + "\n" + (request.postData() ?? "") + "\n" + JSON.stringify(request.headers()));
     }
     if (url.origin === origin) {
@@ -51,6 +52,13 @@ async function intercept(context: BrowserContext, delayScript = false) {
       scriptRequested();
       if (delayScript) await released;
       await route.fulfill({ contentType: "application/javascript", body: gtagSource });
+    } else if (url.hostname === "cdn.example.invalid") {
+      // Synthetic attachment bytes for the download scenario.
+      await route.fulfill({
+        contentType: "application/pdf",
+        headers: { "content-disposition": 'attachment; filename="report.pdf"' },
+        body: "synthetic attachment",
+      });
     } else {
       if (url.pathname.includes("/collect")) {
         collected.push(request.url() + "\n" + (request.postData() ?? ""));
@@ -127,6 +135,42 @@ test.describe("Google Analytics credential privacy", () => {
     await page.goBack();
     await page.waitForTimeout(1800);
     expect(traffic.external.join("\n")).not.toContain(secret);
+  });
+
+  test("stops before a signed attachment download click is reported", async ({ page, context }) => {
+    const traffic = await intercept(context);
+    await page.goto(`${origin}/acme/issues`);
+    await install(page);
+    await waitForTag(page);
+    await expect.poll(() => traffic.collected.length).toBeGreaterThan(0);
+
+    // Same shape as useDownloadAttachment's triggerBrowserDownload.
+    const download = (href: string) => page.evaluate((href) => {
+      const anchor = document.createElement("a");
+      anchor.href = href;
+      anchor.download = "";
+      anchor.rel = "noopener";
+      anchor.style.display = "none";
+      document.body.appendChild(anchor);
+      anchor.click();
+      anchor.remove();
+    }, href);
+
+    // Control: a clean outbound download is reported, so the tag's click
+    // tracking is live and this test can observe it.
+    await download("https://cdn.example.invalid/public/report.pdf");
+    await expect.poll(
+      () => traffic.collected.some((hit) => hit.includes("cdn.example.invalid%2Fpublic%2Freport.pdf")),
+      { timeout: 15_000 },
+    ).toBe(true);
+
+    await download(
+      `https://cdn.example.invalid/private/report.pdf?Signature=${secret}&Key-Pair-Id=k&Expires=9999999999`,
+    );
+    // GA batches events for ~5s before sending.
+    await page.waitForTimeout(6500);
+    expect(traffic.external.join("\n")).not.toContain(secret);
+    expect(page.url()).toBe(`${origin}/acme/issues`);
   });
 
   test("sanitizes the referrer on a full-page navigation", async ({ page, context }) => {

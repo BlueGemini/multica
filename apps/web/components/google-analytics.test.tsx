@@ -78,6 +78,69 @@ describe("GoogleAnalytics privacy gate", () => {
     expect(gtagScripts()).toHaveLength(1);
   });
 
+  const clickLink = (href: string, init: MouseEventInit = {}, type = "click") => {
+    const anchor = document.createElement("a");
+    anchor.href = href;
+    anchor.download = "";
+    // jsdom cannot navigate; the guard runs in the capture phase regardless.
+    anchor.addEventListener("click", (e) => e.preventDefault());
+    const child = document.createElement("span");
+    anchor.appendChild(child);
+    document.body.appendChild(anchor);
+    // Dispatch from a descendant: the guard must find the enclosing link.
+    child.dispatchEvent(new MouseEvent(type, { bubbles: true, cancelable: true, ...init }));
+    anchor.remove();
+  };
+
+  it("stops before a credential-bearing link click without a URL change", () => {
+    window.history.replaceState(null, "", "/acme/issues");
+    render(<GoogleAnalytics measurementId={ID} />);
+    expect(disabled()).toBe(false);
+
+    clickLink("https://cdn.example.invalid/report.pdf?Signature=s&Key-Pair-Id=k");
+    expect(disabled()).toBe(true);
+    expect(window.location.pathname).toBe("/acme/issues");
+
+    // Stays stopped for the document, including later clean navigation.
+    window.history.pushState(null, "", "/acme/projects");
+    expect(disabled()).toBe(true);
+  });
+
+  it("treats middle-click, same-origin capability and invite links as sensitive", () => {
+    for (const [href, type] of [
+      ["https://cdn.example.invalid/a.pdf?X-Amz-Signature=s", "auxclick"],
+      ["/api/attachments/1/signed-download?sig=s", "click"],
+      ["/invite/abc", "click"],
+    ] as const) {
+      window.history.replaceState(null, "", "/about");
+      render(<GoogleAnalytics measurementId={ID} />);
+      expect(disabled()).toBe(false);
+      clickLink(href, { button: type === "auxclick" ? 1 : 0 }, type);
+      expect(disabled(), href).toBe(true);
+      delete (window as unknown as Record<string, unknown>).__multicaGoogleAnalytics;
+    }
+  });
+
+  it("keeps tracking clean links and object-URL exports", () => {
+    window.history.replaceState(null, "", "/about");
+    render(<GoogleAnalytics measurementId={ID} />);
+    clickLink("https://github.com/multica-ai/multica");
+    clickLink("/acme/issues?utm_source=x#top");
+    clickLink("blob:https://app.example.invalid/2b0c-uuid");
+    expect(disabled()).toBe(false);
+  });
+
+  it("stops before submitting a form to a credential-bearing action", () => {
+    window.history.replaceState(null, "", "/about");
+    render(<GoogleAnalytics measurementId={ID} />);
+    const form = document.createElement("form");
+    form.action = "https://idp.example.invalid/authorize?state=secret";
+    document.body.appendChild(form);
+    form.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
+    form.remove();
+    expect(disabled()).toBe(true);
+  });
+
   it("installs once even if mounted again", () => {
     window.history.replaceState(null, "", "/about");
     render(<GoogleAnalytics measurementId={ID} />);
