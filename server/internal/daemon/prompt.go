@@ -463,8 +463,21 @@ func buildCommentPrompt(task Task, provider string) string {
 			}
 			authorLabel = fmt.Sprintf("Another agent (%s)", name)
 		}
-		fmt.Fprintf(&b, "[NEW COMMENT] %s just left a new comment. Focus on THIS comment — do not confuse it with previous ones:\n\n", authorLabel)
+		// MUL-8218: an edited trigger on a resumed session. The edit cancelled
+		// the run that read the old text and retriggered from the new one, but
+		// that run's transcript is what this session resumes. Say which version
+		// is current; the work already done is not undone by the edit.
+		editedSinceResume := task.TriggerCommentEditedAt != "" &&
+			task.PriorSessionID != "" && !task.PriorSessionResumeUnavailable
+		if editedSinceResume {
+			fmt.Fprintf(&b, "[EDITED COMMENT] %s edited a comment after your previous run in this session started. Focus on THIS comment — do not confuse it with previous ones:\n\n", authorLabel)
+		} else {
+			fmt.Fprintf(&b, "[NEW COMMENT] %s just left a new comment. Focus on THIS comment — do not confuse it with previous ones:\n\n", authorLabel)
+		}
 		fmt.Fprintf(&b, "> %s\n\n", task.TriggerCommentContent)
+		if editedSinceResume {
+			b.WriteString(buildEditedTriggerNote(task))
+		}
 		// MUL-4195: comments that arrived before this run started were folded
 		// into it rather than dropped. The trigger above is the newest; the
 		// agent must ALSO address these earlier ones so no deliberate user
@@ -918,4 +931,23 @@ func taskIsSquadLeader(task Task) bool {
 		return task.Agent != nil && strings.Contains(task.Agent.Instructions, squadBriefingMarker)
 	}
 	return task.IsLeaderTask || task.SquadID != ""
+}
+
+// buildEditedTriggerNote explains an edited trigger comment to a resumed
+// session (MUL-8218). The session's history may quote the comment's earlier
+// text; only the version quoted in this prompt is an instruction. The note
+// deliberately does not call the previous run void: files it changed,
+// commands it ran and comments it posted still happened.
+func buildEditedTriggerNote(task Task) string {
+	var b strings.Builder
+	b.WriteString("This comment")
+	if task.TriggerCommentID != "" {
+		fmt.Fprintf(&b, " (%s", task.TriggerCommentID)
+		if task.TriggerCommentRevision > 0 {
+			fmt.Fprintf(&b, ", revision %d", task.TriggerCommentRevision)
+		}
+		b.WriteString(")")
+	}
+	fmt.Fprintf(&b, " was edited at %s. Your session history may still contain an earlier version of it. The text quoted above is the current version and the only one to act on; treat any earlier wording, and plans that depended on it, as withdrawn. Work already done in this session (file changes, commands, posted comments) still happened and was not rolled back — re-evaluate what remains against the current text instead of repeating it or assuming it was undone.\n\n", task.TriggerCommentEditedAt)
+	return b.String()
 }
