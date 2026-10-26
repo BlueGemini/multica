@@ -24,7 +24,7 @@ func TestBuildCommentPromptEditedTrigger(t *testing.T) {
 			"[EDITED COMMENT] A user edited a comment after your previous run in this session started.",
 			"> Now it connects over TLS",
 			"This comment (comment-1, revision 3) was edited at 2026-10-26T02:20:00Z.",
-			"The text quoted above is the current version and the only one to act on",
+			"The text quoted in this prompt is the current version and the only one to act on",
 			"still happened and was not rolled back",
 		} {
 			if !strings.Contains(out, want) {
@@ -63,5 +63,42 @@ func TestBuildCommentPromptEditedTrigger(t *testing.T) {
 				t.Errorf("%s: edit note must only render on a resumed session:\n%s", name, out)
 			}
 		})
+	}
+}
+
+// An edited comment folded behind a newer, unchanged trigger must still be
+// marked as the current version (review of PR #9526).
+func TestBuildCommentPromptEditedCoalescedComment(t *testing.T) {
+	base := Task{
+		IssueID:               "issue-1",
+		TriggerCommentID:      "comment-2",
+		TriggerCommentContent: "Please continue",
+		PriorSessionID:        "session-1",
+		CoalescedComments: []CoalescedCommentData{
+			{ID: "comment-1", ThreadID: "thread-1", Content: "edited instruction Y", EditedAt: "2026-10-26T02:20:00Z", Revision: 2},
+			{ID: "comment-0", ThreadID: "thread-1", Content: "unchanged instruction"},
+		},
+	}
+
+	out := buildCommentPrompt(base, "claude")
+	for _, want := range []string{
+		"[NEW COMMENT] A user just left a new comment.",
+		"- comment comment-1 (A user) [thread thread-1] [EDITED at 2026-10-26T02:20:00Z, revision 2 — current version]:",
+		"- comment comment-0 (A user) [thread thread-1]:",
+		"1 comment(s) above marked EDITED changed after your previous run in this session started.",
+		"still happened and was not rolled back",
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("prompt missing %q:\n%s", want, out)
+		}
+	}
+	if strings.Contains(out, "[EDITED COMMENT]") {
+		t.Error("an unchanged trigger must keep the new-comment header")
+	}
+
+	cold := base
+	cold.PriorSessionID = ""
+	if out := buildCommentPrompt(cold, "claude"); strings.Contains(out, "EDITED") {
+		t.Errorf("cold start must not mark edits:\n%s", out)
 	}
 }

@@ -194,17 +194,19 @@ type commentCountScope struct {
 	WorkspaceID pgtype.UUID
 }
 
-// triggerCommentEditedSince reports whether comment c was edited after a
-// resumed run started (MUL-8218), i.e. whether that run's session may hold an
-// earlier version of c's text.
+// triggerCommentEditedSince reports whether comment c may have been edited
+// after a resumed run started (MUL-8218), i.e. whether that run's session may
+// hold an earlier version of c's text.
 //
 // Time is the whole test: the comment must have existed before the run
 // started (otherwise the session never saw any version of it) and been
-// changed after. revision > 1 rules out a never-edited row. updated_at also
-// moves on resolve; a resolve stamps resolved_at with the same now(), so a
-// row whose last change is its resolve is not reported as edited. Unresolve
-// is not distinguishable here and errs toward the note, which is harmless:
-// the note only says the quoted text is the current version.
+// changed after. revision > 1 rules out a never-edited row.
+//
+// updated_at and revision also move on resolve/unresolve, and a later resolve
+// can hide an earlier body edit behind its own timestamp. The only change that
+// is provably resolve-only is a first-revision row resolved once: revision 2
+// with resolved_at == updated_at. Anything else errs toward the note, which is
+// harmless — it only says the quoted text is the current version.
 func triggerCommentEditedSince(c db.Comment, runStartedAt pgtype.Timestamptz) bool {
 	if !runStartedAt.Valid || !c.CreatedAt.Valid || !c.UpdatedAt.Valid || c.Revision <= 1 {
 		return false
@@ -212,7 +214,7 @@ func triggerCommentEditedSince(c db.Comment, runStartedAt pgtype.Timestamptz) bo
 	if !c.CreatedAt.Time.Before(runStartedAt.Time) || !c.UpdatedAt.Time.After(runStartedAt.Time) {
 		return false
 	}
-	if c.ResolvedAt.Valid && c.ResolvedAt.Time.Equal(c.UpdatedAt.Time) {
+	if c.Revision == 2 && c.ResolvedAt.Valid && c.ResolvedAt.Time.Equal(c.UpdatedAt.Time) {
 		return false
 	}
 	return true

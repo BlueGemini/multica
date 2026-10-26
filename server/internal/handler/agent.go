@@ -751,6 +751,15 @@ type CoalescedCommentData struct {
 	AuthorName string `json:"author_name,omitempty"`
 	Content    string `json:"content"`
 	CreatedAt  string `json:"created_at,omitempty"`
+	// MUL-8218: set when this comment was edited after the run whose session
+	// this claim resumes had started (see triggerCommentEditedSince). omitempty
+	// so old daemons ignore both.
+	EditedAt string `json:"edited_at,omitempty"`
+	Revision int64  `json:"revision,omitempty"`
+
+	// source is the row this entry was read from, kept so the claim can run
+	// the edit check once the resumed session is known. Never serialized.
+	source db.Comment
 }
 
 // TaskUsageData is one (provider, model) slice of a single run's token usage.

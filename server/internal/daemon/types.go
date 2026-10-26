@@ -212,6 +212,8 @@ type CoalescedCommentData struct {
 	AuthorName string `json:"author_name,omitempty"`
 	Content    string `json:"content"`
 	CreatedAt  string `json:"created_at,omitempty"`
+	EditedAt   string `json:"edited_at,omitempty"` // MUL-8218: set when this comment was edited after the resumed session's run started; empty on old servers / unedited comments
+	Revision   int64  `json:"revision,omitempty"`  // MUL-8218: current revision, sent alongside EditedAt
 }
 
 // AgentData holds agent details returned by the claim endpoint.

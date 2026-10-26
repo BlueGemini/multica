@@ -54,12 +54,21 @@ func TestTriggerCommentEditedSince(t *testing.T) {
 			started: runStarted,
 		},
 		{
-			name: "last change is a resolve, not an edit",
+			name: "only change is a single resolve",
 			comment: db.Comment{
 				CreatedAt: ts(-time.Minute), UpdatedAt: ts(time.Minute), Revision: 2,
 				ResolvedAt: ts(time.Minute),
 			},
 			started: runStarted,
+		},
+		{
+			name: "edit then resolve: the resolve must not hide the edit",
+			comment: db.Comment{
+				CreatedAt: ts(-time.Minute), UpdatedAt: ts(2 * time.Minute), Revision: 3,
+				ResolvedAt: ts(2 * time.Minute),
+			},
+			started: runStarted,
+			want:    true,
 		},
 		{
 			name: "edited after an earlier resolve",
@@ -240,5 +249,68 @@ func TestUpdateComment_EditedTriggerReachesResumedRun(t *testing.T) {
 		}
 		runningTaskID = next.ID
 		previous = body
+	}
+}
+
+// Review regressions for PR #9526 (supplied by the reviewer, adapted): a
+// resolve after the edit, and an edited comment folded behind a newer trigger.
+func TestClaimTask_EditThenResolveKeepsEditFlag(t *testing.T) {
+	if testHandler == nil || testPool == nil {
+		t.Skip("database unavailable")
+	}
+	f := createCommentDeliveryFixture(t, "Review edit then resolve")
+	makeCommentDeliverySingleThread(t, f)
+	dbfx.Exec(t, `UPDATE issue SET assignee_type='agent', assignee_id=$2 WHERE id=$1`, f.issueID, f.agentID)
+	first := claimCommentDeliveryFixture(t, f, "")
+	dbfx.Exec(t, `UPDATE agent_task_queue SET status='running', started_at=now()-interval '30 seconds', session_id='review-edit-resolve-session' WHERE id=$1`, first.ID)
+	trigger := f.commentID[2]
+	req := withURLParam(newRequest(http.MethodPut, "/api/comments/"+trigger, map[string]any{"content": "edited instruction Y"}), "commentId", trigger)
+	testutil.Call(t, testHandler.UpdateComment, req).Want(http.StatusOK)
+	resolveCommentHTTP(t, trigger)
+	next := claimCommentDeliveryFixture(t, f, "")
+	if next.PriorSessionID != "review-edit-resolve-session" {
+		t.Fatal("unexpected resume session")
+	}
+	if next.TriggerCommentEditedAt == "" {
+		t.Fatal("edit warning lost after resolve although resumed history still holds X")
+	}
+}
+
+func TestClaimTask_FlagsEditedCoalescedComment(t *testing.T) {
+	if testHandler == nil || testPool == nil {
+		t.Skip("database unavailable")
+	}
+	f := createCommentDeliveryFixture(t, "Review edit coalesced")
+	makeCommentDeliverySingleThread(t, f)
+	dbfx.Exec(t, `UPDATE issue SET assignee_type='agent', assignee_id=$2 WHERE id=$1`, f.issueID, f.agentID)
+	first := claimCommentDeliveryFixture(t, f, "coalesced-comments-v1")
+	dbfx.Exec(t, `UPDATE agent_task_queue SET status='running', started_at=now()-interval '30 seconds', session_id='review-edit-coalesced-session' WHERE id=$1`, first.ID)
+	editedID := f.commentID[0]
+	req := withURLParam(newRequest(http.MethodPut, "/api/comments/"+editedID, map[string]any{"content": "edited instruction Y"}), "commentId", editedID)
+	testutil.Call(t, testHandler.UpdateComment, req).Want(http.StatusOK)
+	newComment := withURLParam(newRequest(http.MethodPost, "/api/issues/"+f.issueID+"/comments", map[string]any{"content": "[@Review](mention://agent/" + f.agentID + ") Please continue with the current instructions.", "parent_id": editedID}), "id", f.issueID)
+	testutil.Call(t, testHandler.CreateComment, newComment).Want(http.StatusCreated)
+	next := claimCommentDeliveryFixture(t, f, "coalesced-comments-v1")
+	if next.PriorSessionID != "review-edit-coalesced-session" {
+		t.Fatal("unexpected resume session")
+	}
+	if next.TriggerCommentEditedAt != "" {
+		t.Fatalf("the new, unchanged trigger was flagged as edited (%q)", next.TriggerCommentEditedAt)
+	}
+	var found bool
+	for _, cc := range next.CoalescedComments {
+		if cc.ID != editedID {
+			if cc.EditedAt != "" {
+				t.Fatalf("unchanged coalesced comment %s flagged as edited", cc.ID)
+			}
+			continue
+		}
+		found = true
+		if cc.Content != "edited instruction Y" || cc.EditedAt == "" || cc.Revision != 2 {
+			t.Fatalf("edited coalesced comment = %+v, want current body, edit time and revision 2", cc)
+		}
+	}
+	if !found {
+		t.Fatalf("edited comment %s not delivered: %+v", editedID, next.CoalescedComments)
 	}
 }
