@@ -1527,6 +1527,50 @@ func TestPrepareLocalWorktreeForksWhenTheConversationBranchIsBusy(t *testing.T) 
 	finalizeOK(t, first)
 }
 
+// A task that already forked onto <branch>-<task key> because the conversation's
+// branch was busy can be re-dispatched under the same id (daemon restart,
+// stale-dispatch reclaim) while that branch is still busy. Its fallback name is
+// then taken by its own earlier attempt; failing on that made every re-dispatch
+// of the task fail with "a branch named ... already exists" (GH #9198).
+func TestPrepareLocalWorktreeRedispatchWhileTheConversationBranchIsBusy(t *testing.T) {
+	t.Parallel()
+	repo := newTestRepo(t)
+
+	first := prepareTurn(t, repo, "MUL-6881", turnOneTask)
+	writeFile(t, filepath.Join(first.WorkDir, "turn-one.txt"), "work from turn one\n")
+	finalizeOK(t, first)
+	// The user's own checkout now holds the conversation's branch.
+	gitRun(t, repo, "checkout", "agent/j/mul-6881")
+
+	attempt1 := prepareTurn(t, repo, "MUL-6881", turnTwoTask)
+	fallback := "agent/j/mul-6881-" + taskKey(turnTwoTask)
+	if attempt1.Branch != fallback {
+		t.Fatalf("first attempt branch = %q, want %q", attempt1.Branch, fallback)
+	}
+	// The first attempt dies mid-run with partial work committed; its worktree
+	// registration goes with the env root, its branch stays.
+	writeFile(t, filepath.Join(attempt1.WorkDir, "partial.txt"), "partial work\n")
+	gitRun(t, attempt1.Path, "add", "-A")
+	gitRun(t, attempt1.Path, "commit", "-m", "partial")
+	partialTip := gitRun(t, repo, "rev-parse", fallback)
+	if err := os.RemoveAll(attempt1.Path); err != nil {
+		t.Fatal(err)
+	}
+	gitRun(t, repo, "worktree", "prune")
+
+	attempt2 := prepareTurn(t, repo, "MUL-6881", turnTwoTask)
+	if attempt2.Branch == fallback || !strings.HasPrefix(attempt2.Branch, fallback+"-") {
+		t.Errorf("re-dispatched attempt branch = %q, want a fresh %s-<suffix>", attempt2.Branch, fallback)
+	}
+	if _, err := os.Stat(filepath.Join(attempt2.WorkDir, "turn-one.txt")); err != nil {
+		t.Errorf("re-dispatched attempt does not carry the conversation's work: %v", err)
+	}
+	if got := gitRun(t, repo, "rev-parse", fallback); got != partialTip {
+		t.Errorf("earlier attempt's branch moved to %s, want it kept at %s", got, partialTip)
+	}
+	finalizeOK(t, attempt2)
+}
+
 // Once the user merges the branch, its tip carries nothing HEAD does not.
 // Continuing from it would leave the next turn behind the user's own commits.
 func TestPrepareLocalWorktreeRestartsAMergedConversationBranch(t *testing.T) {

@@ -1322,10 +1322,25 @@ func addLocalWorktree(gitRoot, worktreePath string, plan taskBranchPlan, taskID 
 		return "", false, fmt.Errorf("execenv: git worktree add: %s: %w", strings.TrimSpace(out), err)
 	}
 	alt := plan.altName(taskID)
-	if out, err := runGit(gitRoot, "worktree", "add", "-b", alt, worktreePath, plan.base); err != nil {
+	out, err = runGit(gitRoot, "worktree", "add", "-b", alt, worktreePath, plan.base)
+	if err == nil {
+		return alt, true, nil
+	}
+	if !branchUnavailable(out) {
 		return "", false, fmt.Errorf("execenv: git worktree add: %s: %w", strings.TrimSpace(out), err)
 	}
-	return alt, true, nil
+	// The fallback name is deterministic for a conversation branch
+	// (<branch>-<task key>), so a task re-dispatched under the same id while
+	// the conversation's branch is still busy finds its own earlier fallback
+	// branch already there. Failing on it made every re-dispatch of that task
+	// fail the same way, forever (GH #9198). That branch may hold the earlier
+	// attempt's partial work, so it is left untouched rather than reused or
+	// reset: this attempt forks a fresh, timestamped one from the same base.
+	retry := fmt.Sprintf("%s-%d", alt, time.Now().Unix())
+	if out, err := runGit(gitRoot, "worktree", "add", "-b", retry, worktreePath, plan.base); err != nil {
+		return "", false, fmt.Errorf("execenv: git worktree add: %s: %w", strings.TrimSpace(out), err)
+	}
+	return retry, true, nil
 }
 
 // branchUnavailable recognises git refusing a branch that another worktree
