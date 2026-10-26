@@ -37,6 +37,7 @@ type piBackend struct {
 	// error. Production uses defaultPiTurnErrorGrace; tests shorten it without
 	// changing concurrent executions through package-global state.
 	turnErrorGrace time.Duration
+	terminateGrace time.Duration
 }
 
 var (
@@ -444,6 +445,8 @@ func (b *piBackend) Execute(ctx context.Context, prompt string, opts ExecOptions
 		args = buildPiArgs(sessionPath, opts, b.cfg.Logger)
 	}
 	cmd, _, _ := b.cfg.commandAt(execName).execVia(processCtx, choosePiInvocation, lookedUp, args, b.cfg.Logger)
+	// The joined cleanup below owns TERM, escalation and pipe release.
+	cmd.Cancel = func() error { return nil }
 	hideAgentWindow(cmd)
 	b.cfg.logAgentCommand(cmd, newAgentCommandLogArgs(args))
 	cmd.WaitDelay = 10 * time.Second
@@ -505,6 +508,17 @@ func (b *piBackend) Execute(ctx context.Context, prompt string, opts ExecOptions
 		_, _ = io.Copy(stderrWatch, stderrRead)
 		close(stderrDone)
 	}()
+	cleanup := newPiRunCleanup(cmd)
+	grace := b.terminateGrace
+	if grace <= 0 {
+		grace = 2 * time.Second
+	}
+	finishCleanup := func() error {
+		return cleanup.finish(cmd, closeStdin, func() {
+			closePiReadPipe(stdout)
+			closePiReadPipe(stderrRead)
+		}, grace)
+	}
 
 	b.cfg.Logger.Info(label+" started", "pid", cmd.Process.Pid, "cwd", opts.Cwd, "model", opts.Model)
 
@@ -516,14 +530,7 @@ func (b *piBackend) Execute(ctx context.Context, prompt string, opts ExecOptions
 	}
 	turnErrors := newPiTurnErrorGuard(turnErrorGrace, func() {
 		b.cfg.Logger.Info(label + " turn error recovery grace expired; stopping runtime")
-		// CommandContext owns process-tree cancellation for every runtime
-		// command. An escaped descendant can nevertheless retain stdout/stderr
-		// write ends after that group dies, so close the adapter-owned pipes too:
-		// finalization must not depend on an unowned process eventually exiting.
 		cancelProcess()
-		closeStdin()
-		closePiReadPipe(stdout)
-		closePiReadPipe(stderrRead)
 	})
 
 	// Write concurrently with stdout consumption. A large prompt can fill the
@@ -536,14 +543,14 @@ func (b *piBackend) Execute(ctx context.Context, prompt string, opts ExecOptions
 		writeErrCh <- err
 	}()
 
-	// Close every adapter-owned pipe when the context is cancelled. Closing stdin
-	// releases a writer blocked on a child that stopped reading; closing the read
-	// pipes releases the stdout scanner and stderr copier.
 	go func() {
-		<-runCtx.Done()
-		closeStdin()
-		closePiReadPipe(stdout)
-		closePiReadPipe(stderrRead)
+		select {
+		case <-processCtx.Done():
+			_ = finishCleanup()
+		case <-cleanup.exited:
+			_ = finishCleanup()
+		case <-cleanup.done:
+		}
 	}()
 
 	releaseExtension = nil
@@ -576,6 +583,7 @@ func (b *piBackend) Execute(ctx context.Context, prompt string, opts ExecOptions
 				continue
 			}
 			turnErrors.observeEvent(evt.Type)
+			cleanup.observe(evt.Type)
 
 			switch evt.Type {
 			case "agent_start":
@@ -706,23 +714,16 @@ func (b *piBackend) Execute(ctx context.Context, prompt string, opts ExecOptions
 			trySend(msgCh, Message{Type: MessageText, Content: d})
 		}
 
-		// Finish the user-owned stderr read before Wait closes StderrPipe. Normal
-		// exit gets the same 10s backstop cmd.WaitDelay used to provide when
-		// os/exec owned the copier. Cancellation and error-grace expiry close
-		// stderrRead above, so their finalization does not pay it.
-		stderrTimer := time.NewTimer(cmd.WaitDelay)
-		select {
-		case <-stderrDone:
-			stderrTimer.Stop()
-		case <-stderrTimer.C:
-			closePiReadPipe(stderrRead)
-			<-stderrDone
-		}
+		cleanupErr := finishCleanup()
+		<-stderrDone
 
 		waitErr := cmd.Wait()
 		releaseProcessGroup(cmd)
 		duration := time.Since(startTime)
 		lastTurnError, turnErrorGraceExpired := turnErrors.finish()
+		if cleanupErr == nil && cleanup.tools.Load() > 0 && cleanup.unobserved {
+			cleanupErr = fmt.Errorf("runtime exited before tool process ownership could be recorded")
+		}
 
 		// Wait closes the process pipes, so a prompt write still blocked when the
 		// child exited has returned by now. The writer sends exactly once.
@@ -800,6 +801,11 @@ func (b *piBackend) Execute(ctx context.Context, prompt string, opts ExecOptions
 				finalError = fmt.Sprintf("omp session file: %v", sessionErr)
 			}
 		}
+		if cleanupErr != nil {
+			finalStatus = "cleanup_unconfirmed"
+			finalError = fmt.Sprintf("%s process cleanup unconfirmed: %v; background processes may still be running. Check them before manually rerunning this task. %s", label, cleanupErr, finalError)
+			authoritativeTerminal = true
+		}
 
 		b.cfg.Logger.Info(label+" finished", "pid", cmd.Process.Pid, "status", finalStatus, "duration", duration.Round(time.Millisecond).String())
 		// Publish the authoritative terminal boundary before Result. The daemon
@@ -831,6 +837,7 @@ func (b *piBackend) Execute(ctx context.Context, prompt string, opts ExecOptions
 	}()
 
 	return &Session{
+		CleanupRequired:  true,
 		Messages:         msgCh,
 		Result:           resCh,
 		TerminalObserved: turnErrors.terminalObserved,
