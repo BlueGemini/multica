@@ -77,3 +77,39 @@ func TestPiCleanupDetachedTool(t *testing.T) {
 		}
 	}
 }
+
+func TestPiCleanupSuccessfulBackgroundServiceSurvives(t *testing.T) {
+	for _, provider := range []string{"pi", "omp"} {
+		t.Run(provider, func(t *testing.T) {
+			t.Parallel()
+			fake, dir, env := testutil.PiCleanupExecutable(t, "success")
+			backend, err := ResolveBackend(provider, Config{ExecutablePath: fake, Env: env, Logger: slog.Default()})
+			if err != nil {
+				t.Fatal(err)
+			}
+			backend.(*piBackend).terminateGrace = 100 * time.Millisecond
+			sessionFile := filepath.Join(dir, "session.jsonl")
+			if err := os.WriteFile(sessionFile, nil, 0o600); err != nil {
+				t.Fatal(err)
+			}
+			session, err := backend.Execute(context.Background(), "start a background service", ExecOptions{Cwd: dir, ResumeSessionID: sessionFile})
+			if err != nil {
+				t.Fatal(err)
+			}
+			go func() {
+				for range session.Messages {
+				}
+			}()
+			result := waitPiResult(t, session, 4*time.Second)
+			if result.Status != "completed" {
+				t.Fatalf("successful run = %s: %s", result.Status, result.Error)
+			}
+			before, _ := os.ReadFile(filepath.Join(dir, "receipt"))
+			time.Sleep(150 * time.Millisecond)
+			after, _ := os.ReadFile(filepath.Join(dir, "receipt"))
+			if len(after) <= len(before) {
+				t.Fatalf("successful background service stopped at Result: %d -> %d", len(before), len(after))
+			}
+		})
+	}
+}

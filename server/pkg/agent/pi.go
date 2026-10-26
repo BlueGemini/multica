@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -513,12 +514,11 @@ func (b *piBackend) Execute(ctx context.Context, prompt string, opts ExecOptions
 	if grace <= 0 {
 		grace = 2 * time.Second
 	}
-	finishCleanup := func() error {
-		return cleanup.finish(cmd, closeStdin, func() {
-			closePiReadPipe(stdout)
-			closePiReadPipe(stderrRead)
-		}, grace)
+	closePipes := func() {
+		closePiReadPipe(stdout)
+		closePiReadPipe(stderrRead)
 	}
+	finishCleanup := func() error { return cleanup.finish(cmd, closeStdin, closePipes, grace) }
 
 	b.cfg.Logger.Info(label+" started", "pid", cmd.Process.Pid, "cwd", opts.Cwd, "model", opts.Model)
 
@@ -548,7 +548,17 @@ func (b *piBackend) Execute(ctx context.Context, prompt string, opts ExecOptions
 		case <-processCtx.Done():
 			_ = finishCleanup()
 		case <-cleanup.exited:
-			_ = finishCleanup()
+			// Descendants can inherit stdout after a successful parent exit. Allow
+			// buffered protocol events to drain before ending that read. In-flight
+			// tool accounting below decides whether termination is required.
+			if pipe, ok := stdout.(interface{ SetReadDeadline(time.Time) error }); ok {
+				_ = pipe.SetReadDeadline(time.Now().Add(250 * time.Millisecond))
+			}
+			select {
+			case <-processCtx.Done():
+				_ = finishCleanup()
+			case <-cleanup.done:
+			}
 		case <-cleanup.done:
 		}
 	}()
@@ -703,6 +713,15 @@ func (b *piBackend) Execute(ctx context.Context, prompt string, opts ExecOptions
 			}
 		}
 		scanErr := scanner.Err()
+		if errors.Is(scanErr, os.ErrDeadlineExceeded) {
+			select {
+			case <-cleanup.exited:
+				// This deadline only releases an inherited pipe after the runtime's
+				// own exit; all available events were consumed before the deadline.
+				scanErr = nil
+			default:
+			}
+		}
 		if scanErr != nil {
 			// Scanner stopped consuming stdout. Close the pipe before Wait so Pi,
 			// still writing an oversized event, cannot deadlock on the full OS
@@ -714,7 +733,20 @@ func (b *piBackend) Execute(ctx context.Context, prompt string, opts ExecOptions
 			trySend(msgCh, Message{Type: MessageText, Content: d})
 		}
 
-		cleanupErr := finishCleanup()
+		// Do not reap the root before the cancellation owner releases its numeric
+		// process group: an unreaped root prevents PGID reuse during cleanup.
+		if scanErr == nil && cleanup.tools.Load() == 0 && processCtx.Err() == nil && piCanObserveRuntimeExit {
+			select {
+			case <-cleanup.exited:
+			case <-processCtx.Done():
+			}
+		}
+		var cleanupErr error
+		if scanErr != nil || cleanup.tools.Load() > 0 || processCtx.Err() != nil {
+			cleanupErr = finishCleanup()
+		} else {
+			cleanupErr = cleanup.complete(closeStdin, closePipes)
+		}
 		<-stderrDone
 
 		waitErr := cmd.Wait()

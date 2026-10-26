@@ -49,10 +49,11 @@ RETURNING *;
 
 -- name: MarkPiTaskProcessCleanupPending :exec
 -- Cancellation makes the task terminal before the daemon finishes stopping it.
--- Retain a fence in the existing result object until cancel-ack arrives.
+-- Only a run that negotiated confirmation at start holds a fence until ack.
 UPDATE agent_task_queue task
 SET result = COALESCE(task.result, '{}'::jsonb) || '{"process_cleanup_pending":true}'::jsonb
 WHERE task.id = @id AND task.status = 'cancelled' AND task.started_at IS NOT NULL
+  AND task.result->>'process_cleanup_capability' = 'pi-process-cleanup-v1'
   AND EXISTS (SELECT 1 FROM agent_runtime runtime WHERE runtime.id = task.runtime_id AND runtime.provider IN ('pi', 'omp'));
 
 -- name: ClearTaskProcessCleanupPending :exec

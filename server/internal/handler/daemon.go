@@ -4665,14 +4665,17 @@ func (h *Handler) StartTask(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusConflict, "task blocked by unconfirmed process cleanup; manual rerun required")
 		return
 	}
-	enableTaskSupplement := slices.Contains(req.Capabilities, protocol.DaemonCapabilityTaskSupplementV1)
+	offered := service.TaskStartCapabilities{
+		Supplement:     slices.Contains(req.Capabilities, protocol.DaemonCapabilityTaskSupplementV1),
+		ProcessCleanup: slices.Contains(req.Capabilities, protocol.DaemonCapabilityPiProcessCleanupV1),
+	}
 	var task *db.AgentTaskQueue
 	var err error
 	if legacy {
 		// Older daemons send {} and retain their single-winner behavior.
-		task, err = h.TaskService.StartTask(r.Context(), startTask.ID, enableTaskSupplement)
+		task, err = h.TaskService.StartTask(r.Context(), startTask.ID, offered)
 	} else {
-		task, err = h.TaskService.StartTaskForClaim(r.Context(), claim, enableTaskSupplement)
+		task, err = h.TaskService.StartTaskForClaim(r.Context(), claim, offered)
 	}
 	if err != nil {
 		slog.Warn("start task failed", "task_id", taskID, "error", err)
@@ -4690,6 +4693,12 @@ func (h *Handler) StartTask(w http.ResponseWriter, r *http.Request) {
 
 	slog.Info("task started", "task_id", taskID, "agent_id", uuidToString(task.AgentID))
 	resp := taskToResponse(*task, workspaceID)
+	var result struct {
+		ProcessCleanupCapability string `json:"process_cleanup_capability"`
+	}
+	if json.Unmarshal(task.Result, &result) == nil {
+		resp.ProcessCleanupCapability = result.ProcessCleanupCapability
+	}
 	// Echo the capability the server actually committed for this exact run.
 	// A daemon must use this response rather than its own offer: an old server
 	// ignores the offer and omits the field, which keeps daemon-first rollouts

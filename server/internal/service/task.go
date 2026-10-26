@@ -4355,15 +4355,25 @@ func (s *TaskService) maybeLogClaimSlow(agentID pgtype.UUID, outcome string, sta
 	)
 }
 
+// TaskStartCapabilities records the capabilities offered for this exact run.
+// Persist these in the same transaction as running, before cancellation can win.
+type TaskStartCapabilities struct {
+	Supplement     bool
+	ProcessCleanup bool
+}
+
 // StartTask transitions a dispatched task to running.
 // Local agents manage issue status via the CLI; Qoder runs use guarded server transitions.
-func (s *TaskService) StartTask(ctx context.Context, taskID pgtype.UUID, supplementSupport ...bool) (*db.AgentTaskQueue, error) {
-	enableTaskSupplement := len(supplementSupport) > 0 && supplementSupport[0]
+func (s *TaskService) StartTask(ctx context.Context, taskID pgtype.UUID, capabilities ...TaskStartCapabilities) (*db.AgentTaskQueue, error) {
+	var offered TaskStartCapabilities
+	if len(capabilities) > 0 {
+		offered = capabilities[0]
+	}
 	var task db.AgentTaskQueue
 	var change *qoderIssueChange
 	err := s.runInTx(ctx, func(q *db.Queries) error {
 		var err error
-		task, err = q.StartAgentTaskWithSupplement(ctx, db.StartAgentTaskWithSupplementParams{TaskID: taskID, EnableTaskSupplement: enableTaskSupplement})
+		task, err = q.StartAgentTaskWithSupplement(ctx, db.StartAgentTaskWithSupplementParams{TaskID: taskID, EnableTaskSupplement: offered.Supplement, EnableProcessCleanup: offered.ProcessCleanup})
 		if err != nil {
 			return err
 		}
@@ -4381,7 +4391,7 @@ func (s *TaskService) StartTask(ctx context.Context, taskID pgtype.UUID, supplem
 // StartTaskForClaim serializes the ownership check and transition with reclaim,
 // cancellation and other start requests. A replay linearizes at the locked read;
 // a cancellation that commits later can still cancel the acknowledged task.
-func (s *TaskService) StartTaskForClaim(ctx context.Context, claim db.LockAgentTaskStartClaimParams, supplementSupport ...bool) (*db.AgentTaskQueue, error) {
+func (s *TaskService) StartTaskForClaim(ctx context.Context, claim db.LockAgentTaskStartClaimParams, capabilities ...TaskStartCapabilities) (*db.AgentTaskQueue, error) {
 	if !claim.ID.Valid || !claim.RuntimeID.Valid || !claim.DispatchedAt.Valid {
 		return nil, fmt.Errorf("start task: incomplete claim")
 	}
@@ -4398,9 +4408,14 @@ func (s *TaskService) StartTaskForClaim(ctx context.Context, claim db.LockAgentT
 	var change *qoderIssueChange
 	replay := task.Status == "running"
 	if !replay {
+		var offered TaskStartCapabilities
+		if len(capabilities) > 0 {
+			offered = capabilities[0]
+		}
 		task, err = qtx.StartAgentTaskWithSupplement(ctx, db.StartAgentTaskWithSupplementParams{
 			TaskID:               task.ID,
-			EnableTaskSupplement: len(supplementSupport) > 0 && supplementSupport[0],
+			EnableTaskSupplement: offered.Supplement,
+			EnableProcessCleanup: offered.ProcessCleanup,
 		})
 		if err != nil {
 			return nil, fmt.Errorf("start claimed task: %w", err)

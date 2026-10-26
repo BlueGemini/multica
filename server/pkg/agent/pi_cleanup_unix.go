@@ -31,6 +31,8 @@ func newPiProcessTracker(cmd *exec.Cmd) piProcessTracker {
 	return &piUnixProcessTracker{root: cmd.Process.Pid, known: make(map[int]piTrackedProcess)}
 }
 
+const piCanObserveRuntimeExit = true
+
 func piRuntimeExited(cmd *exec.Cmd) bool {
 	info, err := readCursorUnixProcessInfo(cmd.Process.Pid)
 	return piProcessMissing(cmd.Process.Pid, err) || (err == nil && info.zombie)

@@ -63,6 +63,13 @@ func RunPiCleanupFixture() bool {
 	}
 	fmt.Println(`{"type":"agent_start"}`)
 	fmt.Println(`{"type":"tool_execution_start","toolName":"bash","toolCallId":"fixture"}`)
+	if mode == "success" {
+		fmt.Println(`{"type":"tool_execution_end","toolCallId":"fixture","result":"server started"}`)
+		fmt.Println(`{"type":"agent_end"}`)
+		// A successful run may intentionally leave a detached service. Keep
+		// inherited output open too: finalization must not wait for the service.
+		return true
+	}
 	if mode == "exit" {
 		time.Sleep(200 * time.Millisecond)
 		return true

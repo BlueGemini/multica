@@ -8470,6 +8470,9 @@ func (d *Daemon) runTask(ctx context.Context, task Task, provider string, slot i
 	// "start task failed: <…>" string and the same failure_reason
 	// taxonomy as before — see MUL-2946 for the classifier contract.
 	var taskCapabilities []string
+	if provider == "pi" || provider == "omp" {
+		taskCapabilities = append(taskCapabilities, protocol.DaemonCapabilityPiProcessCleanupV1)
+	}
 	var cursorHookCommand []string
 	supplementSupported := agent.SupportsTaskSupplement(provider, resolvedVersion) && task.IssueID != ""
 	if supplementSupported && provider == "cursor" {

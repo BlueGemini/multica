@@ -2,6 +2,7 @@ package handler
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"strings"
 	"testing"
@@ -111,30 +112,69 @@ func TestProcessCleanupPendingDefersSuccessor(t *testing.T) {
 	testutil.Call(t, testHandler.StartTask, withURLParam(newOwnerDaemonRequest("POST", "/api/daemon/tasks/"+successor+"/start", nil), "taskId", successor)).Want(http.StatusOK)
 }
 
-func TestProcessCleanupMissingAcknowledgement(t *testing.T) {
+func TestProcessCleanupCapabilityNegotiation(t *testing.T) {
 	if testHandler == nil {
 		t.Fatal("PostgreSQL is required")
 	}
-	runtime := dbfx.Runtime(t, "Pi cleanup runtime", testutil.Cols{"provider": "pi"})
-	agentID := dbfx.Agent(t, "Pi cleanup acknowledgement", runtime)
-	issue := dbfx.Issue(t, "cleanup acknowledgement")
-	id := dbfx.Task(t, agentID, testutil.Cols{
-		"runtime_id": runtime, "issue_id": issue, "status": "running",
-		"started_at": testutil.Raw("now() - interval '1 minute'"),
-	})
-	if _, err := testHandler.TaskService.CancelTask(context.Background(), parseUUID(id)); err != nil {
-		t.Fatal(err)
-	}
-	var pending bool
-	dbfx.QueryRow(t, `SELECT result->>'process_cleanup_pending'='true' FROM agent_task_queue WHERE id=$1`, id).Scan(&pending)
-	if !pending {
-		t.Fatal("cancellation released its execution fence before cleanup")
-	}
-	ackCancelled(t, id, map[string]any{}) // Older daemons cannot assert cleanup.
-	var state, reason string
-	dbfx.QueryRow(t, `SELECT status, failure_reason FROM agent_task_queue WHERE id=$1`, id).Scan(&state, &reason)
-	if state != "failed" || reason != "cleanup_unconfirmed" {
-		t.Fatalf("missing cleanup acknowledgement = %s/%s", state, reason)
+	for _, provider := range []string{"pi", "omp", "codex"} {
+		for _, capable := range []bool{false, true} {
+			for _, claimFenced := range []bool{false, true} {
+				t.Run(fmt.Sprintf("%s/capable=%v/claim=%v", provider, capable, claimFenced), func(t *testing.T) {
+					runtime := dbfx.Runtime(t, "cleanup runtime", testutil.Cols{"provider": provider})
+					agentID := dbfx.Agent(t, "cleanup negotiation", runtime)
+					issue := dbfx.Issue(t, "cleanup negotiation")
+					id := dbfx.Task(t, agentID, testutil.Cols{"runtime_id": runtime, "issue_id": issue, "status": "dispatched", "dispatched_at": time.Now().UTC()})
+					body := map[string]any{}
+					if capable {
+						body["capabilities"] = []string{"pi-process-cleanup-v1"}
+					}
+					if claimFenced {
+						var generation pgtype.Timestamptz
+						dbfx.QueryRow(t, `SELECT dispatched_at FROM agent_task_queue WHERE id=$1`, id).Scan(&generation)
+						body["runtime_id"], body["dispatched_at"] = runtime, generation.Time.Format(time.RFC3339Nano)
+					}
+					req := withURLParam(newOwnerDaemonRequest("POST", "/api/daemon/tasks/"+id+"/start", body), "taskId", id)
+					started := testutil.Decode[map[string]any](t, testHandler.StartTask, req, http.StatusOK)
+					wantPending := capable && (provider == "pi" || provider == "omp")
+					if got := started["process_cleanup_capability"] == "pi-process-cleanup-v1"; got != wantPending {
+						t.Fatalf("negotiated cleanup=%v, want %v", got, wantPending)
+					}
+					if claimFenced {
+						// Replaying a start with the opposite offer must not renegotiate a run.
+						if capable {
+							delete(body, "capabilities")
+						} else {
+							body["capabilities"] = []string{"pi-process-cleanup-v1"}
+						}
+						req = withURLParam(newOwnerDaemonRequest("POST", "/api/daemon/tasks/"+id+"/start", body), "taskId", id)
+						testutil.Call(t, testHandler.StartTask, req).Want(http.StatusOK)
+					}
+					if _, err := testHandler.TaskService.CancelTask(t.Context(), parseUUID(id)); err != nil {
+						t.Fatal(err)
+					}
+					var pending bool
+					dbfx.QueryRow(t, `SELECT COALESCE(result->>'process_cleanup_pending'='true',false) FROM agent_task_queue WHERE id=$1`, id).Scan(&pending)
+					if pending != wantPending {
+						t.Fatalf("pending=%v, want %v", pending, wantPending)
+					}
+					ackCancelled(t, id, map[string]any{})
+					var state string
+					dbfx.QueryRow(t, `SELECT status FROM agent_task_queue WHERE id=$1`, id).Scan(&state)
+					wantState := "cancelled"
+					if wantPending {
+						wantState = "failed"
+					}
+					if state != wantState {
+						t.Fatalf("missing acknowledgement = %s, want %s", state, wantState)
+					}
+					successor := dbfx.Task(t, agentID, testutil.Cols{"runtime_id": runtime, "issue_id": issue, "status": "dispatched"})
+					blocked, err := testHandler.Queries.TaskBlockedByProcessCleanup(t.Context(), parseUUID(successor))
+					if err != nil || blocked != wantPending {
+						t.Fatalf("successor blocked=%v, want %v, err=%v", blocked, wantPending, err)
+					}
+				})
+			}
+		}
 	}
 }
 

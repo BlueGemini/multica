@@ -10,8 +10,6 @@ import (
 
 type piGroupProcessTracker struct{ cmd *exec.Cmd }
 
-func piRuntimeExited(*exec.Cmd) bool { return false }
-
 func (*piGroupProcessTracker) unobservedTools() bool { return false }
 
 func newPiProcessTracker(cmd *exec.Cmd) piProcessTracker { return &piGroupProcessTracker{cmd: cmd} }
