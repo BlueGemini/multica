@@ -231,7 +231,7 @@ describe("StatusPicker in a project that uses a workflow", () => {
   });
 });
 
-describe("StatusPicker on an issue outside any project (MUL-8121)", () => {
+describe("StatusPicker on an issue outside any project (MUL-8121, MUL-8250)", () => {
   const TODO = entry({ id: "todo", key: "todo", name: "Todo", category: "unstarted", is_system: true, position: 0 });
   const DONE = entry({ id: "done", key: "done", name: "Done", category: "done", is_system: true, position: 0 });
   const MERGED = entry({ id: "merged", key: "merged", name: "Merged", position: 2 });
@@ -258,14 +258,14 @@ describe("StatusPicker on an issue outside any project (MUL-8121)", () => {
     return Array.from(document.querySelectorAll("button[data-picker-item]")).map((el) => el.textContent?.trim());
   }
 
-  it("offers only the Default workflow's statuses, headed as such, without handoff hints", () => {
+  it("offers only the Default workflow's statuses, with no header or handoff hints", () => {
     catalogEntries = [TODO, IN_REVIEW, QA, MERGED, DONE];
     workspaceDefault = DEFAULT;
     renderWithI18n(
       <StatusPicker status="todo" projectId={null} onUpdate={() => {}} open onOpenChange={() => {}} />,
     );
     expect(rows()).toEqual(["Todo", "In Review", "Done"]);
-    expect(screen.getByText("Default statuses · no project")).toBeTruthy();
+    expect(screen.queryByText(/Default/)).toBeNull();
     expect(screen.queryByText(/Hands off to/)).toBeNull();
   });
 
@@ -282,17 +282,20 @@ describe("StatusPicker on an issue outside any project (MUL-8121)", () => {
     expect(checkOf("Todo")?.getAttribute("class")).toContain("invisible");
   });
 
-  it("still reaches every status through search", () => {
+  it("searches only the Default workflow's statuses", () => {
     catalogEntries = [TODO, IN_REVIEW, QA, MERGED, DONE];
     workspaceDefault = DEFAULT;
     const onUpdate = vi.fn();
     renderWithI18n(
       <StatusPicker status="todo" projectId={null} onUpdate={onUpdate} open onOpenChange={() => {}} />,
     );
-    fireEvent.change(screen.getByPlaceholderText("Search status..."), { target: { value: "merg" } });
-    expect(rows()).toEqual(["Merged"]);
-    fireEvent.click(optionRow("Merged"));
-    expect(onUpdate).toHaveBeenCalledWith({ status: "merged" });
+    const search = screen.getByPlaceholderText("Search status...");
+    fireEvent.change(search, { target: { value: "merg" } });
+    expect(rows()).toEqual([]);
+    fireEvent.change(search, { target: { value: "rev" } });
+    expect(rows()).toEqual(["In Review"]);
+    fireEvent.click(optionRow("In Review"));
+    expect(onUpdate).toHaveBeenCalledWith({ status: "in_review" });
   });
 
   it("offers the whole catalog when the surface spans projects", () => {
