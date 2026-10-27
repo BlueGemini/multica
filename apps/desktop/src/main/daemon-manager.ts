@@ -25,6 +25,10 @@ import { daemonStatusAlive } from "../shared/daemon-types";
 import { ensureManagedCli, managedCliPath } from "./cli-bootstrap";
 import { decideVersionAction } from "./version-decision";
 import {
+  prepareDaemonForInstall,
+  type DaemonInstallPrep,
+} from "./update-install-gate";
+import {
   deriveProfileName,
   profileArgs,
   profileConfigPath,
@@ -1349,6 +1353,68 @@ function stopLogTail(): void {
     unwatchFile(logTailWatcher.path, logTailWatcher.listener);
     logTailWatcher = null;
   }
+}
+
+// Desired-running state captured when an update install stopped the daemon,
+// so an install that never actually quits the app can put things back.
+let desiredRunningBeforeUpdateStop: boolean | null = null;
+
+/**
+ * Stops the bundled daemon ahead of an app update so the installer can replace
+ * `multica.exe` on Windows (GitHub #8823). Returns `busy` without touching the
+ * daemon when it has active tasks and `interruptActiveTasks` is false.
+ */
+export async function prepareDaemonForUpdateInstall(options: {
+  interruptActiveTasks: boolean;
+}): Promise<DaemonInstallPrep> {
+  return prepareDaemonForInstall(
+    {
+      probe: async () => {
+        const active = await ensureActiveProfile();
+        if (!active) return null;
+        const health = await fetchProfileHealth(active);
+        if (!health) return { alive: false, activeTasks: 0, externallyManaged: false };
+        return {
+          alive: daemonStatusAlive(health.status),
+          pid: health.pid,
+          activeTasks: health.active_task_count ?? 0,
+          externallyManaged: isDaemonExternallyManaged(
+            health.os,
+            normalizeHostOS(process.platform),
+          ),
+        };
+      },
+      stop: async () => {
+        // Keep recovery and the deferred version-restart from bringing the
+        // daemon straight back while we wait for the installer to take over.
+        if (desiredRunningBeforeUpdateStop === null) {
+          desiredRunningBeforeUpdateStop = desiredDaemonRunning;
+        }
+        setDesiredDaemonRunning(false);
+        pendingVersionRestart = false;
+        stopPolling();
+        const result = await lifecycleOperations.runForeground(() => stopDaemon());
+        if (!result.success) {
+          throw new Error(result.error ?? "daemon stop failed");
+        }
+      },
+      processExists: (pid) => daemonProcessExists(pid),
+      sleep: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
+      now: () => Date.now(),
+    },
+    options,
+  );
+}
+
+/**
+ * Undoes prepareDaemonForUpdateInstall when the install did not go ahead (the
+ * app never started quitting), so the runtime does not stay off silently.
+ */
+export function resumeDaemonAfterAbortedUpdateInstall(): void {
+  if (desiredRunningBeforeUpdateStop === null) return;
+  setDesiredDaemonRunning(desiredRunningBeforeUpdateStop, true);
+  desiredRunningBeforeUpdateStop = null;
+  startPolling();
 }
 
 export function setupDaemonManager(
