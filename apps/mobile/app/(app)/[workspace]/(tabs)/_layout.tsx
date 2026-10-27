@@ -9,7 +9,7 @@
  * DropdownMenu popover anchored above the tab. The popover is rendered
  * by `<MoreTabDropdownAnchor />` as a sibling of `<Tabs>`, NOT as a
  * `tabBarButton` replacement: keeping the real tab button intact means
- * the icon + "More" label render identically to the other three tabs.
+ * the icon + "More" label render identically to the other four tabs.
  * We just open the dropdown imperatively from `listeners.tabPress` via
  * the exposed `TriggerRef.open()`.
  *
@@ -76,6 +76,18 @@ export default function TabsLayout() {
           tabBarLabelStyle: { fontSize: 11 },
         }}
       >
+        <Tabs.Screen
+          name="fde"
+          options={{
+            title: t("fde:title"),
+            tabBarIcon: ({ color, size, focused }) => (
+              <Image
+                source={focused ? "sf:building.2.fill" : "sf:building.2"}
+                style={{ width: size, height: size, color }}
+              />
+            ),
+          }}
+        />
         <Tabs.Screen
           name="inbox"
           options={{

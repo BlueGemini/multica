@@ -28,9 +28,13 @@ import navigationZhHant from "@/locales/zh-Hant/navigation.json";
 import projectsZhHant from "@/locales/zh-Hant/projects.json";
 import settingsZhHant from "@/locales/zh-Hant/settings.json";
 import workspaceZhHant from "@/locales/zh-Hant/workspace.json";
+import fdeEn from "@/locales/en/fde.json";
+import fdeZh from "@/locales/zh-Hans/fde.json";
+import fdeZhHant from "@/locales/zh-Hant/fde.json";
 
 export const resources = {
   en: {
+    fde: fdeEn,
     auth: authEn,
     chat: chatEn,
     common: commonEn,
@@ -43,6 +47,7 @@ export const resources = {
     workspace: workspaceEn,
   },
   "zh-Hans": {
+    fde: fdeZh,
     auth: authZh,
     chat: chatZh,
     common: commonZh,
@@ -55,6 +60,7 @@ export const resources = {
     workspace: workspaceZh,
   },
   "zh-Hant": {
+    fde: fdeZhHant,
     auth: authZhHant,
     chat: chatZhHant,
     common: commonZhHant,
