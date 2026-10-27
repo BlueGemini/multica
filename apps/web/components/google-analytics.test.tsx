@@ -57,3 +57,29 @@ it("stops before a signed download click, but not for clean or blob links", () =
   click("https://cdn.example.invalid/a.pdf?Signature=s");
   expect(disabled()).toBe(true);
 });
+
+// Each queued gtag call, as a plain array.
+const gtagCalls = () => ((w.dataLayer as IArguments[] | undefined) ?? []).map((a) => Array.from(a));
+const pageTitles = () =>
+  gtagCalls().flatMap((c) =>
+    (c[0] === "config" || c[0] === "set") && c.at(-1) && typeof c.at(-1) === "object"
+      ? [(c.at(-1) as { page_title?: string }).page_title]
+      : [],
+  );
+
+it("pins page_title to route labels instead of the workspace document title", () => {
+  document.title = "Fix the secret launch · Multica";
+  start("/acme/issues/MUL-1");
+  window.history.pushState(null, "", "/acme/projects");
+  window.history.replaceState(null, "", "/changelog");
+  window.history.pushState(null, "", "/acme/inbox");
+  window.dispatchEvent(new PopStateEvent("popstate"));
+  expect(pageTitles()).toEqual([
+    "Workspace · Issues · Detail",
+    "Workspace · Projects",
+    "Changelog",
+    "Workspace · Inbox",
+    "Workspace · Inbox",
+  ]);
+  expect(JSON.stringify(gtagCalls())).not.toContain("secret launch");
+});
