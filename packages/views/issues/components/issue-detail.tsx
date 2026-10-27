@@ -2746,8 +2746,15 @@ export function IssueDetail({ issueId, onDelete, onDone, defaultSidebarOpen = tr
         </PopoverTrigger>
         {/* Each option leads with the icon the resulting picker uses, so the
             list reads as a preview of what will show up above. 388px is the
-            sidebar's 420px resize limit minus its 16px padding on each side. */}
-        <PopoverContent align="start" className="w-max min-w-44 max-w-[min(388px,var(--available-width))] p-1">
+            sidebar's 420px resize limit minus its 16px padding on each side.
+            Popover (unlike DropdownMenu) has no height bound of its own, so a
+            long property catalog must be capped to the space the positioner
+            reports and scroll inside, or its tail renders off-screen. */}
+        <PopoverContent
+          align="start"
+          data-testid="add-property-popover"
+          className="max-h-(--available-height) w-max min-w-44 max-w-[min(388px,var(--available-width))] overflow-y-auto overscroll-contain p-1"
+        >
           {OPTIONAL_PROP_KEYS.filter((k) => !visibleOptionalProps.has(k) && (k !== "stage" || issue.parent_issue_id != null)).map((k) => (
             <button
               key={k}
