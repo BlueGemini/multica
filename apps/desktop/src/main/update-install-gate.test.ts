@@ -145,7 +145,7 @@ describe("prepareDaemonForInstall", () => {
   });
 
   it("passes the PID barrier to stop and clears it once the process exits", async () => {
-    const deps = makeDeps([running(), null], { clearPendingExit: vi.fn() });
+    const deps = makeDeps([running(), null], { clearPendingExits: vi.fn() });
 
     await expect(
       prepareDaemonForInstall(deps, { interruptActiveTasks: false, timeoutMs: 1_000 }),
@@ -154,15 +154,15 @@ describe("prepareDaemonForInstall", () => {
       pid: 4242,
       deadline: 1_000,
     });
-    expect(deps.clearPendingExit).toHaveBeenCalledTimes(1);
+    expect(deps.clearPendingExits).toHaveBeenCalledTimes(1);
   });
 
   it("keeps waiting on an inherited barrier when /health is already gone", async () => {
     let clock = 5_000;
     let exists = true;
     const deps = makeDeps([null], {
-      pendingExit: () => ({ pid: 4242, deadline: 6_000 }),
-      clearPendingExit: vi.fn(),
+      pendingExits: () => [{ pid: 4242, deadline: 6_000 }],
+      clearPendingExits: vi.fn(),
       processExists: vi.fn(() => exists),
       sleep: vi.fn(async (ms: number) => {
         clock += ms;
@@ -177,13 +177,13 @@ describe("prepareDaemonForInstall", () => {
     expect(deps.stop).not.toHaveBeenCalled();
     expect(deps.processExists).toHaveBeenCalledWith(4242);
     expect(clock).toBeGreaterThanOrEqual(5_500);
-    expect(deps.clearPendingExit).toHaveBeenCalledTimes(1);
+    expect(deps.clearPendingExits).toHaveBeenCalledTimes(1);
   });
 
   it("an inherited barrier keeps its original deadline", async () => {
     let clock = 5_000;
     const deps = makeDeps([null], {
-      pendingExit: () => ({ pid: 4242, deadline: 6_000 }),
+      pendingExits: () => [{ pid: 4242, deadline: 6_000 }],
       processExists: vi.fn(() => true),
       sleep: vi.fn(async (ms: number) => {
         clock += ms;
@@ -200,8 +200,8 @@ describe("prepareDaemonForInstall", () => {
   it("does not clear an inherited barrier when it is cancelled", async () => {
     const controller = new AbortController();
     const deps = makeDeps([null], {
-      pendingExit: () => ({ pid: 4242, deadline: 60_000 }),
-      clearPendingExit: vi.fn(),
+      pendingExits: () => [{ pid: 4242, deadline: 60_000 }],
+      clearPendingExits: vi.fn(),
       processExists: vi.fn(() => true),
       sleep: vi.fn(async () => {
         controller.abort();
@@ -214,7 +214,7 @@ describe("prepareDaemonForInstall", () => {
         signal: controller.signal,
       }),
     ).resolves.toEqual({ kind: "cancelled" });
-    expect(deps.clearPendingExit).not.toHaveBeenCalled();
+    expect(deps.clearPendingExits).not.toHaveBeenCalled();
   });
 
   it("inherits the issued stop and its deadline while health still responds", async () => {
@@ -223,8 +223,8 @@ describe("prepareDaemonForInstall", () => {
     // and must not issue a second stop.
     let clock = 10_000;
     const deps = makeDeps([running()], {
-      pendingExit: () => ({ pid: 4242, deadline: 15_000 }),
-      clearPendingExit: vi.fn(),
+      pendingExits: () => [{ pid: 4242, deadline: 15_000 }],
+      clearPendingExits: vi.fn(),
       processExists: vi.fn(() => true),
       sleep: vi.fn(async (ms: number) => {
         clock += ms;
@@ -237,12 +237,12 @@ describe("prepareDaemonForInstall", () => {
     ).resolves.toEqual({ kind: "timeout" });
     expect(deps.stop).not.toHaveBeenCalled();
     expect(clock).toBe(15_000);
-    expect(deps.clearPendingExit).toHaveBeenCalledTimes(1);
+    expect(deps.clearPendingExits).toHaveBeenCalledTimes(1);
   });
 
   it("does not report busy for a daemon whose stop was already issued", async () => {
     const deps = makeDeps([running({ activeTasks: 2 }), null], {
-      pendingExit: () => ({ pid: 4242, deadline: 60_000 }),
+      pendingExits: () => [{ pid: 4242, deadline: 60_000 }],
     });
 
     await expect(
@@ -251,10 +251,21 @@ describe("prepareDaemonForInstall", () => {
     expect(deps.stop).not.toHaveBeenCalled();
   });
 
-  it("drops a barrier for another PID and handles the new daemon normally", async () => {
+  it("stops a new PID but keeps waiting for the inherited one", async () => {
+    let clock = 1_000;
+    const alive = new Set([4242, 5151]);
     const deps = makeDeps([running({ pid: 5151 }), null], {
-      pendingExit: () => ({ pid: 4242, deadline: 1 }),
-      clearPendingExit: vi.fn(),
+      pendingExits: () => [{ pid: 4242, deadline: 15_000 }],
+      clearPendingExits: vi.fn(),
+      stop: vi.fn(async () => {
+        alive.delete(5151);
+      }),
+      processExists: vi.fn((pid: number) => alive.has(pid)),
+      sleep: vi.fn(async (ms: number) => {
+        clock += ms;
+        if (clock >= 3_000) alive.delete(4242);
+      }),
+      now: () => clock,
     });
 
     await expect(
@@ -262,9 +273,42 @@ describe("prepareDaemonForInstall", () => {
     ).resolves.toEqual({ kind: "ready" });
     expect(deps.stop).toHaveBeenCalledWith(expect.any(AbortSignal), {
       pid: 5151,
-      deadline: 15_000,
+      deadline: 16_000,
     });
-    expect(deps.processExists).toHaveBeenCalledWith(5151);
-    expect(deps.processExists).not.toHaveBeenCalledWith(4242);
+    // Not ready until the old PID exited, even though the new one left at once.
+    expect(clock).toBeGreaterThanOrEqual(3_000);
+    expect(deps.clearPendingExits).toHaveBeenCalledTimes(1);
+  });
+
+  it("an inherited PID stops blocking at its own deadline and reports timeout", async () => {
+    let clock = 10_000;
+    const deps = makeDeps([running({ pid: 5151 }), null], {
+      pendingExits: () => [{ pid: 4242, deadline: 15_000 }],
+      processExists: vi.fn((pid: number) => pid === 4242),
+      sleep: vi.fn(async (ms: number) => {
+        clock += ms;
+      }),
+      now: () => clock,
+    });
+
+    await expect(
+      prepareDaemonForInstall(deps, { interruptActiveTasks: false }),
+    ).resolves.toEqual({ kind: "timeout" });
+    // The new PID exited at once; only the draining old PID caused the timeout.
+    expect(deps.stop).toHaveBeenCalledTimes(1);
+    expect(deps.processExists).toHaveBeenCalledWith(4242);
+  });
+
+  it("keeps inherited barriers when a new PID is busy", async () => {
+    const deps = makeDeps([running({ pid: 5151, activeTasks: 1 })], {
+      pendingExits: () => [{ pid: 4242, deadline: 15_000 }],
+      clearPendingExits: vi.fn(),
+    });
+
+    await expect(
+      prepareDaemonForInstall(deps, { interruptActiveTasks: false }),
+    ).resolves.toEqual({ kind: "busy", activeTasks: 1 });
+    expect(deps.stop).not.toHaveBeenCalled();
+    expect(deps.clearPendingExits).not.toHaveBeenCalled();
   });
 });

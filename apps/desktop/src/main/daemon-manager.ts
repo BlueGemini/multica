@@ -1367,9 +1367,9 @@ function stopLogTail(): void {
 // so an install that never actually quits the app can put things back.
 let desiredRunningBeforeUpdateStop: boolean | null = null;
 let updateInstallPreparation: AbortController | null = null;
-// Set once an update stop command is really issued; survives a superseded
-// preparation so its successor still waits for that PID to exit.
-let updateStopExitBarrier: DaemonExitBarrier | null = null;
+// One entry per update stop command really issued; survives a superseded
+// preparation so its successor still waits for those PIDs to exit.
+let updateStopExitBarriers: DaemonExitBarrier[] = [];
 
 /**
  * Stops the bundled daemon ahead of an app update so the installer can replace
@@ -1414,16 +1414,18 @@ export async function prepareDaemonForUpdateInstall(options: {
         stopPolling();
         const result = await lifecycleOperations.runForeground(() =>
           stopDaemon(stopSignal, () => {
-            if (barrier) updateStopExitBarrier = barrier;
+            if (barrier && !updateStopExitBarriers.some((b) => b.pid === barrier.pid)) {
+              updateStopExitBarriers = [...updateStopExitBarriers, barrier];
+            }
           }),
         );
         if (!result.success) {
           throw new Error(result.error ?? "daemon stop failed");
         }
       },
-      pendingExit: () => updateStopExitBarrier,
-      clearPendingExit: () => {
-        updateStopExitBarrier = null;
+      pendingExits: () => updateStopExitBarriers,
+      clearPendingExits: () => {
+        updateStopExitBarriers = [];
       },
       processExists: (pid) => daemonProcessExists(pid),
       sleep: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
@@ -1440,7 +1442,7 @@ export async function prepareDaemonForUpdateInstall(options: {
 export function resumeDaemonAfterAbortedUpdateInstall(): void {
   updateInstallPreparation?.abort();
   updateInstallPreparation = null;
-  updateStopExitBarrier = null;
+  updateStopExitBarriers = [];
   if (desiredRunningBeforeUpdateStop === null) return;
   setDesiredDaemonRunning(desiredRunningBeforeUpdateStop, true);
   desiredRunningBeforeUpdateStop = null;

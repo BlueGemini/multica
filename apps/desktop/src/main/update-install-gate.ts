@@ -50,13 +50,13 @@ export interface DaemonInstallGateDeps {
   probe: () => Promise<DaemonInstallProbe | null>;
   /**
    * Requests a graceful stop. May resolve before the process has exited.
-   * `barrier` (when the PID is known) must be recorded via the store once the
-   * stop command is really issued — not while it is still queued.
+   * `barrier` (when the PID is known) must be added to the pending exits once
+   * the stop command is really issued — not while it is still queued.
    */
   stop: (signal: AbortSignal, barrier: DaemonExitBarrier | null) => Promise<void>;
-  /** Exit barrier left by an earlier, superseded preparation. */
-  pendingExit?: () => DaemonExitBarrier | null;
-  clearPendingExit?: () => void;
+  /** Exit barriers left by earlier, superseded preparations. */
+  pendingExits?: () => readonly DaemonExitBarrier[];
+  clearPendingExits?: () => void;
   processExists: (pid: number) => boolean;
   sleep: (ms: number) => Promise<void>;
   now: () => number;
@@ -91,21 +91,25 @@ export async function prepareDaemonForInstall(
   const initial = await deps.probe();
   if (options.signal?.aborted) return { kind: "cancelled" };
   const daemonAlive = !!initial && initial.alive && !initial.externallyManaged;
-  // An earlier, superseded preparation may already have issued a stop for
-  // this process. Its barrier (PID and original deadline) takes precedence
-  // whether /health has vanished or the process is still answering while it
-  // drains: re-stopping or restarting the clock would stretch the agreed
-  // upper bound on waiting. Only a different live PID (a new daemon) makes
-  // the old barrier irrelevant.
-  const inherited = deps.pendingExit?.() ?? null;
-  if (inherited && (!daemonAlive || initial?.pid === inherited.pid)) {
-    const signal = options.signal ?? new AbortController().signal;
-    const result = await waitForExit(deps, signal, inherited.pid, inherited.deadline, pollIntervalMs);
-    if (result.kind !== "cancelled") deps.clearPendingExit?.();
+  // Stops already issued by earlier, superseded preparations. Each barrier
+  // (PID and original deadline) holds until that PID has exited or its own
+  // deadline has passed, whatever /health reports: the process may still be
+  // answering while it drains, or a different daemon may have started next to
+  // it (legacy CLIs take no profile lock), and neither proves the old process
+  // released multica.exe.
+  const inherited = deps.pendingExits?.() ?? [];
+  const finish = (result: DaemonInstallPrep): DaemonInstallPrep => {
+    if (result.kind !== "cancelled") deps.clearPendingExits?.();
     return result;
+  };
+
+  if (!daemonAlive || inherited.some((b) => b.pid === initial.pid)) {
+    if (inherited.length === 0) return { kind: "ready" };
+    const signal = options.signal ?? new AbortController().signal;
+    return finish(await waitForExit(deps, signal, inherited, null, pollIntervalMs));
   }
-  if (inherited) deps.clearPendingExit?.();
-  if (!daemonAlive) return { kind: "ready" };
+  // A different, live daemon: check and stop it as usual, but keep waiting
+  // on the inherited barriers too. A busy result keeps them for the next try.
   if (!options.interruptActiveTasks && initial.activeTasks > 0) {
     return { kind: "busy", activeTasks: initial.activeTasks };
   }
@@ -126,30 +130,43 @@ export async function prepareDaemonForInstall(
       console.warn("[updater] daemon stop before install failed:", err);
     }
 
-    const result = await waitForExit(deps, signal, pid, deadline, pollIntervalMs);
-    if (result.kind !== "cancelled") deps.clearPendingExit?.();
-    return result;
+    const barriers = barrier ? [...inherited, barrier] : inherited;
+    return finish(await waitForExit(deps, signal, barriers, deadline, pollIntervalMs));
   } finally {
     // Timing out must invalidate a stop that has not left the lifecycle queue.
     stopController.abort();
   }
 }
 
+/**
+ * Waits until /health is gone and every barrier PID has exited. A barrier
+ * stops blocking once its own deadline passes (the agreed upper bound per
+ * stop); if its process was still alive then, the result is `timeout`.
+ * `healthDeadline` bounds the wait for /health when no PID is known.
+ */
 async function waitForExit(
   deps: DaemonInstallGateDeps,
   signal: AbortSignal,
-  pid: number | undefined,
-  deadline: number,
+  barriers: readonly DaemonExitBarrier[],
+  healthDeadline: number | null,
   pollIntervalMs: number,
 ): Promise<DaemonInstallPrep> {
+  const deadline = Math.max(
+    healthDeadline ?? -Infinity,
+    ...barriers.map((b) => b.deadline),
+  );
   for (;;) {
     if (signal.aborted) return { kind: "cancelled" };
     const current = await deps.probe();
     if (signal.aborted) return { kind: "cancelled" };
+    const now = deps.now();
     const healthGone = !current || !current.alive;
-    const processGone = pid === undefined || !deps.processExists(pid);
-    if (healthGone && processGone) return { kind: "ready" };
-    if (deps.now() >= deadline) return { kind: "timeout" };
+    const alive = barriers.filter((b) => deps.processExists(b.pid));
+    const blocking = alive.filter((b) => now < b.deadline);
+    if (healthGone && blocking.length === 0) {
+      return alive.length === 0 ? { kind: "ready" } : { kind: "timeout" };
+    }
+    if (now >= deadline) return { kind: "timeout" };
     await deps.sleep(pollIntervalMs);
   }
 }
