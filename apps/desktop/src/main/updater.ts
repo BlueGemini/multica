@@ -252,24 +252,36 @@ export function setupAutoUpdater(
   let deferredInstallGeneration = 0;
   let deferredInstallTimer: ReturnType<typeof setTimeout> | null = null;
 
-  const cancelActiveInstallFlow = (): void => {
+  // Abort the running flow. `handoff` means another flow takes over at once:
+  // keep the daemon paused and keep any issued stop's PID barrier, so the
+  // successor still waits for that process to exit. Otherwise the install is
+  // being abandoned and the daemon is put back.
+  const cancelActiveInstallFlow = (handoff = false): void => {
     if (!activeInstallFlow) return;
     activeInstallFlow.controller.abort();
     activeInstallFlow = null;
-    daemonGate?.resumeAfterAbortedInstall();
+    if (!handoff) daemonGate?.resumeAfterAbortedInstall();
   };
 
-  const cancelDeferredInstall = (): void => {
+  const cancelDeferredInstall = (handoff = false): void => {
     deferredInstallGeneration += 1;
     if (deferredInstallTimer !== null) {
       clearTimeout(deferredInstallTimer);
       deferredInstallTimer = null;
     }
-    if (activeInstallFlow?.kind === "deferred") cancelActiveInstallFlow();
+    if (activeInstallFlow?.kind === "deferred") cancelActiveInstallFlow(handoff);
   };
 
   const isCurrentFlow = (flow: InstallFlow): boolean =>
     activeInstallFlow === flow && !flow.controller.signal.aborted;
+
+  // A flow that is still current but will not install (cancel, busy, error)
+  // must not leave the daemon paused by a stop it inherited via handoff.
+  const finishFlowWithoutInstall = (flow: InstallFlow): void => {
+    if (!isCurrentFlow(flow)) return;
+    activeInstallFlow = null;
+    daemonGate?.resumeAfterAbortedInstall();
+  };
 
   const startInstall = (flow: InstallFlow): void => {
     if (installStarted || !isCurrentFlow(flow)) return;
@@ -312,6 +324,7 @@ export function setupAutoUpdater(
         });
         if (!isCurrentFlow(flow)) return;
         if (prep.kind === "busy") {
+          finishFlowWithoutInstall(flow);
           scheduleDeferredInstall(generation);
         } else if (prep.kind !== "cancelled") {
           startInstall(flow);
@@ -319,6 +332,7 @@ export function setupAutoUpdater(
       } catch (err) {
         if (isCurrentFlow(flow)) {
           console.error("[updater] deferred install check failed:", err);
+          finishFlowWithoutInstall(flow);
           scheduleDeferredInstall(generation);
         }
       } finally {
@@ -337,7 +351,8 @@ export function setupAutoUpdater(
       return;
     }
     // A manual choice supersedes both the timer and a probe already in flight.
-    cancelDeferredInstall();
+    // Hand off rather than resume: a deferred stop may already be draining.
+    cancelDeferredInstall(true);
     const flow: InstallFlow = {
       kind: "manual",
       controller: new AbortController(),
@@ -352,8 +367,12 @@ export function setupAutoUpdater(
       if (prep.kind === "busy") {
         const choice = await daemonGate.confirmInstallWhileBusy(prep.activeTasks);
         if (!isCurrentFlow(flow)) return;
-        if (choice === "cancel") return;
+        if (choice === "cancel") {
+          finishFlowWithoutInstall(flow);
+          return;
+        }
         if (choice === "wait") {
+          finishFlowWithoutInstall(flow);
           scheduleDeferredInstall(deferredInstallGeneration);
           return;
         }
@@ -397,8 +416,9 @@ export function setupAutoUpdater(
       event.preventDefault();
       // Every quit remains intercepted until this preparation settles.
       if (activeInstallFlow?.kind === "quit") return;
-      cancelDeferredInstall();
-      cancelActiveInstallFlow();
+      // Hand off: a stop issued by the superseded flow keeps its PID barrier.
+      cancelDeferredInstall(true);
+      cancelActiveInstallFlow(true);
       const flow: InstallFlow = {
         kind: "quit",
         controller: new AbortController(),
@@ -412,6 +432,9 @@ export function setupAutoUpdater(
               `[updater] ${prep.activeTasks} task(s) running; deferring install to a later quit`,
             );
             autoUpdater.autoInstallOnAppQuit = false;
+            // No install on this quit: undo any pause inherited by handoff so
+            // the normal quit path (including autoStop) applies.
+            daemonGate.resumeAfterAbortedInstall();
           }
         })
         .catch((err) => {

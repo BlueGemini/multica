@@ -525,6 +525,64 @@ describe("Windows daemon gate around update install (#8823)", () => {
     expect(autoUpdater.autoInstallOnAppQuit).toBe(false);
     expect(ctx.appQuit).toHaveBeenCalledTimes(1);
   });
+
+  it("hands a deferred flow to a manual install without resuming the daemon", async () => {
+    const gate = makeGate([]);
+    gate.prepare
+      .mockResolvedValueOnce({ kind: "busy", activeTasks: 1 })
+      .mockImplementationOnce(() => new Promise(() => {}))
+      .mockResolvedValueOnce({ kind: "ready" });
+    gate.confirmInstallWhileBusy.mockResolvedValueOnce("wait" as never);
+    setupAutoUpdater(() => null, { daemonGate: gate, platform: "win32" });
+
+    await invokeIpc("updater:install");
+    gate.resumeAfterAbortedInstall.mockClear();
+    await vi.advanceTimersByTimeAsync(10_000);
+    await invokeIpc("updater:install");
+
+    expect(gate.resumeAfterAbortedInstall).not.toHaveBeenCalled();
+    expect(ctx.quitAndInstall).toHaveBeenCalledTimes(1);
+  });
+
+  it("hands a manual flow to the quit flow without resuming the daemon", async () => {
+    const gate = makeGate([]);
+    gate.prepare
+      .mockImplementationOnce(() => new Promise(() => {}))
+      .mockResolvedValueOnce({ kind: "ready" });
+    setupAutoUpdater(() => null, { daemonGate: gate, platform: "win32" });
+    emitUpdater("update-downloaded", { version: "0.3.18" });
+
+    void invokeIpc("updater:install");
+    await vi.advanceTimersByTimeAsync(0);
+    emitBeforeQuit();
+    await vi.advanceTimersByTimeAsync(0);
+
+    expect(gate.resumeAfterAbortedInstall).not.toHaveBeenCalled();
+    expect(ctx.appQuit).toHaveBeenCalledTimes(1);
+  });
+
+  it("resumes an inherited pause when the successor flow does not install", async () => {
+    const gate = makeGate([{ kind: "busy", activeTasks: 1 }]);
+    gate.confirmInstallWhileBusy.mockResolvedValueOnce("cancel" as never);
+    setupAutoUpdater(() => null, { daemonGate: gate, platform: "win32" });
+
+    await invokeIpc("updater:install");
+
+    expect(gate.resumeAfterAbortedInstall).toHaveBeenCalledTimes(1);
+    expect(ctx.quitAndInstall).not.toHaveBeenCalled();
+  });
+
+  it("resumes before a quit that skips the install for running tasks", async () => {
+    const gate = makeGate([{ kind: "busy", activeTasks: 2 }]);
+    setupAutoUpdater(() => null, { daemonGate: gate, platform: "win32" });
+    emitUpdater("update-downloaded", { version: "0.3.18" });
+
+    emitBeforeQuit();
+    await vi.advanceTimersByTimeAsync(0);
+
+    expect(gate.resumeAfterAbortedInstall).toHaveBeenCalledTimes(1);
+    expect(ctx.appQuit).toHaveBeenCalledTimes(1);
+  });
 });
 
 describe("createElectronBusyInstallPrompt", () => {

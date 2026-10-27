@@ -143,4 +143,77 @@ describe("prepareDaemonForInstall", () => {
     ).resolves.toEqual({ kind: "timeout" });
     expect(stopSignal?.aborted).toBe(true);
   });
+
+  it("passes the PID barrier to stop and clears it once the process exits", async () => {
+    const deps = makeDeps([running(), null], { clearPendingExit: vi.fn() });
+
+    await expect(
+      prepareDaemonForInstall(deps, { interruptActiveTasks: false, timeoutMs: 1_000 }),
+    ).resolves.toEqual({ kind: "ready" });
+    expect(deps.stop).toHaveBeenCalledWith(expect.any(AbortSignal), {
+      pid: 4242,
+      deadline: 1_000,
+    });
+    expect(deps.clearPendingExit).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps waiting on an inherited barrier when /health is already gone", async () => {
+    let clock = 5_000;
+    let exists = true;
+    const deps = makeDeps([null], {
+      pendingExit: () => ({ pid: 4242, deadline: 6_000 }),
+      clearPendingExit: vi.fn(),
+      processExists: vi.fn(() => exists),
+      sleep: vi.fn(async (ms: number) => {
+        clock += ms;
+        if (clock >= 5_500) exists = false;
+      }),
+      now: () => clock,
+    });
+
+    await expect(
+      prepareDaemonForInstall(deps, { interruptActiveTasks: false }),
+    ).resolves.toEqual({ kind: "ready" });
+    expect(deps.stop).not.toHaveBeenCalled();
+    expect(deps.processExists).toHaveBeenCalledWith(4242);
+    expect(clock).toBeGreaterThanOrEqual(5_500);
+    expect(deps.clearPendingExit).toHaveBeenCalledTimes(1);
+  });
+
+  it("an inherited barrier keeps its original deadline", async () => {
+    let clock = 5_000;
+    const deps = makeDeps([null], {
+      pendingExit: () => ({ pid: 4242, deadline: 6_000 }),
+      processExists: vi.fn(() => true),
+      sleep: vi.fn(async (ms: number) => {
+        clock += ms;
+      }),
+      now: () => clock,
+    });
+
+    await expect(
+      prepareDaemonForInstall(deps, { interruptActiveTasks: false }),
+    ).resolves.toEqual({ kind: "timeout" });
+    expect(clock).toBe(6_000);
+  });
+
+  it("does not clear an inherited barrier when it is cancelled", async () => {
+    const controller = new AbortController();
+    const deps = makeDeps([null], {
+      pendingExit: () => ({ pid: 4242, deadline: 60_000 }),
+      clearPendingExit: vi.fn(),
+      processExists: vi.fn(() => true),
+      sleep: vi.fn(async () => {
+        controller.abort();
+      }),
+    });
+
+    await expect(
+      prepareDaemonForInstall(deps, {
+        interruptActiveTasks: false,
+        signal: controller.signal,
+      }),
+    ).resolves.toEqual({ kind: "cancelled" });
+    expect(deps.clearPendingExit).not.toHaveBeenCalled();
+  });
 });

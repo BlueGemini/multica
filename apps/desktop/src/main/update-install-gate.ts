@@ -33,11 +33,30 @@ export interface DaemonInstallProbe {
   externallyManaged: boolean;
 }
 
+/**
+ * A stop that has actually been issued for `pid`, still waiting for the
+ * process to exit. Outlives the preparation that issued it so a superseding
+ * preparation (quit during "Restart to update", manual install during a
+ * deferred stop) keeps waiting for the same process instead of mistaking the
+ * vanished /health endpoint for a released file lock.
+ */
+export interface DaemonExitBarrier {
+  pid: number;
+  deadline: number;
+}
+
 export interface DaemonInstallGateDeps {
   /** Returns null when there is no managed daemon profile to probe. */
   probe: () => Promise<DaemonInstallProbe | null>;
-  /** Requests a graceful stop. May resolve before the process has exited. */
-  stop: (signal: AbortSignal) => Promise<void>;
+  /**
+   * Requests a graceful stop. May resolve before the process has exited.
+   * `barrier` (when the PID is known) must be recorded via the store once the
+   * stop command is really issued — not while it is still queued.
+   */
+  stop: (signal: AbortSignal, barrier: DaemonExitBarrier | null) => Promise<void>;
+  /** Exit barrier left by an earlier, superseded preparation. */
+  pendingExit?: () => DaemonExitBarrier | null;
+  clearPendingExit?: () => void;
   processExists: (pid: number) => boolean;
   sleep: (ms: number) => Promise<void>;
   now: () => number;
@@ -72,7 +91,15 @@ export async function prepareDaemonForInstall(
   const initial = await deps.probe();
   if (options.signal?.aborted) return { kind: "cancelled" };
   if (!initial || !initial.alive || initial.externallyManaged) {
-    return { kind: "ready" };
+    // /health is gone, but an earlier preparation may already have stopped a
+    // process that is still draining and holding multica.exe. Keep its
+    // barrier (PID and original deadline) rather than reporting ready.
+    const inherited = deps.pendingExit?.() ?? null;
+    if (!inherited) return { kind: "ready" };
+    const signal = options.signal ?? new AbortController().signal;
+    const result = await waitForExit(deps, signal, inherited.pid, inherited.deadline, pollIntervalMs);
+    if (result.kind !== "cancelled") deps.clearPendingExit?.();
+    return result;
   }
   if (!options.interruptActiveTasks && initial.activeTasks > 0) {
     return { kind: "busy", activeTasks: initial.activeTasks };
@@ -80,6 +107,7 @@ export async function prepareDaemonForInstall(
 
   const pid = initial.pid;
   const deadline = deps.now() + timeoutMs;
+  const barrier = pid === undefined ? null : { pid, deadline };
   const stopController = new AbortController();
   const signal = options.signal
     ? AbortSignal.any([options.signal, stopController.signal])
@@ -88,23 +116,35 @@ export async function prepareDaemonForInstall(
     try {
       // The stop may queue behind a long-running start. Its callback must
       // check the signal before issuing the command, even after this race ends.
-      await Promise.race([deps.stop(signal), deps.sleep(timeoutMs)]);
+      await Promise.race([deps.stop(signal, barrier), deps.sleep(timeoutMs)]);
     } catch (err) {
       console.warn("[updater] daemon stop before install failed:", err);
     }
 
-    for (;;) {
-      if (signal.aborted) return { kind: "cancelled" };
-      const current = await deps.probe();
-      if (signal.aborted) return { kind: "cancelled" };
-      const healthGone = !current || !current.alive;
-      const processGone = pid === undefined || !deps.processExists(pid);
-      if (healthGone && processGone) return { kind: "ready" };
-      if (deps.now() >= deadline) return { kind: "timeout" };
-      await deps.sleep(pollIntervalMs);
-    }
+    const result = await waitForExit(deps, signal, pid, deadline, pollIntervalMs);
+    if (result.kind !== "cancelled") deps.clearPendingExit?.();
+    return result;
   } finally {
     // Timing out must invalidate a stop that has not left the lifecycle queue.
     stopController.abort();
+  }
+}
+
+async function waitForExit(
+  deps: DaemonInstallGateDeps,
+  signal: AbortSignal,
+  pid: number | undefined,
+  deadline: number,
+  pollIntervalMs: number,
+): Promise<DaemonInstallPrep> {
+  for (;;) {
+    if (signal.aborted) return { kind: "cancelled" };
+    const current = await deps.probe();
+    if (signal.aborted) return { kind: "cancelled" };
+    const healthGone = !current || !current.alive;
+    const processGone = pid === undefined || !deps.processExists(pid);
+    if (healthGone && processGone) return { kind: "ready" };
+    if (deps.now() >= deadline) return { kind: "timeout" };
+    await deps.sleep(pollIntervalMs);
   }
 }
