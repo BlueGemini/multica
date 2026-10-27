@@ -2,7 +2,6 @@
 
 import type { ReactNode } from "react";
 import { ChevronRight } from "lucide-react";
-import { Badge } from "@multica/ui/components/ui/badge";
 import { Button, buttonVariants } from "@multica/ui/components/ui/button";
 import { cn } from "@multica/ui/lib/utils";
 
@@ -35,7 +34,7 @@ export function IssueSidebarSectionHeader({
         {count !== undefined && count > 0 && (
           <>
             {" "}
-            <Badge variant="secondary" className="min-w-5 rounded-md px-1.5 text-micro tabular-nums text-muted-foreground">{count}</Badge>
+            <span data-slot="section-count" className="shrink-0 rounded-xs bg-muted px-1 text-micro font-medium tabular-nums text-muted-foreground">{count}</span>
           </>
         )}
       </Button> : (
