@@ -2,7 +2,7 @@
 -- A cleanup failure fences this agent on this runtime, including already queued
 -- work and future scheduled runs. Only a NEW explicit manual rerun can cross
 -- the fence; its successful completion allows later automated work again.
--- No schema change: the failure reason itself is the durable safety marker.
+-- Existing failure and result fields are the durable safety markers.
 SELECT EXISTS (
     SELECT 1
     FROM agent_task_queue candidate

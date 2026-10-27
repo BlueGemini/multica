@@ -735,7 +735,7 @@ func (b *piBackend) Execute(ctx context.Context, prompt string, opts ExecOptions
 
 		// Do not reap the root before the cancellation owner releases its numeric
 		// process group: an unreaped root prevents PGID reuse during cleanup.
-		if scanErr == nil && cleanup.tools.Load() == 0 && processCtx.Err() == nil && piCanObserveRuntimeExit {
+		if scanErr == nil && cleanup.tools.Load() == 0 && processCtx.Err() == nil && piCanObserveRuntimeExit && !piRuntimeExited(cmd) {
 			select {
 			case <-cleanup.exited:
 			case <-processCtx.Done():
