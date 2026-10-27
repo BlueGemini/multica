@@ -28,10 +28,10 @@ export function IssueSidebarSectionHeader({
         size="sm"
         aria-expanded={open}
         onClick={() => onOpenChange(!open)}
-        className={cn("min-w-0 flex-1 shrink justify-start text-body font-medium aria-expanded:bg-transparent active:not-aria-[haspopup]:translate-y-0", !open && "text-muted-foreground")}
+        className={cn("min-w-0 flex-1 shrink justify-start text-caption font-medium aria-expanded:bg-transparent active:not-aria-[haspopup]:translate-y-0", !open && "text-muted-foreground")}
       >
-        <ChevronRight aria-hidden="true" className={cn("!size-3 shrink-0 text-faint-foreground transition-transform motion-reduce:transition-none", open && "rotate-90")} />
         <span className="truncate">{title}</span>
+        <ChevronRight aria-hidden="true" className={cn("!size-3 shrink-0 text-faint-foreground transition-transform motion-reduce:transition-none", open && "rotate-90")} />
         {count !== undefined && count > 0 && (
           <>
             {" "}
@@ -39,8 +39,7 @@ export function IssueSidebarSectionHeader({
           </>
         )}
       </Button> : (
-        <div id={id} className={cn(buttonVariants({ variant: "ghost", size: "sm" }), "min-w-0 flex-1 shrink justify-start text-body font-medium hover:bg-transparent dark:hover:bg-transparent")}>
-          <span aria-hidden="true" className="size-3 shrink-0" />
+        <div id={id} className={cn(buttonVariants({ variant: "ghost", size: "sm" }), "min-w-0 flex-1 shrink justify-start text-caption font-medium hover:bg-transparent dark:hover:bg-transparent")}>
           <span className="truncate">{title}</span>
         </div>
       )}
