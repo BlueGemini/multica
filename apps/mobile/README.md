@@ -1,5 +1,9 @@
 # Multica Mobile (iOS)
 
+This fork includes an **Enterprise AI** tab for FDE-led discovery conversations.
+See [the iOS FDE guide](docs/fde-ios.md) for its scope, integration boundaries and
+device acceptance checks.
+
 Expo + React Native iOS client for Multica. Independent from web/desktop — shares types and pure utilities from `@multica/core/`. See [`AGENTS.md`](./AGENTS.md) for mobile architecture and development rules; `package.json` records the current dependency versions.
 
 ## Just want to use it on your phone? (no development)

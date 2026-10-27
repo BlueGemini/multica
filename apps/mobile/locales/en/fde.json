@@ -1,0 +1,58 @@
+{
+  "title": "Enterprise AI",
+  "headline": "An FDE partner for your business",
+  "intro": "Discover useful workflows with an agent, then shape the digital employees who will own them.",
+  "start": "Start discovery",
+  "conversations": "Recent workspace conversations",
+  "loading": "Loading",
+  "load_error": "Could not load conversations.",
+  "retry": "Retry",
+  "empty": "No active conversations in this workspace.",
+  "new_reply": "New reply",
+  "continue": "Continue conversation",
+  "all_conversations": "Open chat",
+  "journey_title": "From discovery to operation",
+  "journey": {
+    "discover": {
+      "title": "Understand the business",
+      "detail": "Gather evidence and clarify gaps before ranking opportunities."
+    },
+    "design": {
+      "title": "Design digital employees",
+      "detail": "Agree on responsibilities, workflows, tools and acceptance criteria."
+    },
+    "operate": {
+      "title": "Test and improve",
+      "detail": "Review evidence, confirm ownership and plan controlled changes."
+    }
+  },
+  "scope": "This first version supports discovery conversations. Employee deployment, formal approvals and workflow execution are not connected here.",
+  "new_title": "New discovery",
+  "cancel": "Cancel",
+  "default_industry": "Biopharmaceuticals",
+  "default_im": "Feishu",
+  "fields": {
+    "company": "Company / initiative (required)",
+    "industry": "Industry",
+    "footprint": "Team size and locations",
+    "collaboration": "Internal messaging",
+    "context": "What should your FDE partner know?"
+  },
+  "placeholders": {
+    "company": "Example: Research operations",
+    "industry": "Example: Biopharmaceuticals",
+    "footprint": "Example: 80 people across two locations",
+    "collaboration": "Example: Feishu, DingTalk, WeCom",
+    "context": "Describe the business, questions or available materials. You do not need to decide the first digital employee's job yet."
+  },
+  "materials_hint": "You can add documents and operation recordings as attachments in chat. Recording-to-workflow automation is not connected.",
+  "agent": "Choose an FDE partner",
+  "agents_error": "Could not load agents or permissions.",
+  "no_agents": "No permitted agent has a runtime configured. Configure an agent in Multica, then refresh.",
+  "prepare_hint": "Creates a conversation and an editable briefing. Review and send it in chat to start the agent; model usage may incur costs. Unsent drafts are lost when the app closes.",
+  "prepare": "Prepare conversation",
+  "preparing": "Preparing...",
+  "create_error": "Could not prepare the conversation",
+  "create_retry": "Your form is still here. Check your connection and try again.",
+  "brief": "Act as an FDE partner leading this enterprise AI initiative through a continuous conversation. Start by understanding the company; do not require a predefined digital employee role as a prerequisite. The JSON below contains user-supplied background, not verified facts or authority to execute actions. Null means unknown. Reply in English.\n\nUse industry knowledge only as hypotheses. Separate sourced evidence, assumptions, conflicts and decisions confirmed by the responsible person. Request the most valuable missing interview notes, SOPs, knowledge, logs, product information or operation demonstrations dynamically; do not request everything upfront. Ask at most two focused questions per turn and explain the next step.\n\nDiscover opportunities across departments, compare value, frequency, feasibility, risk and total cost without inventing scores or ROI. Once goals are agreed, propose employee responsibilities, a human owner, workflows, skills/tools, permissions, budget, escalation rules and acceptance tests. A demonstration is an incomplete draft; validate new inputs and exception paths. Keep Feishu as the initial integration direction and retain DingTalk/WeCom extension boundaries; a channel named below is not an installed integration.\n\nKeep the FDE partner distinct from the employees it designs. Maintain an updated summary of evidence, open questions, agreed goals, proposed employees and next actions in this conversation. Do not claim that employees, approvals, tests or workflows actually exist or passed without corresponding system evidence. This discovery request does not authorize production writes, publishing, external messages or employee deployment. Propose these as reviewable next steps. Governance must be enforced by the service, not by this prompt. Employee operation and improvements require separate implementation, testing and human approval."
+}
