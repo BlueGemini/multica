@@ -62,9 +62,7 @@ it("stops before a signed download click, but not for clean or blob links", () =
 const gtagCalls = () => ((w.dataLayer as IArguments[] | undefined) ?? []).map((a) => Array.from(a));
 const pageTitles = () =>
   gtagCalls().flatMap((c) =>
-    (c[0] === "config" || c[0] === "set") && c.at(-1) && typeof c.at(-1) === "object"
-      ? [(c.at(-1) as { page_title?: string }).page_title]
-      : [],
+    c[0] === "set" ? [(c[1] as { page_title?: string }).page_title] : [],
   );
 
 it("pins page_title to route labels instead of the workspace document title", () => {
@@ -82,4 +80,8 @@ it("pins page_title to route labels instead of the workspace document title", ()
     "Workspace · Inbox",
   ]);
   expect(JSON.stringify(gtagCalls())).not.toContain("secret launch");
+  // config parameters outrank `set`, so a page_title in config would pin the
+  // first label for every later page view.
+  const config = gtagCalls().find((c) => c[0] === "config");
+  expect(config?.[2]).not.toHaveProperty("page_title");
 });

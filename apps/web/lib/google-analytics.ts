@@ -54,12 +54,15 @@ export function installGoogleAnalytics(measurementId: string) {
       w.dataLayer!.push(arguments);
     };
     w.gtag("js", new Date());
+    // page_title lives in the global `set` scope only, never in `config`:
+    // config parameters take precedence over set, so a config page_title
+    // would freeze the first label and ignore pinPageTitle on navigation.
+    w.gtag("set", { page_title: analyticsPageTitle(w.location.href) });
     // The landing referrer may be a same-origin secret URL (full-page hop
     // off /login?cli_state=…); pin a sanitized copy instead.
     w.gtag("config", measurementId, {
       page_location: sanitizeAnalyticsUrl(w.location.href),
       page_referrer: sanitizeAnalyticsUrl(document.referrer),
-      page_title: analyticsPageTitle(w.location.href),
     });
 
     const script = document.createElement("script");
