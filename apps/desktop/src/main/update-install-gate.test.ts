@@ -216,4 +216,55 @@ describe("prepareDaemonForInstall", () => {
     ).resolves.toEqual({ kind: "cancelled" });
     expect(deps.clearPendingExit).not.toHaveBeenCalled();
   });
+
+  it("inherits the issued stop and its deadline while health still responds", async () => {
+    // The first flow stopped PID 4242 at t=0 (deadline 15s). At t=10s the same
+    // daemon still answers /health; the successor must use the remaining 5s
+    // and must not issue a second stop.
+    let clock = 10_000;
+    const deps = makeDeps([running()], {
+      pendingExit: () => ({ pid: 4242, deadline: 15_000 }),
+      clearPendingExit: vi.fn(),
+      processExists: vi.fn(() => true),
+      sleep: vi.fn(async (ms: number) => {
+        clock += ms;
+      }),
+      now: () => clock,
+    });
+
+    await expect(
+      prepareDaemonForInstall(deps, { interruptActiveTasks: false }),
+    ).resolves.toEqual({ kind: "timeout" });
+    expect(deps.stop).not.toHaveBeenCalled();
+    expect(clock).toBe(15_000);
+    expect(deps.clearPendingExit).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not report busy for a daemon whose stop was already issued", async () => {
+    const deps = makeDeps([running({ activeTasks: 2 }), null], {
+      pendingExit: () => ({ pid: 4242, deadline: 60_000 }),
+    });
+
+    await expect(
+      prepareDaemonForInstall(deps, { interruptActiveTasks: false }),
+    ).resolves.toEqual({ kind: "ready" });
+    expect(deps.stop).not.toHaveBeenCalled();
+  });
+
+  it("drops a barrier for another PID and handles the new daemon normally", async () => {
+    const deps = makeDeps([running({ pid: 5151 }), null], {
+      pendingExit: () => ({ pid: 4242, deadline: 1 }),
+      clearPendingExit: vi.fn(),
+    });
+
+    await expect(
+      prepareDaemonForInstall(deps, { interruptActiveTasks: false }),
+    ).resolves.toEqual({ kind: "ready" });
+    expect(deps.stop).toHaveBeenCalledWith(expect.any(AbortSignal), {
+      pid: 5151,
+      deadline: 15_000,
+    });
+    expect(deps.processExists).toHaveBeenCalledWith(5151);
+    expect(deps.processExists).not.toHaveBeenCalledWith(4242);
+  });
 });

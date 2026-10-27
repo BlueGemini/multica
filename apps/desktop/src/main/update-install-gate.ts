@@ -90,17 +90,22 @@ export async function prepareDaemonForInstall(
 
   const initial = await deps.probe();
   if (options.signal?.aborted) return { kind: "cancelled" };
-  if (!initial || !initial.alive || initial.externallyManaged) {
-    // /health is gone, but an earlier preparation may already have stopped a
-    // process that is still draining and holding multica.exe. Keep its
-    // barrier (PID and original deadline) rather than reporting ready.
-    const inherited = deps.pendingExit?.() ?? null;
-    if (!inherited) return { kind: "ready" };
+  const daemonAlive = !!initial && initial.alive && !initial.externallyManaged;
+  // An earlier, superseded preparation may already have issued a stop for
+  // this process. Its barrier (PID and original deadline) takes precedence
+  // whether /health has vanished or the process is still answering while it
+  // drains: re-stopping or restarting the clock would stretch the agreed
+  // upper bound on waiting. Only a different live PID (a new daemon) makes
+  // the old barrier irrelevant.
+  const inherited = deps.pendingExit?.() ?? null;
+  if (inherited && (!daemonAlive || initial?.pid === inherited.pid)) {
     const signal = options.signal ?? new AbortController().signal;
     const result = await waitForExit(deps, signal, inherited.pid, inherited.deadline, pollIntervalMs);
     if (result.kind !== "cancelled") deps.clearPendingExit?.();
     return result;
   }
+  if (inherited) deps.clearPendingExit?.();
+  if (!daemonAlive) return { kind: "ready" };
   if (!options.interruptActiveTasks && initial.activeTasks > 0) {
     return { kind: "busy", activeTasks: initial.activeTasks };
   }
