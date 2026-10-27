@@ -1046,7 +1046,10 @@ async function lifecycleBlockedByForeignDaemon(): Promise<boolean> {
   );
 }
 
-async function stopDaemon(): Promise<{ success: boolean; error?: string }> {
+async function stopDaemon(
+  signal?: AbortSignal,
+): Promise<{ success: boolean; error?: string }> {
+  if (signal?.aborted) return { success: true };
   // Central lifecycle guard: a daemon running in an environment we can't drive
   // (e.g. Linux in WSL2 behind a Windows desktop) can't be stopped by the
   // native CLI — it would act on the host process namespace and no-op, while
@@ -1061,6 +1064,8 @@ async function stopDaemon(): Promise<{ success: boolean; error?: string }> {
 
   const active = await ensureActiveProfile();
   if (!active) return { success: true };
+  // A queued update stop can expire while resolving the CLI/profile/preflight.
+  if (signal?.aborted) return { success: true };
   currentState = "stopping";
   // An explicit stop is a clean reset — drop any pending auth-failure verdict.
   authExpired = false;
@@ -1358,6 +1363,7 @@ function stopLogTail(): void {
 // Desired-running state captured when an update install stopped the daemon,
 // so an install that never actually quits the app can put things back.
 let desiredRunningBeforeUpdateStop: boolean | null = null;
+let updateInstallPreparation: AbortController | null = null;
 
 /**
  * Stops the bundled daemon ahead of an app update so the installer can replace
@@ -1366,7 +1372,14 @@ let desiredRunningBeforeUpdateStop: boolean | null = null;
  */
 export async function prepareDaemonForUpdateInstall(options: {
   interruptActiveTasks: boolean;
+  signal?: AbortSignal;
 }): Promise<DaemonInstallPrep> {
+  updateInstallPreparation?.abort();
+  const preparation = new AbortController();
+  updateInstallPreparation = preparation;
+  const signal = options.signal
+    ? AbortSignal.any([options.signal, preparation.signal])
+    : preparation.signal;
   return prepareDaemonForInstall(
     {
       probe: async () => {
@@ -1384,7 +1397,7 @@ export async function prepareDaemonForUpdateInstall(options: {
           ),
         };
       },
-      stop: async () => {
+      stop: async (stopSignal) => {
         // Keep recovery and the deferred version-restart from bringing the
         // daemon straight back while we wait for the installer to take over.
         if (desiredRunningBeforeUpdateStop === null) {
@@ -1393,7 +1406,9 @@ export async function prepareDaemonForUpdateInstall(options: {
         setDesiredDaemonRunning(false);
         pendingVersionRestart = false;
         stopPolling();
-        const result = await lifecycleOperations.runForeground(() => stopDaemon());
+        const result = await lifecycleOperations.runForeground(() =>
+          stopDaemon(stopSignal),
+        );
         if (!result.success) {
           throw new Error(result.error ?? "daemon stop failed");
         }
@@ -1402,7 +1417,7 @@ export async function prepareDaemonForUpdateInstall(options: {
       sleep: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
       now: () => Date.now(),
     },
-    options,
+    { ...options, signal },
   );
 }
 
@@ -1411,6 +1426,8 @@ export async function prepareDaemonForUpdateInstall(options: {
  * app never started quitting), so the runtime does not stay off silently.
  */
 export function resumeDaemonAfterAbortedUpdateInstall(): void {
+  updateInstallPreparation?.abort();
+  updateInstallPreparation = null;
   if (desiredRunningBeforeUpdateStop === null) return;
   setDesiredDaemonRunning(desiredRunningBeforeUpdateStop, true);
   desiredRunningBeforeUpdateStop = null;
@@ -1551,10 +1568,16 @@ export function setupDaemonManager(
 
   let isQuitting = false;
   app.on("before-quit", (event) => {
-    if (isQuitting) return;
+    // The updater registers first and owns shutdown while its gate is pending.
+    // Do not issue a second stop or re-enter app.quit() before PID exit is known.
+    if (event.defaultPrevented || isQuitting) return;
     setDesiredDaemonRunning(false);
     stopPolling();
     stopLogTail();
+
+    // The update gate already stopped the daemon or exhausted its deadline.
+    // Let its approved quit proceed without another stop/re-entrant quit.
+    if (desiredRunningBeforeUpdateStop !== null) return;
 
     loadPrefs().then(async (prefs) => {
       if (prefs.autoStop) {

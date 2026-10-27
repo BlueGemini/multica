@@ -1,3 +1,4 @@
+// @vitest-environment node
 import { describe, expect, it, vi } from "vitest";
 import {
   prepareDaemonForInstall,
@@ -34,6 +35,24 @@ function makeDeps(
 }
 
 describe("prepareDaemonForInstall", () => {
+  it("does not stop after cancellation during the initial probe", async () => {
+    const controller = new AbortController();
+    const deps = makeDeps([running()], {
+      probe: vi.fn(async () => {
+        controller.abort();
+        return running();
+      }),
+    });
+
+    await expect(
+      prepareDaemonForInstall(deps, {
+        interruptActiveTasks: false,
+        signal: controller.signal,
+      }),
+    ).resolves.toEqual({ kind: "cancelled" });
+    expect(deps.stop).not.toHaveBeenCalled();
+  });
+
   it("is ready without stopping when no managed daemon exists", async () => {
     for (const probe of [null, running({ alive: false }), running({ externallyManaged: true })]) {
       const deps = makeDeps([probe]);
@@ -107,8 +126,12 @@ describe("prepareDaemonForInstall", () => {
 
   it("does not hang behind a stop that never settles", async () => {
     let clock = 0;
+    let stopSignal: AbortSignal | undefined;
     const deps = makeDeps([running()], {
-      stop: vi.fn(() => new Promise<void>(() => {})),
+      stop: vi.fn((signal) => {
+        stopSignal = signal;
+        return new Promise<void>(() => {});
+      }),
       sleep: vi.fn(async (ms: number) => {
         clock += ms;
       }),
@@ -118,5 +141,6 @@ describe("prepareDaemonForInstall", () => {
     await expect(
       prepareDaemonForInstall(deps, { interruptActiveTasks: false, timeoutMs: 1_000 }),
     ).resolves.toEqual({ kind: "timeout" });
+    expect(stopSignal?.aborted).toBe(true);
   });
 });

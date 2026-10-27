@@ -297,7 +297,7 @@ describe("Windows daemon gate around update install (#8823)", () => {
   function makeGate(preps: DaemonInstallPrep[]) {
     const queue = [...preps];
     const gate = {
-      prepare: vi.fn(async () => queue.shift() ?? { kind: "ready" as const }),
+      prepare: vi.fn<UpdaterDaemonGate["prepare"]>(async () => queue.shift() ?? { kind: "ready" as const }),
       resumeAfterAbortedInstall: vi.fn(),
       confirmInstallWhileBusy: vi.fn(async () => "now" as const),
     } satisfies UpdaterDaemonGate;
@@ -352,7 +352,7 @@ describe("Windows daemon gate around update install (#8823)", () => {
 
     await invokeIpc("updater:install");
 
-    expect(gate.prepare).toHaveBeenCalledWith({ interruptActiveTasks: false });
+    expect(gate.prepare).toHaveBeenCalledWith({ interruptActiveTasks: false, signal: expect.any(AbortSignal) });
     expect(gate.confirmInstallWhileBusy).not.toHaveBeenCalled();
     expect(ctx.quitAndInstall).toHaveBeenCalledTimes(1);
   });
@@ -383,7 +383,7 @@ describe("Windows daemon gate around update install (#8823)", () => {
     await invokeIpc("updater:install");
 
     expect(gate.confirmInstallWhileBusy).toHaveBeenCalledWith(2);
-    expect(gate.prepare).toHaveBeenLastCalledWith({ interruptActiveTasks: true });
+    expect(gate.prepare).toHaveBeenLastCalledWith({ interruptActiveTasks: true, signal: expect.any(AbortSignal) });
     expect(ctx.quitAndInstall).toHaveBeenCalledTimes(1);
   });
 
@@ -416,8 +416,8 @@ describe("Windows daemon gate around update install (#8823)", () => {
 
     await vi.advanceTimersByTimeAsync(10_000);
     expect(ctx.quitAndInstall).toHaveBeenCalledTimes(1);
-    expect(gate.prepare).toHaveBeenCalledWith({ interruptActiveTasks: false });
-    expect(gate.prepare).not.toHaveBeenCalledWith({ interruptActiveTasks: true });
+    expect(gate.prepare).toHaveBeenCalledWith({ interruptActiveTasks: false, signal: expect.any(AbortSignal) });
+    expect(gate.prepare).not.toHaveBeenCalledWith(expect.objectContaining({ interruptActiveTasks: true }));
   });
 
   it("resumes the daemon when quitAndInstall never quits the app", async () => {
@@ -428,6 +428,51 @@ describe("Windows daemon gate around update install (#8823)", () => {
     await vi.advanceTimersByTimeAsync(10_000);
 
     expect(gate.resumeAfterAbortedInstall).toHaveBeenCalledTimes(1);
+  });
+
+  it("lets manual Install now supersede a deferred check without installing twice", async () => {
+    let finishProbe!: (prep: DaemonInstallPrep) => void;
+    const gate = makeGate([]);
+    gate.prepare
+      .mockResolvedValueOnce({ kind: "busy", activeTasks: 1 })
+      .mockImplementationOnce(() => new Promise((resolve) => { finishProbe = resolve; }))
+      .mockResolvedValueOnce({ kind: "busy", activeTasks: 1 })
+      .mockResolvedValueOnce({ kind: "ready" });
+    gate.confirmInstallWhileBusy
+      .mockResolvedValueOnce("wait" as never)
+      .mockResolvedValueOnce("now");
+    setupAutoUpdater(() => null, { daemonGate: gate, platform: "win32" });
+
+    await invokeIpc("updater:install");
+    await vi.advanceTimersByTimeAsync(10_000);
+    const deferredSignal = gate.prepare.mock.calls[1][0].signal!;
+    await invokeIpc("updater:install");
+    expect(deferredSignal.aborted).toBe(true);
+    expect(ctx.quitAndInstall).toHaveBeenCalledTimes(1);
+
+    finishProbe({ kind: "ready" });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(ctx.quitAndInstall).toHaveBeenCalledTimes(1);
+    expect(gate.prepare).toHaveBeenCalledTimes(4);
+  });
+
+  it("ignores a manual dialog result after quit takes ownership", async () => {
+    let choose!: (choice: "now") => void;
+    const gate = makeGate([{ kind: "busy", activeTasks: 1 }, { kind: "ready" }]);
+    gate.confirmInstallWhileBusy.mockImplementationOnce(() => new Promise((resolve) => { choose = resolve; }));
+    setupAutoUpdater(() => null, { daemonGate: gate, platform: "win32" });
+    emitUpdater("update-downloaded", { version: "0.3.18" });
+
+    const manualInstall = invokeIpc("updater:install");
+    await vi.advanceTimersByTimeAsync(0);
+    emitBeforeQuit();
+    await vi.advanceTimersByTimeAsync(0);
+    choose("now");
+    await manualInstall;
+
+    expect(ctx.appQuit).toHaveBeenCalledTimes(1);
+    expect(ctx.quitAndInstall).not.toHaveBeenCalled();
+    expect(gate.prepare).toHaveBeenCalledTimes(2);
   });
 
   it("does not resume the daemon once the app is quitting", async () => {
@@ -461,7 +506,7 @@ describe("Windows daemon gate around update install (#8823)", () => {
     await vi.advanceTimersByTimeAsync(0);
 
     expect(event.preventDefault).toHaveBeenCalled();
-    expect(gate.prepare).toHaveBeenCalledWith({ interruptActiveTasks: false });
+    expect(gate.prepare).toHaveBeenCalledWith({ interruptActiveTasks: false, signal: expect.any(AbortSignal) });
     expect(ctx.appQuit).toHaveBeenCalledTimes(1);
     expect(autoUpdater.autoInstallOnAppQuit).toBe(true);
 

@@ -846,6 +846,7 @@ if (!gotTheLock) {
     desktopInitialized = true;
     createWindow();
 
+    // Register first so the update quit gate can block daemon autoStop.
     setupAutoUpdater(() => mainWindow, {
       // Windows only (the updater ignores it elsewhere): stop the bundled
       // daemon before the installer runs so multica.exe is replaced. #8823

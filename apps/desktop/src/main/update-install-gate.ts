@@ -15,6 +15,8 @@ export type DaemonInstallPrep =
   | { kind: "ready" }
   /** The daemon is executing tasks and the caller did not allow interrupting. */
   | { kind: "busy"; activeTasks: number }
+  /** The install request was superseded or cancelled. */
+  | { kind: "cancelled" }
   /**
    * The daemon was asked to stop but did not exit before the deadline. The
    * caller should still install: the installer then behaves exactly as it did
@@ -35,7 +37,7 @@ export interface DaemonInstallGateDeps {
   /** Returns null when there is no managed daemon profile to probe. */
   probe: () => Promise<DaemonInstallProbe | null>;
   /** Requests a graceful stop. May resolve before the process has exited. */
-  stop: () => Promise<void>;
+  stop: (signal: AbortSignal) => Promise<void>;
   processExists: (pid: number) => boolean;
   sleep: (ms: number) => Promise<void>;
   now: () => number;
@@ -43,6 +45,7 @@ export interface DaemonInstallGateDeps {
 
 export interface DaemonInstallGateOptions {
   interruptActiveTasks: boolean;
+  signal?: AbortSignal;
   /** Upper bound on waiting for the process to exit after the stop request. */
   timeoutMs?: number;
   pollIntervalMs?: number;
@@ -67,6 +70,7 @@ export async function prepareDaemonForInstall(
   const pollIntervalMs = options.pollIntervalMs ?? DEFAULT_POLL_INTERVAL_MS;
 
   const initial = await deps.probe();
+  if (options.signal?.aborted) return { kind: "cancelled" };
   if (!initial || !initial.alive || initial.externallyManaged) {
     return { kind: "ready" };
   }
@@ -76,22 +80,31 @@ export async function prepareDaemonForInstall(
 
   const pid = initial.pid;
   const deadline = deps.now() + timeoutMs;
+  const stopController = new AbortController();
+  const signal = options.signal
+    ? AbortSignal.any([options.signal, stopController.signal])
+    : stopController.signal;
   try {
-    // Bound the stop itself: it queues behind any in-flight lifecycle op
-    // (a start can take up to a minute), and the deadline must cover that.
-    await Promise.race([deps.stop(), deps.sleep(timeoutMs)]);
-  } catch (err) {
-    // Fall through to the wait loop: the stop may still have landed, and if it
-    // did not we time out into the pre-existing installer behaviour.
-    console.warn("[updater] daemon stop before install failed:", err);
-  }
+    try {
+      // The stop may queue behind a long-running start. Its callback must
+      // check the signal before issuing the command, even after this race ends.
+      await Promise.race([deps.stop(signal), deps.sleep(timeoutMs)]);
+    } catch (err) {
+      console.warn("[updater] daemon stop before install failed:", err);
+    }
 
-  for (;;) {
-    const current = await deps.probe();
-    const healthGone = !current || !current.alive;
-    const processGone = pid === undefined || !deps.processExists(pid);
-    if (healthGone && processGone) return { kind: "ready" };
-    if (deps.now() >= deadline) return { kind: "timeout" };
-    await deps.sleep(pollIntervalMs);
+    for (;;) {
+      if (signal.aborted) return { kind: "cancelled" };
+      const current = await deps.probe();
+      if (signal.aborted) return { kind: "cancelled" };
+      const healthGone = !current || !current.alive;
+      const processGone = pid === undefined || !deps.processExists(pid);
+      if (healthGone && processGone) return { kind: "ready" };
+      if (deps.now() >= deadline) return { kind: "timeout" };
+      await deps.sleep(pollIntervalMs);
+    }
+  } finally {
+    // Timing out must invalidate a stop that has not left the lifecycle queue.
+    stopController.abort();
   }
 }
