@@ -1,5 +1,5 @@
 import { autoUpdater, type UpdateDownloadedEvent } from "electron-updater";
-import { app, type BrowserWindow, ipcMain } from "electron";
+import { app, type BrowserWindow, type MessageBoxOptions, ipcMain } from "electron";
 import type {
   ManualUpdateCheckResult,
   UpdaterPreferences,
@@ -54,28 +54,18 @@ configureMacX64UpdateChannel(autoUpdater);
 
 const STARTUP_CHECK_DELAY_MS = 5_000;
 const PERIODIC_CHECK_INTERVAL_MS = 60 * 60 * 1000; // 1 hour
-// How often a "install when tasks finish" choice re-checks the daemon.
-const DEFERRED_INSTALL_POLL_MS = 10_000;
 // quitAndInstall only quits once the installer has been spawned. If the app is
 // still running this long afterwards, the install bailed and the daemon we
 // stopped for it must be brought back.
 const INSTALL_QUIT_WATCHDOG_MS = 10_000;
 
-export type BusyInstallChoice = "wait" | "now" | "cancel";
-
-/**
- * Windows-only hook that lets the updater stop the bundled daemon before the
- * NSIS installer runs, so the locked `multica.exe` actually gets replaced
- * (GitHub #8823). Injected from index.ts to keep this module free of
- * daemon-manager's state.
- */
+// Injected so the updater does not own the daemon manager's state.
 export interface UpdaterDaemonGate {
   prepare: (options: {
     interruptActiveTasks: boolean;
-    signal?: AbortSignal;
   }) => Promise<DaemonInstallPrep>;
   resumeAfterAbortedInstall: () => void;
-  confirmInstallWhileBusy: (activeTasks: number) => Promise<BusyInstallChoice>;
+  confirmInstallWhileBusy: (activeTasks: number) => Promise<boolean>;
 }
 
 export interface SetupAutoUpdaterOptions {
@@ -83,37 +73,23 @@ export interface SetupAutoUpdaterOptions {
   platform?: NodeJS.Platform;
 }
 
-type BusyInstallMessageBoxOptions = {
-  type: "question";
-  buttons: string[];
-  defaultId: number;
-  cancelId: number;
-  title: string;
-  message: string;
-  detail: string;
-};
-
 export function createElectronBusyInstallPrompt(
   showMessageBox: (
-    options: BusyInstallMessageBoxOptions,
+    options: MessageBoxOptions,
   ) => Promise<{ response: number }>,
-): (activeTasks: number) => Promise<BusyInstallChoice> {
+): (activeTasks: number) => Promise<boolean> {
   return async (activeTasks) => {
     const tasks = activeTasks === 1 ? "1 agent task is" : `${activeTasks} agent tasks are`;
     const { response } = await showMessageBox({
       type: "question",
-      buttons: ["Install when tasks finish", "Install now", "Cancel"],
-      defaultId: 0,
-      cancelId: 2,
+      buttons: ["Install now", "Cancel"],
+      defaultId: 1,
+      cancelId: 1,
       title: "Install update",
       message: `${tasks} running on this computer.`,
-      detail:
-        "Installing now stops the local runtime and interrupts them. " +
-        "Choose \"Install when tasks finish\" to restart and update automatically once they are done.",
+      detail: "Installing now stops the local runtime and interrupts these tasks.",
     });
-    if (response === 0) return "wait";
-    if (response === 1) return "now";
-    return "cancel";
+    return response === 0;
   };
 }
 
@@ -239,213 +215,62 @@ export function setupAutoUpdater(
     }
   };
 
-  // --- Windows: stop the bundled daemon before the installer runs ---------
   let updateReadyToInstall = false;
+  let installFlow: Promise<void> | null = null;
+  let quitRequested = false;
+  let finishing = false;
   let appQuitting = false;
-  let installStarted = false;
-  let quitGateHandled = false;
-  type InstallFlow = {
-    kind: "manual" | "deferred" | "quit";
-    controller: AbortController;
-  };
-  let activeInstallFlow: InstallFlow | null = null;
-  let deferredInstallGeneration = 0;
-  let deferredInstallTimer: ReturnType<typeof setTimeout> | null = null;
 
-  // Abort the running flow. `handoff` means another flow takes over at once:
-  // keep the daemon paused and keep any issued stop's PID barrier, so the
-  // successor still waits for that process to exit. Otherwise the install is
-  // being abandoned and the daemon is put back.
-  const cancelActiveInstallFlow = (handoff = false): void => {
-    if (!activeInstallFlow) return;
-    activeInstallFlow.controller.abort();
-    activeInstallFlow = null;
-    if (!handoff) daemonGate?.resumeAfterAbortedInstall();
-  };
-
-  const cancelDeferredInstall = (handoff = false): void => {
-    deferredInstallGeneration += 1;
-    if (deferredInstallTimer !== null) {
-      clearTimeout(deferredInstallTimer);
-      deferredInstallTimer = null;
-    }
-    if (activeInstallFlow?.kind === "deferred") cancelActiveInstallFlow(handoff);
-  };
-
-  const isCurrentFlow = (flow: InstallFlow): boolean =>
-    activeInstallFlow === flow && !flow.controller.signal.aborted;
-
-  // A flow that is still current but will not install (cancel, busy, error)
-  // must not leave the daemon paused by a stop it inherited via handoff.
-  const finishFlowWithoutInstall = (flow: InstallFlow): void => {
-    if (!isCurrentFlow(flow)) return;
-    activeInstallFlow = null;
-    daemonGate?.resumeAfterAbortedInstall();
-  };
-
-  const startInstall = (flow: InstallFlow): void => {
-    if (installStarted || !isCurrentFlow(flow)) return;
-    activeInstallFlow = null;
-    installStarted = true;
-    cancelDeferredInstall();
+  const finish = (install: boolean, manual: boolean): void => {
+    finishing = true;
+    const previousAutoInstall = autoUpdater.autoInstallOnAppQuit;
+    if (!install) autoUpdater.autoInstallOnAppQuit = false;
     setTimeout(() => {
       if (appQuitting) return;
-      console.warn("[updater] install did not quit the app; resuming the daemon");
-      installStarted = false;
+      finishing = false;
+      quitRequested = false;
+      autoUpdater.autoInstallOnAppQuit = previousAutoInstall;
       daemonGate?.resumeAfterAbortedInstall();
     }, INSTALL_QUIT_WATCHDOG_MS);
-    autoUpdater.quitAndInstall(false, true);
+    if (install && manual) autoUpdater.quitAndInstall(false, true);
+    else app.quit();
   };
 
-  // "Install when tasks finish": re-check periodically and install once the
-  // daemon is idle. Clicking "Restart to update" again re-runs the full flow,
-  // so "Install now" stays reachable if tasks keep arriving.
-  const scheduleDeferredInstall = (generation: number): void => {
-    deferredInstallTimer = setTimeout(async () => {
-      deferredInstallTimer = null;
-      if (
-        generation !== deferredInstallGeneration ||
-        !daemonGate ||
-        installStarted ||
-        activeInstallFlow ||
-        appQuitting
-      ) {
-        return;
-      }
-      const flow: InstallFlow = {
-        kind: "deferred",
-        controller: new AbortController(),
-      };
-      activeInstallFlow = flow;
+  // All entry points join this promise. Once stopping starts, nobody cancels
+  // or replaces its PID wait, and no other flow can resume the daemon.
+  const installWithDaemonGate = (manual: boolean): Promise<void> => {
+    if (installFlow) return installFlow;
+    if (finishing || !daemonGate) return Promise.resolve();
+    installFlow = (async () => {
+      let install = true;
       try {
-        const prep = await daemonGate.prepare({
-          interruptActiveTasks: false,
-          signal: flow.controller.signal,
-        });
-        if (!isCurrentFlow(flow)) return;
+        const prep = await daemonGate.prepare({ interruptActiveTasks: false });
         if (prep.kind === "busy") {
-          finishFlowWithoutInstall(flow);
-          scheduleDeferredInstall(generation);
-        } else if (prep.kind !== "cancelled") {
-          startInstall(flow);
+          install = manual && await daemonGate.confirmInstallWhileBusy(prep.activeTasks);
+          if (install) await daemonGate.prepare({ interruptActiveTasks: true });
         }
       } catch (err) {
-        if (isCurrentFlow(flow)) {
-          console.error("[updater] deferred install check failed:", err);
-          finishFlowWithoutInstall(flow);
-          scheduleDeferredInstall(generation);
-        }
-      } finally {
-        if (isCurrentFlow(flow)) activeInstallFlow = null;
+        // Preserve the existing installer fallback if preparation fails.
+        console.error("[updater] daemon preparation failed; installing anyway:", err);
       }
-    }, DEFERRED_INSTALL_POLL_MS);
-  };
-
-  const installWithDaemonGate = async (): Promise<void> => {
-    if (
-      !daemonGate ||
-      installStarted ||
-      appQuitting ||
-      (activeInstallFlow && activeInstallFlow.kind !== "deferred")
-    ) {
-      return;
-    }
-    // A manual choice supersedes both the timer and a probe already in flight.
-    // Hand off rather than resume: a deferred stop may already be draining.
-    cancelDeferredInstall(true);
-    const flow: InstallFlow = {
-      kind: "manual",
-      controller: new AbortController(),
-    };
-    activeInstallFlow = flow;
-    try {
-      let prep = await daemonGate.prepare({
-        interruptActiveTasks: false,
-        signal: flow.controller.signal,
-      });
-      if (!isCurrentFlow(flow)) return;
-      if (prep.kind === "busy") {
-        const choice = await daemonGate.confirmInstallWhileBusy(prep.activeTasks);
-        if (!isCurrentFlow(flow)) return;
-        if (choice === "cancel") {
-          finishFlowWithoutInstall(flow);
-          return;
-        }
-        if (choice === "wait") {
-          finishFlowWithoutInstall(flow);
-          scheduleDeferredInstall(deferredInstallGeneration);
-          return;
-        }
-        prep = await daemonGate.prepare({
-          interruptActiveTasks: true,
-          signal: flow.controller.signal,
-        });
+      if (install) finish(true, manual);
+      else {
+        daemonGate.resumeAfterAbortedInstall();
+        if (quitRequested) finish(false, false);
       }
-      if (!isCurrentFlow(flow) || prep.kind === "cancelled") return;
-      if (prep.kind === "timeout") {
-        // Same as the pre-gate behaviour: the installer handles the process.
-        console.warn("[updater] daemon did not exit before install; continuing");
-      }
-      startInstall(flow);
-    } catch (err) {
-      if (!isCurrentFlow(flow)) return;
-      // The gate must never make updating impossible.
-      console.error("[updater] pre-install daemon stop failed; installing anyway:", err);
-      startInstall(flow);
-    } finally {
-      if (isCurrentFlow(flow)) activeInstallFlow = null;
-    }
+    })().finally(() => { installFlow = null; });
+    return installFlow;
   };
 
   if (daemonGate) {
-    // autoInstallOnAppQuit: a normal quit with a downloaded update runs the
-    // installer silently. Stop an idle daemon first so its binary is replaced;
-    // with tasks running, skip this quit's install rather than letting the
-    // installer kill them — the update stays downloaded for a later quit or
-    // "Restart to update".
+    app.on("will-quit", () => { appQuitting = true; });
     app.on("before-quit", (event) => {
-      if (
-        installStarted ||
-        quitGateHandled ||
-        !updateReadyToInstall ||
-        !autoUpdater.autoInstallOnAppQuit
-      ) {
-        appQuitting = true;
-        return;
-      }
+      if (finishing || !updateReadyToInstall || !autoUpdater.autoInstallOnAppQuit) return;
       event.preventDefault();
-      // Every quit remains intercepted until this preparation settles.
-      if (activeInstallFlow?.kind === "quit") return;
-      // Hand off: a stop issued by the superseded flow keeps its PID barrier.
-      cancelDeferredInstall(true);
-      cancelActiveInstallFlow(true);
-      const flow: InstallFlow = {
-        kind: "quit",
-        controller: new AbortController(),
-      };
-      activeInstallFlow = flow;
-      void daemonGate
-        .prepare({ interruptActiveTasks: false, signal: flow.controller.signal })
-        .then((prep) => {
-          if (prep.kind === "busy") {
-            console.warn(
-              `[updater] ${prep.activeTasks} task(s) running; deferring install to a later quit`,
-            );
-            autoUpdater.autoInstallOnAppQuit = false;
-            // No install on this quit: undo any pause inherited by handoff so
-            // the normal quit path (including autoStop) applies.
-            daemonGate.resumeAfterAbortedInstall();
-          }
-        })
-        .catch((err) => {
-          console.error("[updater] pre-quit daemon stop failed:", err);
-        })
-        .finally(() => {
-          activeInstallFlow = null;
-          quitGateHandled = true;
-          appQuitting = true;
-          app.quit();
-        });
+      quitRequested = true;
+      void installWithDaemonGate(false).catch((err) => {
+        console.error("[updater] quit-time installation failed:", err);
+      });
     });
   }
 
@@ -487,7 +312,7 @@ export function setupAutoUpdater(
       autoUpdater.quitAndInstall(false, true);
       return;
     }
-    await installWithDaemonGate();
+    await installWithDaemonGate(true);
   });
 
   ipcMain.handle(

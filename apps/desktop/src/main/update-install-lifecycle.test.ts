@@ -1,7 +1,5 @@
 // @vitest-environment node
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { DaemonInstallPrep } from "./update-install-gate";
-import type { UpdaterDaemonGate } from "./updater";
 
 type Health = {
   status: string;
@@ -21,6 +19,7 @@ const ctx = vi.hoisted(() => ({
   autoStop: false,
   quits: 0,
   stops: 0,
+  starts: 0,
   holdStart: false,
   finishStart: null as null | (() => void),
   quit: vi.fn(),
@@ -99,9 +98,11 @@ vi.mock("child_process", () => ({
       ctx.health = null;
       // CLI success and /health disappearing do not prove that PID 4242 exited.
       cb(null, "");
-    } else if (args[0] === "daemon" && args[1] === "start" && ctx.holdStart) {
+    } else if (args[0] === "daemon" && args[1] === "start") {
+      ctx.starts++;
       ctx.health = { status: "starting", pid: 4343, active_task_count: 0, cli_version: "0.7.0" };
-      ctx.finishStart = () => cb(null, "");
+      if (ctx.holdStart) ctx.finishStart = () => cb(null, "");
+      else cb(null, "");
     } else cb(null, "");
   }),
 }));
@@ -112,7 +113,10 @@ function emitQuit() {
     preventDefault() { this.defaultPrevented = true; },
   };
   for (const listener of ctx.listeners.get("before-quit") ?? []) listener(event);
-  if (!event.defaultPrevented) ctx.quits++;
+  if (!event.defaultPrevented) {
+    ctx.quits++;
+    for (const listener of ctx.listeners.get("will-quit") ?? []) listener(event);
+  }
   return event;
 }
 
@@ -132,7 +136,7 @@ async function setupRealGate() {
     daemonGate: {
       prepare: manager.prepareDaemonForUpdateInstall,
       resumeAfterAbortedInstall: manager.resumeDaemonAfterAbortedUpdateInstall,
-      confirmInstallWhileBusy: async () => "cancel",
+      confirmInstallWhileBusy: async () => false,
     },
   });
   manager.setupDaemonManager(() => null);
@@ -151,6 +155,7 @@ beforeEach(() => {
   ctx.autoStop = false;
   ctx.quits = 0;
   ctx.stops = 0;
+  ctx.starts = 0;
   ctx.processAlive = true;
   ctx.holdStart = false;
   ctx.finishStart = null;
@@ -170,14 +175,14 @@ afterEach(() => {
 });
 
 describe("Windows update and daemon lifecycle coordination", () => {
-  it("autoStop must not re-enter quit before the update gate confirms process exit", async () => {
+  it("blocks repeated quits and legacy autoStop until the original PID exits", async () => {
     ctx.autoStop = true;
     await setupRealGate();
     downloaded();
     expect(emitQuit().defaultPrevented).toBe(true);
+    expect(emitQuit().defaultPrevented).toBe(true);
     await vi.advanceTimersByTimeAsync(1_000);
-    expect(ctx.stops).toBeGreaterThan(0);
-    // The process still exists, well before the 15s fallback deadline.
+    expect(ctx.stops).toBe(1);
     expect(ctx.quits).toBe(0);
     ctx.processAlive = false;
     await vi.advanceTimersByTimeAsync(250);
@@ -185,77 +190,59 @@ describe("Windows update and daemon lifecycle coordination", () => {
     expect(ctx.stops).toBe(1);
   });
 
-  it("a second quit must still wait while preparation is unresolved", async () => {
+  it("shares an ongoing stop across update clicks and quit, and blocks daemon starts", async () => {
     await setupRealGate();
     downloaded();
+    ctx.install.mockImplementation(emitQuit);
+    const first = ipc("updater:install");
+    await vi.advanceTimersByTimeAsync(1_000);
+    const second = ipc("updater:install");
     expect(emitQuit().defaultPrevented).toBe(true);
-    expect(emitQuit().defaultPrevented).toBe(true);
-    await vi.advanceTimersByTimeAsync(15_000);
+    await expect(ipc("daemon:start")).resolves.toMatchObject({ success: false });
+    await expect(ipc("daemon:restart")).resolves.toMatchObject({ success: false });
+    await ipc("daemon:stop");
+    await vi.advanceTimersByTimeAsync(1_000);
+    expect(ctx.starts).toBe(0);
+    expect(ctx.stops).toBe(1);
+    expect(ctx.install).not.toHaveBeenCalled();
+    expect(ctx.quits).toBe(0);
+    ctx.processAlive = false;
+    await vi.advanceTimersByTimeAsync(250);
+    await Promise.all([first, second]);
+    expect(ctx.stops).toBe(1);
+    expect(ctx.install).toHaveBeenCalledTimes(1);
     expect(ctx.quits).toBe(1);
   });
 
-  it("documents the fail-open path: missing health returns ready without checking the PID", async () => {
-    const manager = await setupRealGate();
-    ctx.health = null;
-    vi.mocked(process.kill).mockClear();
-    const result = await manager.prepareDaemonForUpdateInstall({ interruptActiveTasks: false });
-    expect(result.kind).toBe("ready");
-    expect(process.kill).not.toHaveBeenCalled();
+  it("restores daemon control if installation never quits the app", async () => {
+    await setupRealGate();
+    const install = ipc("updater:install");
+    await vi.advanceTimersByTimeAsync(0);
+    ctx.processAlive = false;
+    await vi.advanceTimersByTimeAsync(250);
+    await install;
+    await expect(ipc("daemon:start")).resolves.toMatchObject({ success: false });
+    await vi.advanceTimersByTimeAsync(10_000);
+    await expect(ipc("daemon:start")).resolves.toMatchObject({ success: true });
+    expect(ctx.starts).toBe(1);
   });
 
-  it.each(["busy", "ready", "error"] as const)("Cancel invalidates a deferred probe that later returns %s", async (result) => {
-    const { setupAutoUpdater } = await import("./updater");
-    let finishProbe!: (prep: DaemonInstallPrep) => void;
-    let rejectProbe!: (err: Error) => void;
-    const prepare = vi.fn<UpdaterDaemonGate["prepare"]>()
-      .mockResolvedValueOnce({ kind: "busy", activeTasks: 1 })
-      .mockImplementationOnce(() => new Promise<DaemonInstallPrep>((resolve, reject) => {
-        finishProbe = resolve;
-        rejectProbe = reject;
-      }))
-      .mockResolvedValueOnce({ kind: "busy", activeTasks: 1 })
-      .mockResolvedValue({ kind: "ready" });
-    setupAutoUpdater(() => null, {
-      platform: "win32",
-      daemonGate: {
-        prepare,
-        resumeAfterAbortedInstall: vi.fn(),
-        confirmInstallWhileBusy: vi.fn().mockResolvedValueOnce("wait").mockResolvedValueOnce("cancel"),
-      },
-    });
-    await ipc("updater:install");
-    await vi.advanceTimersByTimeAsync(10_000);
-    const deferredSignal = prepare.mock.calls[1][0].signal!;
-    await ipc("updater:install");
-    expect(deferredSignal.aborted).toBe(true);
-    if (result === "error") rejectProbe(new Error("late probe failure"));
-    else if (result === "busy") finishProbe({ kind: "busy", activeTasks: 1 });
-    else finishProbe({ kind: "ready" });
-    await vi.advanceTimersByTimeAsync(10_000);
-    expect(prepare).toHaveBeenCalledTimes(3);
-    expect(ctx.install).not.toHaveBeenCalled();
-  });
-
-  it.each([20_000, 25_000])("an expired queued stop cannot kill later tasks when the start finishes at %ims", async (finishAt) => {
+  it("invalidates a timed-out stop queued behind an earlier start", async () => {
     await setupRealGate();
     ctx.holdStart = true;
-    // The daemon serves "starting" health while its CLI child awaits preflight.
-    // The existing lifecycle queue permits a 60s start operation.
     const restart = ipc("daemon:restart");
     await vi.advanceTimersByTimeAsync(0);
-    expect(ctx.finishStart).not.toBeNull();
-    const priorStops = ctx.stops;
+    const stopsBeforeInstall = ctx.stops;
     const install = ipc("updater:install");
     await vi.advanceTimersByTimeAsync(15_000);
     await install;
     expect(ctx.install).toHaveBeenCalledTimes(1);
-    // The installer does not quit. Check both before and after watchdog recovery.
-    await vi.advanceTimersByTimeAsync(finishAt - 15_000);
+    await vi.advanceTimersByTimeAsync(10_000);
     ctx.health!.status = "running";
     ctx.health!.active_task_count = 1;
     ctx.finishStart!();
     await restart;
     await vi.advanceTimersByTimeAsync(0);
-    expect(ctx.stops).toBe(priorStops);
+    expect(ctx.stops).toBe(stopsBeforeInstall);
   });
 });

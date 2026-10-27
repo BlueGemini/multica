@@ -67,7 +67,6 @@ import {
   setupAutoUpdater,
   type UpdaterDaemonGate,
 } from "./updater";
-import type { DaemonInstallPrep } from "./update-install-gate";
 import { updaterPreferencesPath } from "./updater-preferences";
 
 describe("macOS x64 update channel", () => {
@@ -293,22 +292,18 @@ describe("setupAutoUpdater", () => {
   });
 });
 
-describe("Windows daemon gate around update install (#8823)", () => {
-  function makeGate(preps: DaemonInstallPrep[]) {
-    const queue = [...preps];
-    const gate = {
-      prepare: vi.fn<UpdaterDaemonGate["prepare"]>(async () => queue.shift() ?? { kind: "ready" as const }),
+describe("Windows update installation", () => {
+  function makeGate() {
+    return {
+      prepare: vi.fn<UpdaterDaemonGate["prepare"]>().mockResolvedValue({ kind: "ready" }),
       resumeAfterAbortedInstall: vi.fn(),
-      confirmInstallWhileBusy: vi.fn(async () => "now" as const),
+      confirmInstallWhileBusy: vi.fn(async () => false),
     } satisfies UpdaterDaemonGate;
-    return gate;
   }
 
-  function emitBeforeQuit() {
+  function emitApp(eventName: string) {
     const event = { preventDefault: vi.fn() };
-    for (const handler of ctx.appHandlers.get("before-quit") ?? []) {
-      handler(event);
-    }
+    for (const handler of ctx.appHandlers.get(eventName) ?? []) handler(event);
     return event;
   }
 
@@ -332,276 +327,100 @@ describe("Windows daemon gate around update install (#8823)", () => {
     rmSync(ctx.userDataPath, { recursive: true, force: true });
   });
 
-  it("leaves macOS and Linux installs untouched", async () => {
+  it("keeps macOS and Linux on the existing install path", async () => {
     for (const platform of ["darwin", "linux"] as const) {
-      ctx.quitAndInstall.mockClear();
-      const gate = makeGate([]);
+      const gate = makeGate();
       setupAutoUpdater(() => null, { daemonGate: gate, platform });
-
       await invokeIpc("updater:install");
-
       expect(gate.prepare).not.toHaveBeenCalled();
-      expect(ctx.quitAndInstall).toHaveBeenCalledWith(false, true);
     }
+    expect(ctx.quitAndInstall).toHaveBeenCalledTimes(2);
     expect(ctx.appHandlers.get("before-quit")).toBeUndefined();
   });
 
-  it("stops an idle daemon before handing off to the installer", async () => {
-    const gate = makeGate([{ kind: "ready" }]);
+  it.each(["ready", "timeout", "error"])("installs after preparation returns %s", async (result) => {
+    const gate = makeGate();
+    if (result === "error") gate.prepare.mockRejectedValue(new Error("probe failed"));
+    else gate.prepare.mockResolvedValue({ kind: result as "ready" | "timeout" });
     setupAutoUpdater(() => null, { daemonGate: gate, platform: "win32" });
-
     await invokeIpc("updater:install");
-
-    expect(gate.prepare).toHaveBeenCalledWith({ interruptActiveTasks: false, signal: expect.any(AbortSignal) });
-    expect(gate.confirmInstallWhileBusy).not.toHaveBeenCalled();
-    expect(ctx.quitAndInstall).toHaveBeenCalledTimes(1);
+    expect(ctx.quitAndInstall).toHaveBeenCalledExactlyOnceWith(false, true);
   });
 
-  it("still installs when the daemon does not exit in time", async () => {
-    const gate = makeGate([{ kind: "timeout" }]);
+  it.each([false, true])("asks before interrupting busy tasks (confirmed=%s)", async (confirmed) => {
+    const gate = makeGate();
+    gate.prepare.mockResolvedValueOnce({ kind: "busy", activeTasks: 2 });
+    gate.confirmInstallWhileBusy.mockResolvedValue(confirmed);
     setupAutoUpdater(() => null, { daemonGate: gate, platform: "win32" });
-
-    await invokeIpc("updater:install");
-
-    expect(ctx.quitAndInstall).toHaveBeenCalledTimes(1);
-  });
-
-  it("still installs when the gate itself fails", async () => {
-    const gate = makeGate([]);
-    gate.prepare.mockRejectedValueOnce(new Error("boom"));
-    setupAutoUpdater(() => null, { daemonGate: gate, platform: "win32" });
-
-    await invokeIpc("updater:install");
-
-    expect(ctx.quitAndInstall).toHaveBeenCalledTimes(1);
-  });
-
-  it("asks before interrupting running tasks and honours 'Install now'", async () => {
-    const gate = makeGate([{ kind: "busy", activeTasks: 2 }, { kind: "ready" }]);
-    setupAutoUpdater(() => null, { daemonGate: gate, platform: "win32" });
-
-    await invokeIpc("updater:install");
-
-    expect(gate.confirmInstallWhileBusy).toHaveBeenCalledWith(2);
-    expect(gate.prepare).toHaveBeenLastCalledWith({ interruptActiveTasks: true, signal: expect.any(AbortSignal) });
-    expect(ctx.quitAndInstall).toHaveBeenCalledTimes(1);
-  });
-
-  it("does nothing on 'Cancel'", async () => {
-    const gate = makeGate([{ kind: "busy", activeTasks: 1 }]);
-    gate.confirmInstallWhileBusy.mockResolvedValueOnce("cancel" as never);
-    setupAutoUpdater(() => null, { daemonGate: gate, platform: "win32" });
-
     await invokeIpc("updater:install");
     await vi.advanceTimersByTimeAsync(60_000);
+    expect(gate.confirmInstallWhileBusy).toHaveBeenCalledWith(2);
+    expect(gate.prepare).toHaveBeenCalledTimes(confirmed ? 2 : 1);
+    expect(ctx.quitAndInstall).toHaveBeenCalledTimes(confirmed ? 1 : 0);
+    if (confirmed) {
+      expect(gate.prepare).toHaveBeenLastCalledWith({ interruptActiveTasks: true });
+    } else {
+      expect(gate.resumeAfterAbortedInstall).toHaveBeenCalledTimes(1);
+    }
+  });
 
+  it("lets quit wait for a manual confirmation without opening another preparation", async () => {
+    const gate = makeGate();
+    gate.prepare.mockResolvedValueOnce({ kind: "busy", activeTasks: 1 });
+    let confirm!: (choice: boolean) => void;
+    gate.confirmInstallWhileBusy.mockImplementation(() => new Promise((resolve) => { confirm = resolve; }));
+    setupAutoUpdater(() => null, { daemonGate: gate, platform: "win32" });
+    emitUpdater("update-downloaded", { version: "0.7.1" });
+    const manual = invokeIpc("updater:install");
+    await vi.advanceTimersByTimeAsync(0);
+    expect(emitApp("before-quit").preventDefault).toHaveBeenCalled();
+    confirm(false);
+    await manual;
     expect(gate.prepare).toHaveBeenCalledTimes(1);
-    expect(ctx.quitAndInstall).not.toHaveBeenCalled();
-  });
-
-  it("installs once tasks finish on 'Install when tasks finish'", async () => {
-    const gate = makeGate([
-      { kind: "busy", activeTasks: 1 },
-      { kind: "busy", activeTasks: 1 },
-      { kind: "ready" },
-    ]);
-    gate.confirmInstallWhileBusy.mockResolvedValueOnce("wait" as never);
-    setupAutoUpdater(() => null, { daemonGate: gate, platform: "win32" });
-
-    await invokeIpc("updater:install");
-    expect(ctx.quitAndInstall).not.toHaveBeenCalled();
-
-    await vi.advanceTimersByTimeAsync(10_000);
-    expect(ctx.quitAndInstall).not.toHaveBeenCalled();
-
-    await vi.advanceTimersByTimeAsync(10_000);
-    expect(ctx.quitAndInstall).toHaveBeenCalledTimes(1);
-    expect(gate.prepare).toHaveBeenCalledWith({ interruptActiveTasks: false, signal: expect.any(AbortSignal) });
-    expect(gate.prepare).not.toHaveBeenCalledWith(expect.objectContaining({ interruptActiveTasks: true }));
-  });
-
-  it("resumes the daemon when quitAndInstall never quits the app", async () => {
-    const gate = makeGate([{ kind: "ready" }]);
-    setupAutoUpdater(() => null, { daemonGate: gate, platform: "win32" });
-
-    await invokeIpc("updater:install");
-    await vi.advanceTimersByTimeAsync(10_000);
-
-    expect(gate.resumeAfterAbortedInstall).toHaveBeenCalledTimes(1);
-  });
-
-  it("lets manual Install now supersede a deferred check without installing twice", async () => {
-    let finishProbe!: (prep: DaemonInstallPrep) => void;
-    const gate = makeGate([]);
-    gate.prepare
-      .mockResolvedValueOnce({ kind: "busy", activeTasks: 1 })
-      .mockImplementationOnce(() => new Promise((resolve) => { finishProbe = resolve; }))
-      .mockResolvedValueOnce({ kind: "busy", activeTasks: 1 })
-      .mockResolvedValueOnce({ kind: "ready" });
-    gate.confirmInstallWhileBusy
-      .mockResolvedValueOnce("wait" as never)
-      .mockResolvedValueOnce("now");
-    setupAutoUpdater(() => null, { daemonGate: gate, platform: "win32" });
-
-    await invokeIpc("updater:install");
-    await vi.advanceTimersByTimeAsync(10_000);
-    const deferredSignal = gate.prepare.mock.calls[1][0].signal!;
-    await invokeIpc("updater:install");
-    expect(deferredSignal.aborted).toBe(true);
-    expect(ctx.quitAndInstall).toHaveBeenCalledTimes(1);
-
-    finishProbe({ kind: "ready" });
-    await vi.advanceTimersByTimeAsync(0);
-    expect(ctx.quitAndInstall).toHaveBeenCalledTimes(1);
-    expect(gate.prepare).toHaveBeenCalledTimes(4);
-  });
-
-  it("ignores a manual dialog result after quit takes ownership", async () => {
-    let choose!: (choice: "now") => void;
-    const gate = makeGate([{ kind: "busy", activeTasks: 1 }, { kind: "ready" }]);
-    gate.confirmInstallWhileBusy.mockImplementationOnce(() => new Promise((resolve) => { choose = resolve; }));
-    setupAutoUpdater(() => null, { daemonGate: gate, platform: "win32" });
-    emitUpdater("update-downloaded", { version: "0.3.18" });
-
-    const manualInstall = invokeIpc("updater:install");
-    await vi.advanceTimersByTimeAsync(0);
-    emitBeforeQuit();
-    await vi.advanceTimersByTimeAsync(0);
-    choose("now");
-    await manualInstall;
-
-    expect(ctx.appQuit).toHaveBeenCalledTimes(1);
-    expect(ctx.quitAndInstall).not.toHaveBeenCalled();
-    expect(gate.prepare).toHaveBeenCalledTimes(2);
-  });
-
-  it("does not resume the daemon once the app is quitting", async () => {
-    const gate = makeGate([{ kind: "ready" }]);
-    setupAutoUpdater(() => null, { daemonGate: gate, platform: "win32" });
-
-    await invokeIpc("updater:install");
-    const event = emitBeforeQuit();
-    await vi.advanceTimersByTimeAsync(10_000);
-
-    expect(event.preventDefault).not.toHaveBeenCalled();
-    expect(gate.resumeAfterAbortedInstall).not.toHaveBeenCalled();
-  });
-
-  it("does not gate a quit when no update is downloaded", () => {
-    const gate = makeGate([]);
-    setupAutoUpdater(() => null, { daemonGate: gate, platform: "win32" });
-
-    const event = emitBeforeQuit();
-
-    expect(event.preventDefault).not.toHaveBeenCalled();
-    expect(gate.prepare).not.toHaveBeenCalled();
-  });
-
-  it("stops an idle daemon before the quit-time install", async () => {
-    const gate = makeGate([{ kind: "ready" }]);
-    setupAutoUpdater(() => null, { daemonGate: gate, platform: "win32" });
-    emitUpdater("update-downloaded", { version: "0.3.18" });
-
-    const event = emitBeforeQuit();
-    await vi.advanceTimersByTimeAsync(0);
-
-    expect(event.preventDefault).toHaveBeenCalled();
-    expect(gate.prepare).toHaveBeenCalledWith({ interruptActiveTasks: false, signal: expect.any(AbortSignal) });
-    expect(ctx.appQuit).toHaveBeenCalledTimes(1);
-    expect(autoUpdater.autoInstallOnAppQuit).toBe(true);
-
-    // The re-entered quit passes straight through.
-    expect(emitBeforeQuit().preventDefault).not.toHaveBeenCalled();
-  });
-
-  it("skips the quit-time install instead of killing running tasks", async () => {
-    const gate = makeGate([{ kind: "busy", activeTasks: 3 }]);
-    setupAutoUpdater(() => null, { daemonGate: gate, platform: "win32" });
-    emitUpdater("update-downloaded", { version: "0.3.18" });
-
-    emitBeforeQuit();
-    await vi.advanceTimersByTimeAsync(0);
-
     expect(autoUpdater.autoInstallOnAppQuit).toBe(false);
     expect(ctx.appQuit).toHaveBeenCalledTimes(1);
-  });
-
-  it("hands a deferred flow to a manual install without resuming the daemon", async () => {
-    const gate = makeGate([]);
-    gate.prepare
-      .mockResolvedValueOnce({ kind: "busy", activeTasks: 1 })
-      .mockImplementationOnce(() => new Promise(() => {}))
-      .mockResolvedValueOnce({ kind: "ready" });
-    gate.confirmInstallWhileBusy.mockResolvedValueOnce("wait" as never);
-    setupAutoUpdater(() => null, { daemonGate: gate, platform: "win32" });
-
-    await invokeIpc("updater:install");
-    gate.resumeAfterAbortedInstall.mockClear();
-    await vi.advanceTimersByTimeAsync(10_000);
-    await invokeIpc("updater:install");
-
-    expect(gate.resumeAfterAbortedInstall).not.toHaveBeenCalled();
-    expect(ctx.quitAndInstall).toHaveBeenCalledTimes(1);
-  });
-
-  it("hands a manual flow to the quit flow without resuming the daemon", async () => {
-    const gate = makeGate([]);
-    gate.prepare
-      .mockImplementationOnce(() => new Promise(() => {}))
-      .mockResolvedValueOnce({ kind: "ready" });
-    setupAutoUpdater(() => null, { daemonGate: gate, platform: "win32" });
-    emitUpdater("update-downloaded", { version: "0.3.18" });
-
-    void invokeIpc("updater:install");
-    await vi.advanceTimersByTimeAsync(0);
-    emitBeforeQuit();
-    await vi.advanceTimersByTimeAsync(0);
-
-    expect(gate.resumeAfterAbortedInstall).not.toHaveBeenCalled();
-    expect(ctx.appQuit).toHaveBeenCalledTimes(1);
-  });
-
-  it("resumes an inherited pause when the successor flow does not install", async () => {
-    const gate = makeGate([{ kind: "busy", activeTasks: 1 }]);
-    gate.confirmInstallWhileBusy.mockResolvedValueOnce("cancel" as never);
-    setupAutoUpdater(() => null, { daemonGate: gate, platform: "win32" });
-
-    await invokeIpc("updater:install");
-
-    expect(gate.resumeAfterAbortedInstall).toHaveBeenCalledTimes(1);
     expect(ctx.quitAndInstall).not.toHaveBeenCalled();
   });
 
-  it("resumes before a quit that skips the install for running tasks", async () => {
-    const gate = makeGate([{ kind: "busy", activeTasks: 2 }]);
+  it.each(["ready", "busy", "timeout", "error"] as const)("handles ordinary quit with a %s daemon", async (kind) => {
+    const gate = makeGate();
+    if (kind === "error") gate.prepare.mockRejectedValue(new Error("probe failed"));
+    else gate.prepare.mockResolvedValue(kind === "busy" ? { kind, activeTasks: 1 } : { kind });
     setupAutoUpdater(() => null, { daemonGate: gate, platform: "win32" });
-    emitUpdater("update-downloaded", { version: "0.3.18" });
-
-    emitBeforeQuit();
+    expect(emitApp("before-quit").preventDefault).not.toHaveBeenCalled();
+    emitUpdater("update-downloaded", { version: "0.7.1" });
+    expect(emitApp("before-quit").preventDefault).toHaveBeenCalled();
     await vi.advanceTimersByTimeAsync(0);
-
-    expect(gate.resumeAfterAbortedInstall).toHaveBeenCalledTimes(1);
+    expect(gate.confirmInstallWhileBusy).not.toHaveBeenCalled();
+    expect(autoUpdater.autoInstallOnAppQuit).toBe(kind !== "busy");
     expect(ctx.appQuit).toHaveBeenCalledTimes(1);
+    expect(ctx.quitAndInstall).not.toHaveBeenCalled();
+    expect(emitApp("before-quit").preventDefault).not.toHaveBeenCalled();
+  });
+
+  it.each([false, true])("recovers a failed install unless the app has reached will-quit (%s)", async (quitting) => {
+    const gate = makeGate();
+    setupAutoUpdater(() => null, { daemonGate: gate, platform: "win32" });
+    await invokeIpc("updater:install");
+    if (quitting) emitApp("will-quit");
+    await vi.advanceTimersByTimeAsync(10_000);
+    expect(gate.resumeAfterAbortedInstall).toHaveBeenCalledTimes(quitting ? 0 : 1);
+    if (!quitting) {
+      await invokeIpc("updater:install");
+      expect(ctx.quitAndInstall).toHaveBeenCalledTimes(2);
+    }
   });
 });
 
 describe("createElectronBusyInstallPrompt", () => {
-  it("maps dialog buttons to choices", async () => {
-    for (const [response, choice] of [
-      [0, "wait"],
-      [1, "now"],
-      [2, "cancel"],
-    ] as const) {
-      const showMessageBox = vi.fn(async () => ({ response }));
-      const prompt = createElectronBusyInstallPrompt(showMessageBox);
-
-      await expect(prompt(2)).resolves.toBe(choice);
-      expect(showMessageBox).toHaveBeenCalledWith(
-        expect.objectContaining({
-          cancelId: 2,
-          message: "2 agent tasks are running on this computer.",
-        }),
-      );
-    }
+  it.each([0, 1, 2])("offers only immediate installation or cancellation (response=%s)", async (response) => {
+    const showMessageBox = vi.fn(async () => ({ response }));
+    await expect(createElectronBusyInstallPrompt(showMessageBox)(2)).resolves.toBe(response === 0);
+    expect(showMessageBox).toHaveBeenCalledWith(expect.objectContaining({
+      buttons: ["Install now", "Cancel"],
+      defaultId: 1,
+      cancelId: 1,
+      message: "2 agent tasks are running on this computer.",
+    }));
   });
 });
